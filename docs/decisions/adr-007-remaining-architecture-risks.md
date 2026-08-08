@@ -12,24 +12,23 @@ This ADR does not decide the open points. Each area requires a separate, evidenc
 
 ## Database migrations
 
-The migration structure and upgrade policy were decided in [ADR-008](adr-008-database-migration-strategy.md). The remaining release concern is automated SQLite backup/retention and operational verification of backup restoration.
+The migration structure, SQLite pre-upgrade backup, retention policy, and upgrade behavior were decided in [ADR-008](adr-008-database-migration-strategy.md). The remaining release concern is operational verification of backup restoration on a packaged clean-machine installation.
 
 ### Current state
 
 - Provider-specific EF Core migration assemblies now initialize and upgrade PostgreSQL and SQLite databases.
 - Module-specific migration histories and a PostgreSQL advisory migration lock are implemented.
 - SQLite and PostgreSQL upgrade preservation are covered by automated V1-to-V2 tests; the PostgreSQL test runs when a dedicated test connection is configured and was validated against the Docker development database on 2026-08-08.
-- Automated SQLite pre-upgrade backup and retention are not implemented yet.
+- SQLite automatically creates an integrity-checked pre-upgrade backup and retains the configured newest generations.
 
 ### To clarify
 
-- how the desktop release creates, retains, and restores automatic SQLite pre-upgrade backups
 - how backup restoration is exercised in release validation
 - how long database upgrades from older product releases remain supported
 
 ### Risk
 
-Without automated SQLite backup and regularly exercised restore procedures, a failed desktop upgrade could still require manual recovery. Every future migration also needs an upgrade fixture representing the previous supported product schema.
+Without a regularly exercised restore procedure, a failed desktop upgrade could still require error-prone manual recovery even though an integral pre-upgrade backup exists. Every future migration also needs an upgrade fixture representing the previous supported product schema.
 
 ### Required validation
 

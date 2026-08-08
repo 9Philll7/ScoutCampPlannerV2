@@ -12,5 +12,6 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <ProjectReference Include="../../src/backend/ScoutCampPlanner.Migrations.PostgreSql/ScoutCampPlanner.Migrations.PostgreSql.csproj" />
     <ProjectReference Include="../../src/backend/ScoutCampPlanner.Migrations.Sqlite/ScoutCampPlanner.Migrations.Sqlite.csproj" />
+    <ProjectReference Include="../../src/backend/ScoutCampPlanner.Api/ScoutCampPlanner.Api.csproj" />
   </ItemGroup>
 </Project>

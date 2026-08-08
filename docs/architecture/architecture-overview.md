@@ -4,7 +4,7 @@
 
 The target architecture defined by ADR-005 was technically validated by the Architecture Spike on 2026-08-08. The validation and its evidence are recorded in [ADR-006](../decisions/adr-006-architecture-spike-validation.md) and the [spike report](../spike/results.md).
 
-The validated repository state is a development baseline, not a product release. Production migration, package compatibility, security, privacy, and selected desktop operational concerns remain open and are tracked in [ADR-007](../decisions/adr-007-remaining-architecture-risks.md).
+The validated repository state is a development baseline, not a product release. Operational restore validation, package compatibility, security, privacy, and selected desktop release concerns remain open and are tracked in [ADR-007](../decisions/adr-007-remaining-architecture-risks.md).
 
 ## Technical baseline
 
@@ -84,7 +84,7 @@ All three operating models are technically confirmed. Clean-machine desktop inst
 
 ## Still open
 
-- database migrations are now provider- and module-specific as defined by [ADR-008](../decisions/adr-008-database-migration-strategy.md); automated SQLite upgrade backup and operational restore validation remain open
+- database migrations are provider- and module-specific and SQLite pre-upgrade backups are automatic as defined by [ADR-008](../decisions/adr-008-database-migration-strategy.md); operational clean-machine restore validation remains open
 - camp-package schema migration and compatibility beyond version 1
 - encryption, signing, permissions, audit logging, retention, archival, and anonymisation
 - authentication, tenant authorization, and the concrete role model

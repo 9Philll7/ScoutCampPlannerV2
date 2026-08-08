@@ -95,3 +95,35 @@ dotnet test tests/ScoutCampPlanner.DatabaseMigrationTests/ScoutCampPlanner.Datab
 ```
 
 The test database schemas are dropped and recreated. Never point this variable at a database containing valuable data.
+
+## SQLite pre-upgrade backups
+
+For a file-based SQLite database, startup checks all module histories before applying migrations. If at least one migration was already applied and a newer migration is pending, ScoutCampPlanner creates an online backup first.
+
+For the desktop database, backups are stored below:
+
+```text
+%LOCALAPPDATA%\org.scoutcampplanner.desktop\backups\
+```
+
+The default retention is three backups. It can be changed through `Database:SqliteBackupRetention`, but must never be lower than one. A current database does not create a backup on every start.
+
+Every completed backup:
+
+- contains the state immediately before migration
+- passes SQLite `PRAGMA integrity_check`
+- is moved from a temporary name only after validation
+- uses a UTC timestamp and unique suffix
+
+If backup creation or validation fails, the application stops before applying a pending migration.
+
+## Restore a desktop SQLite backup
+
+1. Close ScoutCampPlanner and verify that its sidecar process has stopped.
+2. Copy both the current database and the selected backup to an additional safe location.
+3. Move the current `scoutcampplanner.db` to a diagnostic name such as `scoutcampplanner.failed-upgrade.db`.
+4. Copy the selected `*-pre-migration.db` file from `backups` to `scoutcampplanner.db`.
+5. If the same application version caused the migration failure, do not repeatedly start it. Use the previous compatible version or a reviewed forward fix.
+6. Start the selected application version and verify `/health` and the expected camp data.
+
+Backup files contain the same data as the primary SQLite database. They inherit protection from the application data directory and must be included in future encryption, retention, archival, and secure-deletion decisions.

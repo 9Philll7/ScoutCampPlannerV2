@@ -1,7 +1,9 @@
 using System.Data.Common;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using ScoutCampPlanner.Camp.Infrastructure;
 using ScoutCampPlanner.Catering.Infrastructure;
+using ScoutCampPlanner.Migrations.Sqlite;
 using ScoutCampPlanner.Platform.Infrastructure;
 
 internal static class DatabaseBootstrapper
@@ -12,6 +14,8 @@ internal static class DatabaseBootstrapper
         CampDbContext camp,
         CateringDbContext catering,
         string provider,
+        TimeProvider timeProvider,
+        int sqliteBackupRetention,
         CancellationToken cancellationToken = default)
     {
         await connection.OpenAsync(cancellationToken);
@@ -26,6 +30,18 @@ internal static class DatabaseBootstrapper
 
             await RejectPreMigrationBaselineAsync(connection, isPostgreSql, cancellationToken);
 
+            if (!isPostgreSql && connection is SqliteConnection sqlite)
+            {
+                await BackupSqliteWhenUpgradeIsPendingAsync(
+                    sqlite,
+                    platform,
+                    camp,
+                    catering,
+                    timeProvider,
+                    sqliteBackupRetention,
+                    cancellationToken);
+            }
+
             await platform.Database.MigrateAsync(cancellationToken);
             await camp.Database.MigrateAsync(cancellationToken);
             await catering.Database.MigrateAsync(cancellationToken);
@@ -35,6 +51,34 @@ internal static class DatabaseBootstrapper
             if (isPostgreSql)
                 await SetPostgreSqlMigrationLockAsync(connection, acquire: false, CancellationToken.None);
         }
+    }
+
+    private static async Task BackupSqliteWhenUpgradeIsPendingAsync(
+        SqliteConnection connection,
+        PlatformDbContext platform,
+        CampDbContext camp,
+        CateringDbContext catering,
+        TimeProvider timeProvider,
+        int retentionCount,
+        CancellationToken cancellationToken)
+    {
+        var pending = (await platform.Database.GetPendingMigrationsAsync(cancellationToken)).Any()
+            || (await camp.Database.GetPendingMigrationsAsync(cancellationToken)).Any()
+            || (await catering.Database.GetPendingMigrationsAsync(cancellationToken)).Any();
+        if (!pending)
+            return;
+
+        var applied = (await platform.Database.GetAppliedMigrationsAsync(cancellationToken)).Any()
+            || (await camp.Database.GetAppliedMigrationsAsync(cancellationToken)).Any()
+            || (await catering.Database.GetAppliedMigrationsAsync(cancellationToken)).Any();
+        if (!applied)
+            return;
+
+        await new SqlitePreMigrationBackup().CreateAsync(
+            connection,
+            timeProvider,
+            retentionCount,
+            cancellationToken);
     }
 
     private static async Task RejectPreMigrationBaselineAsync(

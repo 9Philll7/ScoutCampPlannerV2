@@ -29,6 +29,9 @@ if (provider.Equals("Sqlite", StringComparison.OrdinalIgnoreCase))
     SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_winsqlite3());
 var connectionString = builder.Configuration["Database:ConnectionString"]
     ?? throw new InvalidOperationException("Database connection string is missing.");
+var sqliteBackupRetention = builder.Configuration.GetValue("Database:SqliteBackupRetention", 3);
+if (sqliteBackupRetention < 1)
+    throw new InvalidOperationException("Database:SqliteBackupRetention must be at least 1.");
 
 builder.Services.AddScoped<DbConnection>(_ => provider.Equals("PostgreSql", StringComparison.OrdinalIgnoreCase)
     ? new NpgsqlConnection(connectionString)
@@ -49,7 +52,9 @@ await using (var scope = app.Services.CreateAsyncScope())
         scope.ServiceProvider.GetRequiredService<PlatformDbContext>(),
         scope.ServiceProvider.GetRequiredService<CampDbContext>(),
         scope.ServiceProvider.GetRequiredService<CateringDbContext>(),
-        provider);
+        provider,
+        scope.ServiceProvider.GetRequiredService<TimeProvider>(),
+        sqliteBackupRetention);
 }
 
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", databaseProvider = provider }));

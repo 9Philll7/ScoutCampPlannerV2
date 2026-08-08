@@ -37,7 +37,7 @@ The detailed evidence is in [ADR-006](../decisions/adr-006-architecture-spike-va
 
 The following decisions are required before the affected areas are production-ready:
 
-- automated SQLite pre-upgrade backup/retention and operational backup-restore validation; the migration structure itself is defined by ADR-008
+- operational backup-restore validation on a packaged clean-machine installation; migrations and automatic SQLite pre-upgrade backups are defined by ADR-008
 - a package migration registry, historic compatibility fixtures, and a supported compatibility window
 - encryption and authenticity protection for packages and sensitive local data
 - authentication, tenant authorization, roles, audit logging, and privacy lifecycle

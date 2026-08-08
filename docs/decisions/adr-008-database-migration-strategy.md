@@ -55,7 +55,11 @@ The migration tests retain data while upgrading Camp and Catering from their ini
 ### Backup and recovery
 
 - PostgreSQL deployments must create and verify an external database backup before applying migrations.
-- Desktop releases must back up the SQLite database before an upgrade that contains pending migrations. Automated desktop backup and retention behavior must be completed before the first product release.
+- A file-based SQLite database with both applied and pending migrations is backed up automatically before the upgrade starts.
+- SQLite backups use the provider's online backup API, must pass `PRAGMA integrity_check`, and are written atomically to a sibling `backups` directory.
+- Backup names contain a UTC timestamp and unique suffix. The configured newest generations are retained; the default is three and the value must be at least one.
+- A backup or integrity-check failure aborts startup before any pending migration is applied.
+- Fresh databases, current databases without pending migrations, and in-memory test databases do not create a backup.
 - Down migrations support local development and tests but are not the default production rollback mechanism.
 - Production recovery restores the pre-deployment backup or deploys a reviewed forward-fix migration.
 
@@ -65,7 +69,7 @@ The migration tests retain data while upgrading Camp and Catering from their ini
 - Pull requests must review generated operations, snapshots, destructive changes, provider differences, and deployment notes.
 - Upgrade tests must start from the previous supported migration and verify data preservation for PostgreSQL and SQLite.
 - Application startup no longer uses generated create scripts.
-- PostgreSQL upgrades require a reachable database and backup procedure. SQLite upgrade backup automation remains a release blocker tracked by ADR-007.
+- PostgreSQL upgrades require a reachable database and external backup procedure. SQLite upgrades create and verify their pre-migration backup automatically.
 - Package schema migration remains independent of database migration and is not solved by this ADR.
 
 ## Validation
@@ -77,5 +81,7 @@ Validated on 2026-08-08:
 - Both providers apply the Camp and Catering index migrations and report no pending migrations after a repeated update.
 - The existing PostgreSQL package rollback integration test still succeeds after introducing migrations.
 - The Docker backend image includes both migration assemblies, starts against the migrated PostgreSQL volume, reports that the database is current, and returns a healthy PostgreSQL status.
+- A file-based SQLite V1 database creates exactly one integral pre-migration backup before upgrading to V2, retains the previous data, and creates no additional backup when started again without pending migrations.
+- SQLite backup retention removes generations beyond the configured limit, while in-memory databases create no filesystem artifact.
 
-The pre-ADR-008 PostgreSQL spike database was backed up before resetting the dedicated development schemas. Automated SQLite release backup and restore validation remain open as described above and in ADR-007.
+The pre-ADR-008 PostgreSQL spike database was backed up before resetting the dedicated development schemas. Operational clean-machine restore validation remains a release-readiness check.
