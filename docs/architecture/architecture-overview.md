@@ -82,12 +82,23 @@ These decisions were validated for PostgreSQL and SQLite by the Architecture Spi
 
 All three operating models are technically confirmed. Clean-machine desktop installation/removal and normal user-driven shutdown remain release-readiness checks rather than architecture blockers.
 
+## Authentication modes
+
+[ADR-009](../decisions/adr-009-authentication-modes.md) defines the authentication direction:
+
+- password authentication for cloud/server users
+- cloud authentication for connected local server instances
+- a separately derived local verifier using the same user password for prepared offline access
+- an optional, device-local password for Windows single-device operation
+
+Central password verifiers are not exported and local verifiers are not part of camp packages. Concrete identity storage, sessions, password policy, reset, roles, tenant isolation, permissions, and audit behavior remain to be decided before implementation.
+
 ## Still open
 
 - database migrations are provider- and module-specific and SQLite pre-upgrade backups are automatic as defined by [ADR-008](../decisions/adr-008-database-migration-strategy.md); operational clean-machine restore validation remains open
 - camp-package schema migration and compatibility beyond version 1
 - encryption, signing, permissions, audit logging, retention, archival, and anonymisation
-- authentication, tenant authorization, and the concrete role model
+- identity storage, sessions, password policy, password reset, tenant authorization, audit behavior, and the concrete role model; authentication modes are defined by ADR-009
 - stable API error contracts
 - release-readiness checks for packaged desktop installers
 

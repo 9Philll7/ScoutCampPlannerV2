@@ -40,7 +40,7 @@ The following decisions are required before the affected areas are production-re
 - operational backup-restore validation on a packaged clean-machine installation; migrations and automatic SQLite pre-upgrade backups are defined by ADR-008
 - a package migration registry, historic compatibility fixtures, and a supported compatibility window
 - encryption and authenticity protection for packages and sensitive local data
-- authentication, tenant authorization, roles, audit logging, and privacy lifecycle
+- identity storage, sessions, password policy, password reset, tenant authorization, roles, audit logging, and privacy lifecycle; operating-mode authentication is defined by ADR-009
 - retention, archival, deletion, and anonymisation rules for personal and health data
 - a stable API Problem Details contract
 - clean-machine installer/removal and normal desktop shutdown checks
@@ -50,6 +50,6 @@ ADR-007 records the architecture risks and required validation without pre-decid
 
 ## Next development step
 
-Before implementing health data or other sensitive workflows, resolve the security, authorization, and privacy decisions in ADR-007. In parallel, establish the production database migration strategy because every persistent product feature will depend on safe upgrades.
+Before implementing health data or other sensitive workflows, resolve the remaining security, authorization, and privacy decisions in ADR-007. Authentication modes are defined by ADR-009 and the production database migration strategy by ADR-008.
 
 After those foundations are decided, the recommended first product slice is tenant authentication/authorization and the basic Camp structure workflow. It should retain the validated module boundaries and add only the contracts, persistence migrations, API behavior, frontend flow, and tests required for that slice. Catering, Finance, Program, Material, and expanded participant/health functionality should follow as separate increments rather than extending the spike indiscriminately.

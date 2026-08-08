@@ -71,7 +71,7 @@ Without an explicit migration pipeline, a later package version could make exist
 
 - Package payloads are protected by a SHA-256 checksum.
 - Packages are not encrypted or signed.
-- Authentication, authorization, audit logging, retention, archival, and anonymisation were outside the spike.
+- Authentication modes are defined by ADR-009. Identity storage, sessions, password policy, password reset, authorization, audit logging, retention, archival, and anonymisation remain open.
 - The domain documentation identifies health data and a privacy lifecycle, but the complete workflow is not defined.
 
 ### To clarify
