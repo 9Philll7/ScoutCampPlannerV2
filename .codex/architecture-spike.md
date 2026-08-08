@@ -1,14 +1,20 @@
 # Codex Architecture Spike Auftrag
 
+## Status
+
+Technisch validiert und am 2026-08-08 abgeschlossen.
+
+Dieses Dokument bewahrt den ursprünglichen Implementierungs- und Prüfumfang. Das akzeptierte Ergebnis ist in `docs/decisions/adr-006-architecture-spike-validation.md` dokumentiert; Nachweise und verbleibende betriebliche Prüfungen stehen in `docs/spike/results.md`.
+
 ## Ziel
 
-Implementiere den ScoutCampPlanner Architecture Spike in einem neuen
-Repository.
+Der ScoutCampPlanner Architecture Spike wurde in einem neuen Repository
+implementiert.
 
-Der Spike validiert die technische Zielarchitektur und ist kein
+Der Spike validierte die technische Zielarchitektur und ist kein
 vollständiges Produkt.
 
-## Zu validieren
+## Validierter Umfang
 
 -   ASP.NET Core / .NET Backend
 -   Angular Frontend
@@ -65,9 +71,9 @@ Replace
 
 Der lokale Stand ist während der Offlinephase autoritativ.
 
-## Definition of Done
+## Definition of Done (erreicht)
 
-Der Spike ist erfolgreich, wenn:
+Der Spike wurde anhand folgender Kriterien erfolgreich abgeschlossen:
 
 -   Backend funktioniert
 -   Frontend funktioniert

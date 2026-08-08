@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <ProjectReference Include="../ScoutCampPlanner.Camp.Contracts/ScoutCampPlanner.Camp.Contracts.csproj" />
+    <ProjectReference Include="../ScoutCampPlanner.Camp.Domain/ScoutCampPlanner.Camp.Domain.csproj" />
+    <ProjectReference Include="../ScoutCampPlanner.Platform.Contracts/ScoutCampPlanner.Platform.Contracts.csproj" />
+  </ItemGroup>
+</Project>

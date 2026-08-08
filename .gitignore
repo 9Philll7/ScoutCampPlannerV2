@@ -1,0 +1,15 @@
+bin/
+obj/
+node_modules/
+.npm-cache/
+dist/
+.angular/
+*.db
+*.db-shm
+*.db-wal
+*.user
+.vs/
+src/desktop/src-tauri/target/
+src/desktop/sidecar-publish/
+src/desktop/src-tauri/binaries/*.exe
+api-smoke*.log

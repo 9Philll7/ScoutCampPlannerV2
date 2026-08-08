@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/src/backend/">
+    <Project Path="src/backend/ScoutCampPlanner.Api/ScoutCampPlanner.Api.csproj" />
+    <Project Path="src/backend/ScoutCampPlanner.Platform.Contracts/ScoutCampPlanner.Platform.Contracts.csproj" />
+    <Project Path="src/backend/ScoutCampPlanner.Platform.Domain/ScoutCampPlanner.Platform.Domain.csproj" />
+    <Project Path="src/backend/ScoutCampPlanner.Platform.Infrastructure/ScoutCampPlanner.Platform.Infrastructure.csproj" />
+    <Project Path="src/backend/ScoutCampPlanner.Camp.Contracts/ScoutCampPlanner.Camp.Contracts.csproj" />
+    <Project Path="src/backend/ScoutCampPlanner.Camp.Domain/ScoutCampPlanner.Camp.Domain.csproj" />
+    <Project Path="src/backend/ScoutCampPlanner.Camp.Infrastructure/ScoutCampPlanner.Camp.Infrastructure.csproj" />
+    <Project Path="src/backend/ScoutCampPlanner.Catering.Domain/ScoutCampPlanner.Catering.Domain.csproj" />
+    <Project Path="src/backend/ScoutCampPlanner.Catering.Infrastructure/ScoutCampPlanner.Catering.Infrastructure.csproj" />
+    <Project Path="src/backend/ScoutCampPlanner.Package/ScoutCampPlanner.Package.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ScoutCampPlanner.ArchitectureTests/ScoutCampPlanner.ArchitectureTests.csproj" />
+    <Project Path="tests/ScoutCampPlanner.PackageTests/ScoutCampPlanner.PackageTests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <ProjectReference Include="../ScoutCampPlanner.Platform.Infrastructure/ScoutCampPlanner.Platform.Infrastructure.csproj" />
+    <ProjectReference Include="../ScoutCampPlanner.Camp.Infrastructure/ScoutCampPlanner.Camp.Infrastructure.csproj" />
+    <ProjectReference Include="../ScoutCampPlanner.Catering.Infrastructure/ScoutCampPlanner.Catering.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

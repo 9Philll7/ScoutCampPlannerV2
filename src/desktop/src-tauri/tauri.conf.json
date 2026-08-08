@@ -1,0 +1,20 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ScoutCampPlanner",
+  "version": "0.1.0",
+  "identifier": "org.scoutcampplanner.desktop",
+  "build": {
+    "frontendDist": "../../frontend/dist/scoutcampplanner/browser",
+    "beforeBuildCommand": "npm.cmd --prefix ../frontend run build"
+  },
+  "app": {
+    "windows": [{ "title": "ScoutCampPlanner", "width": 1200, "height": 800 }],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis"],
+    "icon": ["icons/icon.ico"],
+    "externalBin": ["binaries/ScoutCampPlanner.Api"]
+  }
+}

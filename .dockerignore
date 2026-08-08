@@ -1,0 +1,12 @@
+.git
+.vs
+**/bin
+**/obj
+**/node_modules
+**/dist
+**/target
+.npm-cache
+src/desktop/sidecar-publish
+src/desktop/src-tauri/binaries
+*.db
+*.log

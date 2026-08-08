@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-The architecture spike must validate the modular monolith, PostgreSQL and SQLite operation, offline camp packages, and atomic return imports. Several implementation choices must be fixed before the spike so that it validates one coherent target architecture.
+The architecture spike was intended to validate the modular monolith, PostgreSQL and SQLite operation, offline camp packages, and atomic return imports. Several implementation choices were fixed before implementation so that the spike validated one coherent target architecture.
 
 ## Decision
 
@@ -45,7 +45,7 @@ The package contains a manifest that identifies at least:
 - baseline version
 - included modules
 
-The concrete container format, payload serialization, integrity protection, and package migration mechanism are to be validated by the architecture spike.
+The concrete container format, payload serialization, and integrity protection were left to the architecture spike. Package migration beyond the initial format remained an explicit follow-up concern.
 
 ### Freeze and return validation
 
@@ -67,7 +67,7 @@ The replacement must not modify:
 
 The package may carry Platform references such as a tenant ID, but these references do not authorize replacing Platform-owned tenant or user data.
 
-Atomic means that either all included module data is committed successfully or none of it is changed. The architecture spike must validate a shared transaction across the participating module `DbContext` instances with both PostgreSQL and SQLite.
+Atomic means that either all included module data is committed successfully or none of it is changed. The architecture spike was required to validate a shared transaction across the participating module `DbContext` instances with both PostgreSQL and SQLite.
 
 ## Consequences
 
@@ -79,9 +79,9 @@ Atomic means that either all included module data is committed successfully or n
 - Package migration and backwards compatibility become explicit responsibilities.
 - The spike must demonstrate the complete PostgreSQL to SQLite to PostgreSQL round trip while preserving stable IDs and relationships.
 
-## Spike validation required
+## Spike validation outcome
 
-This ADR defines the intended architecture but does not claim that it has already been proven. The spike must specifically validate:
+The Architecture Spike completed the required validation on 2026-08-08:
 
 - separate module contexts using one physical database
 - schema handling in PostgreSQL and table naming in SQLite
@@ -90,3 +90,5 @@ This ADR defines the intended architecture but does not claim that it has alread
 - preservation of IDs and relationships
 - rejection of stale, mismatched, or repeated return packages
 - rollback when any included module import fails
+
+All listed points were confirmed for the implemented Platform, Camp, and Catering slice. [ADR-006](adr-006-architecture-spike-validation.md) records the accepted result, evidence, limitations, and consequences. Remaining production risks are tracked in [ADR-007](adr-007-remaining-architecture-risks.md).

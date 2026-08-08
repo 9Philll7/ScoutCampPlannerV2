@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: scoutcampplanner
+      POSTGRES_USER: scoutcampplanner
+      POSTGRES_PASSWORD: local-development-only
+    volumes:
+      - scoutcampplanner-postgres18:/var/lib/postgresql
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scoutcampplanner"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.backend
+    environment:
+      Database__Provider: PostgreSql
+      Database__ConnectionString: Host=postgres;Database=scoutcampplanner;Username=scoutcampplanner;Password=local-development-only
+      ASPNETCORE_ENVIRONMENT: Development
+    ports:
+      - "5180:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  scoutcampplanner-postgres18:

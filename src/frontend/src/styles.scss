@@ -1,0 +1,7 @@
+@use '@angular/material' as mat;
+
+html { @include mat.theme((color: mat.$green-palette, typography: Roboto, density: 0)); }
+body { margin: 0; font-family: Roboto, Arial, sans-serif; background: #f5f7f4; color: #172217; }
+main { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+mat-card { margin: 1rem 0; }
+.error { color: #ba1a1a; }

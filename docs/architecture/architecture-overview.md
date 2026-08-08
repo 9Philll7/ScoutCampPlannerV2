@@ -1,5 +1,11 @@
 # ScoutCampPlanner Architecture Overview
 
+## Validation status
+
+The target architecture defined by ADR-005 was technically validated by the Architecture Spike on 2026-08-08. The validation and its evidence are recorded in [ADR-006](../decisions/adr-006-architecture-spike-validation.md) and the [spike report](../spike/results.md).
+
+The validated repository state is a development baseline, not a product release. Production migration, package compatibility, security, privacy, and selected desktop operational concerns remain open and are tracked in [ADR-007](../decisions/adr-007-remaining-architecture-risks.md).
+
 ## Technical baseline
 
 Backend:
@@ -26,6 +32,26 @@ Desktop:
 Architecture:
 - Modular Monolith
 
+The following technology decisions are confirmed by executable builds and tests:
+
+- shared Domain and Application logic with PostgreSQL and SQLite
+- ASP.NET Core REST API and OpenAPI
+- Angular production build and API integration
+- Docker-based ASP.NET Core/PostgreSQL operation
+- Tauri 2 with a self-contained ASP.NET Core sidecar and SQLite
+
+## Current module model
+
+The validated module dependency direction is:
+
+`Platform → Camp → Catering`
+
+- Platform, Camp, and Catering each own separate Domain and Infrastructure assemblies.
+- Platform and Camp expose explicit contracts to downstream consumers.
+- Each module owns its data and EF Core context.
+- Domain assemblies remain independent of framework, persistence-provider, UI, and other module implementations.
+- Finance, Program, and Material remain future modules and were not part of the spike.
+
 ## Persistence boundaries
 
 - Each module owns its own EF Core `DbContext`.
@@ -46,13 +72,26 @@ Architecture:
 - Other camps, modules not listed in the manifest, tenant-wide data, and central catalogue data remain unchanged.
 - Platform references required by the package, such as the tenant ID, do not authorize replacement of tenant or user data.
 
-These decisions define the target architecture. Their technical feasibility, including shared transactions across module `DbContext` instances for PostgreSQL and SQLite, must be validated by the architecture spike.
+These decisions were validated for PostgreSQL and SQLite by the Architecture Spike. Shared transactions, atomic replacement, rollback, identity preservation, and the version 1 package validation rules are covered by automated tests.
 
 ## Operating modes
 
-1. Cloud/server
-2. Local lager instance
-3. Single device
+1. Cloud/server: ASP.NET Core and PostgreSQL
+2. Local camp instance: Docker-based ASP.NET Core and PostgreSQL
+3. Single device: Windows, Tauri, ASP.NET Core sidecar, and SQLite
+
+All three operating models are technically confirmed. Clean-machine desktop installation/removal and normal user-driven shutdown remain release-readiness checks rather than architecture blockers.
+
+## Still open
+
+- production migrations and upgrade/recovery paths for PostgreSQL and SQLite
+- camp-package schema migration and compatibility beyond version 1
+- encryption, signing, permissions, audit logging, retention, archival, and anonymisation
+- authentication, tenant authorization, and the concrete role model
+- stable API error contracts
+- release-readiness checks for packaged desktop installers
+
+These open items must be resolved before the affected production functionality is released. They do not invalidate the proven technical baseline.
 
 ## Core principle
 

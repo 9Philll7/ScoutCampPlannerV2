@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default desktop permissions","local":true,"windows":["main"],"permissions":["core:default",{"identifier":"shell:allow-spawn","allow":[{"args":true,"name":"binaries/ScoutCampPlanner.Api","sidecar":true}]}]}}
