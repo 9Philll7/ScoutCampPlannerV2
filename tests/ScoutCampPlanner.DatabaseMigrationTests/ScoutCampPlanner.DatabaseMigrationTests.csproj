@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsTestProject>true</IsTestProject>
+    <NoWarn>$(NoWarn);xUnit1051</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite.Core" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="SQLitePCLRaw.provider.winsqlite3" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <ProjectReference Include="../../src/backend/ScoutCampPlanner.Migrations.PostgreSql/ScoutCampPlanner.Migrations.PostgreSql.csproj" />
+    <ProjectReference Include="../../src/backend/ScoutCampPlanner.Migrations.Sqlite/ScoutCampPlanner.Migrations.Sqlite.csproj" />
+  </ItemGroup>
+</Project>

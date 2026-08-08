@@ -15,25 +15,64 @@ internal static class DatabaseBootstrapper
         CancellationToken cancellationToken = default)
     {
         await connection.OpenAsync(cancellationToken);
-        await CreateModuleAsync(connection, platform, provider, "platform", "Tenants", cancellationToken);
-        await CreateModuleAsync(connection, camp, provider, "camp", "Camps", cancellationToken);
-        await CreateModuleAsync(connection, catering, provider, "catering", "MealPlans", cancellationToken);
+        var isPostgreSql = provider.Equals("PostgreSql", StringComparison.OrdinalIgnoreCase);
+        if (isPostgreSql)
+            await SetPostgreSqlMigrationLockAsync(connection, acquire: true, cancellationToken);
+
+        try
+        {
+            if (isPostgreSql)
+                await CreatePostgreSqlSchemasAsync(connection, cancellationToken);
+
+            await RejectPreMigrationBaselineAsync(connection, isPostgreSql, cancellationToken);
+
+            await platform.Database.MigrateAsync(cancellationToken);
+            await camp.Database.MigrateAsync(cancellationToken);
+            await catering.Database.MigrateAsync(cancellationToken);
+        }
+        finally
+        {
+            if (isPostgreSql)
+                await SetPostgreSqlMigrationLockAsync(connection, acquire: false, CancellationToken.None);
+        }
     }
 
-    private static async Task CreateModuleAsync(
+    private static async Task RejectPreMigrationBaselineAsync(
         DbConnection connection,
-        DbContext context,
-        string provider,
-        string schema,
-        string sentinelTable,
+        bool isPostgreSql,
         CancellationToken cancellationToken)
     {
         await using var command = connection.CreateCommand();
-        command.CommandText = provider.Equals("PostgreSql", StringComparison.OrdinalIgnoreCase)
-            ? $"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '{schema}' AND table_name = '{sentinelTable}'"
-            : $"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '{sentinelTable}'";
-        var exists = Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken)) > 0;
-        if (!exists)
-            await context.Database.ExecuteSqlRawAsync(context.Database.GenerateCreateScript(), cancellationToken);
+        command.CommandText = isPostgreSql
+            ? "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'platform' AND table_name = 'Tenants') AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'platform' AND table_name = '__EFMigrationsHistory');"
+            : "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'Tenants') AND NOT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '__EFMigrationsHistory_platform');";
+        var isPreMigrationDatabase = Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken));
+        if (isPreMigrationDatabase)
+        {
+            throw new InvalidOperationException(
+                "The database predates the production migration baseline and cannot be upgraded automatically. " +
+                "Back up any required spike data and create a new development database.");
+        }
+    }
+
+    private static async Task CreatePostgreSqlSchemasAsync(
+        DbConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "CREATE SCHEMA IF NOT EXISTS platform; CREATE SCHEMA IF NOT EXISTS camp; CREATE SCHEMA IF NOT EXISTS catering;";
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task SetPostgreSqlMigrationLockAsync(
+        DbConnection connection,
+        bool acquire,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = acquire
+            ? "SELECT pg_advisory_lock(72118455371801);"
+            : "SELECT pg_advisory_unlock(72118455371801);";
+        await command.ExecuteScalarAsync(cancellationToken);
     }
 }

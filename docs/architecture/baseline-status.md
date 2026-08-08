@@ -12,6 +12,7 @@ Validated capabilities:
 - separate module-owned Domain, Infrastructure, contracts, and EF Core contexts
 - shared Domain and Application logic with PostgreSQL and SQLite
 - module separation through PostgreSQL schemas and SQLite table naming
+- provider-specific, module-owned EF Core migrations with tested SQLite and PostgreSQL upgrades
 - shared transactions and atomic rollback across module contexts
 - version 1 camp-package roundtrip from cloud-style PostgreSQL to local SQLite and back
 - preservation of IDs and relationships, controlled freeze, baseline validation, atomic replacement, and rejection of invalid returns
@@ -36,7 +37,7 @@ The detailed evidence is in [ADR-006](../decisions/adr-006-architecture-spike-va
 
 The following decisions are required before the affected areas are production-ready:
 
-- productive PostgreSQL and SQLite migrations, including upgrades and recovery
+- automated SQLite pre-upgrade backup/retention and operational backup-restore validation; the migration structure itself is defined by ADR-008
 - a package migration registry, historic compatibility fixtures, and a supported compatibility window
 - encryption and authenticity protection for packages and sensitive local data
 - authentication, tenant authorization, roles, audit logging, and privacy lifecycle
@@ -52,4 +53,3 @@ ADR-007 records the architecture risks and required validation without pre-decid
 Before implementing health data or other sensitive workflows, resolve the security, authorization, and privacy decisions in ADR-007. In parallel, establish the production database migration strategy because every persistent product feature will depend on safe upgrades.
 
 After those foundations are decided, the recommended first product slice is tenant authentication/authorization and the basic Camp structure workflow. It should retain the validated module boundaries and add only the contracts, persistence migrations, API behavior, frontend flow, and tests required for that slice. Catering, Finance, Program, Material, and expanded participant/health functionality should follow as separate increments rather than extending the spike indiscriminately.
-

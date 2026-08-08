@@ -1,19 +1,12 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite.Core" />
-    <PackageReference Include="Microsoft.OpenApi" />
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
-    <PackageReference Include="SQLitePCLRaw.provider.winsqlite3" />
     <ProjectReference Include="../ScoutCampPlanner.Platform.Infrastructure/ScoutCampPlanner.Platform.Infrastructure.csproj" />
     <ProjectReference Include="../ScoutCampPlanner.Camp.Infrastructure/ScoutCampPlanner.Camp.Infrastructure.csproj" />
     <ProjectReference Include="../ScoutCampPlanner.Catering.Infrastructure/ScoutCampPlanner.Catering.Infrastructure.csproj" />
-    <ProjectReference Include="../ScoutCampPlanner.Migrations.PostgreSql/ScoutCampPlanner.Migrations.PostgreSql.csproj" />
-    <ProjectReference Include="../ScoutCampPlanner.Migrations.Sqlite/ScoutCampPlanner.Migrations.Sqlite.csproj" />
-    <ProjectReference Include="../ScoutCampPlanner.Package/ScoutCampPlanner.Package.csproj" />
   </ItemGroup>
 </Project>

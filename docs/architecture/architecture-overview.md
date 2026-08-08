@@ -84,7 +84,7 @@ All three operating models are technically confirmed. Clean-machine desktop inst
 
 ## Still open
 
-- production migrations and upgrade/recovery paths for PostgreSQL and SQLite
+- database migrations are now provider- and module-specific as defined by [ADR-008](../decisions/adr-008-database-migration-strategy.md); automated SQLite upgrade backup and operational restore validation remain open
 - camp-package schema migration and compatibility beyond version 1
 - encryption, signing, permissions, audit logging, retention, archival, and anonymisation
 - authentication, tenant authorization, and the concrete role model

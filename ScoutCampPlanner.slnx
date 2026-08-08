@@ -9,10 +9,13 @@
     <Project Path="src/backend/ScoutCampPlanner.Camp.Infrastructure/ScoutCampPlanner.Camp.Infrastructure.csproj" />
     <Project Path="src/backend/ScoutCampPlanner.Catering.Domain/ScoutCampPlanner.Catering.Domain.csproj" />
     <Project Path="src/backend/ScoutCampPlanner.Catering.Infrastructure/ScoutCampPlanner.Catering.Infrastructure.csproj" />
+    <Project Path="src/backend/ScoutCampPlanner.Migrations.PostgreSql/ScoutCampPlanner.Migrations.PostgreSql.csproj" />
+    <Project Path="src/backend/ScoutCampPlanner.Migrations.Sqlite/ScoutCampPlanner.Migrations.Sqlite.csproj" />
     <Project Path="src/backend/ScoutCampPlanner.Package/ScoutCampPlanner.Package.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ScoutCampPlanner.ArchitectureTests/ScoutCampPlanner.ArchitectureTests.csproj" />
+    <Project Path="tests/ScoutCampPlanner.DatabaseMigrationTests/ScoutCampPlanner.DatabaseMigrationTests.csproj" />
     <Project Path="tests/ScoutCampPlanner.PackageTests/ScoutCampPlanner.PackageTests.csproj" />
   </Folder>
 </Solution>

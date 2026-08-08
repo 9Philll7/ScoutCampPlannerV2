@@ -22,6 +22,8 @@ npm install
 npm run build
 ```
 
+Database migrations are provider- and module-specific. Restore the pinned EF tool with `dotnet tool restore` and follow the [database migration workflow](docs/architecture/database-migrations.md) when changing a persistent model.
+
 ## Run the SQLite backend
 
 ```powershell

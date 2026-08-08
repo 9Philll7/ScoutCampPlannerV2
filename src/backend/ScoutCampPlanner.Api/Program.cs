@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using ScoutCampPlanner.Camp.Infrastructure;
 using ScoutCampPlanner.Catering.Infrastructure;
+using ScoutCampPlanner.Migrations.PostgreSql;
+using ScoutCampPlanner.Migrations.Sqlite;
 using ScoutCampPlanner.Package;
 using ScoutCampPlanner.Platform.Infrastructure;
 
@@ -31,9 +33,9 @@ var connectionString = builder.Configuration["Database:ConnectionString"]
 builder.Services.AddScoped<DbConnection>(_ => provider.Equals("PostgreSql", StringComparison.OrdinalIgnoreCase)
     ? new NpgsqlConnection(connectionString)
     : new SqliteConnection(connectionString));
-builder.Services.AddDbContext<PlatformDbContext>((services, options) => Configure(options, services.GetRequiredService<DbConnection>(), provider));
-builder.Services.AddDbContext<CampDbContext>((services, options) => Configure(options, services.GetRequiredService<DbConnection>(), provider));
-builder.Services.AddDbContext<CateringDbContext>((services, options) => Configure(options, services.GetRequiredService<DbConnection>(), provider));
+builder.Services.AddDbContext<PlatformDbContext>((services, options) => Configure(options, services.GetRequiredService<DbConnection>(), provider, "platform"));
+builder.Services.AddDbContext<CampDbContext>((services, options) => Configure(options, services.GetRequiredService<DbConnection>(), provider, "camp"));
+builder.Services.AddDbContext<CateringDbContext>((services, options) => Configure(options, services.GetRequiredService<DbConnection>(), provider, "catering"));
 builder.Services.AddScoped<CampPackageService>();
 
 var app = builder.Build();
@@ -74,8 +76,22 @@ app.MapPost("/api/packages/import-return", async (HttpRequest request, CampPacka
 
 app.Run();
 
-static void Configure(DbContextOptionsBuilder options, DbConnection connection, string provider)
+static void Configure(DbContextOptionsBuilder options, DbConnection connection, string provider, string module)
 {
-    if (provider.Equals("PostgreSql", StringComparison.OrdinalIgnoreCase)) options.UseNpgsql(connection);
-    else options.UseSqlite(connection);
+    if (provider.Equals("PostgreSql", StringComparison.OrdinalIgnoreCase))
+    {
+        options.UseNpgsql(connection, npgsql =>
+        {
+            npgsql.MigrationsAssembly(typeof(PostgreSqlMigrationsAssembly).Assembly.FullName);
+            npgsql.MigrationsHistoryTable("__EFMigrationsHistory", module);
+        });
+    }
+    else
+    {
+        options.UseSqlite(connection, sqlite =>
+        {
+            sqlite.MigrationsAssembly(typeof(SqliteMigrationsAssembly).Assembly.FullName);
+            sqlite.MigrationsHistoryTable($"__EFMigrationsHistory_{module}");
+        });
+    }
 }

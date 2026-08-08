@@ -12,23 +12,24 @@ This ADR does not decide the open points. Each area requires a separate, evidenc
 
 ## Database migrations
 
+The migration structure and upgrade policy were decided in [ADR-008](adr-008-database-migration-strategy.md). The remaining release concern is automated SQLite backup/retention and operational verification of backup restoration.
+
 ### Current state
 
-- EF Core create scripts successfully initialize new PostgreSQL and SQLite databases.
-- No production migration strategy or tested upgrade path exists.
+- Provider-specific EF Core migration assemblies now initialize and upgrade PostgreSQL and SQLite databases.
+- Module-specific migration histories and a PostgreSQL advisory migration lock are implemented.
+- SQLite and PostgreSQL upgrade preservation are covered by automated V1-to-V2 tests; the PostgreSQL test runs when a dedicated test connection is configured and was validated against the Docker development database on 2026-08-08.
+- Automated SQLite pre-upgrade backup and retention are not implemented yet.
 
 ### To clarify
 
-- how PostgreSQL migrations are generated, reviewed, deployed, and rolled back
-- how SQLite migrations are applied safely inside the single-device application
-- how existing databases are upgraded across application versions
-- whether provider-specific migrations are maintained separately
-- how backups, failed upgrades, and recovery are handled
-- which compatibility window is supported
+- how the desktop release creates, retains, and restores automatic SQLite pre-upgrade backups
+- how backup restoration is exercised in release validation
+- how long database upgrades from older product releases remain supported
 
 ### Risk
 
-Without a migration and recovery strategy, releases cannot safely evolve existing installations. A successful clean database creation does not demonstrate upgrade safety.
+Without automated SQLite backup and regularly exercised restore procedures, a failed desktop upgrade could still require manual recovery. Every future migration also needs an upgrade fixture representing the previous supported product schema.
 
 ### Required validation
 
@@ -104,4 +105,3 @@ Before production development depends on one of these areas, the corresponding d
 - database upgrades are not production-ready
 - package compatibility beyond version 1 is not guaranteed
 - real health data must not be stored in or transferred through the spike implementation
-
