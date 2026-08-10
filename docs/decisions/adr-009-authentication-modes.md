@@ -10,7 +10,7 @@ ScoutCampPlanner supports cloud/server operation, a local Docker-based camp inst
 
 The single-device instance has a different risk and usability profile: it is operated by one person on one Windows device and must remain usable without mandatory technical setup.
 
-This ADR decides the authentication modes, the relationship between online and offline passwords, the session models, the user-facing password policy, Argon2id hashing, strength-check behavior, cloud password reset, and single-device password recovery. It does not select the Argon2id and strength-check libraries or calibrated parameters. Identity and tenant membership are defined by ADR-010, roles and permissions by ADR-011, and the security audit model by ADR-012.
+This ADR decides the authentication modes, the relationship between online and offline passwords, the session models, the user-facing password policy, Argon2id hashing, strength-check behavior, cloud password reset, and single-device password recovery. The focused validation documented in [`security-library-validation.md`](../spike/security-library-validation.md) accepts the initial Argon2id library but does not yet finalize calibrated production parameters or the strength-check library. Identity and tenant membership are defined by ADR-010, roles and permissions by ADR-011, and the security audit model by ADR-012.
 
 ## Decision
 
@@ -73,7 +73,7 @@ Cloud, local-server offline, and optional single-device password verifiers use A
 - Passwords, salts, derived values, and timing details are never written to application logs.
 - Verification uses a constant-time comparison for the derived value.
 
-The selected .NET Argon2id library must be actively maintained, support the current .NET target, expose explicit parameters, and permit deterministic compatibility tests. Introducing this dependency requires a focused security and maintenance review.
+`Konscious.Security.Cryptography.Argon2` 1.3.1 is accepted as the initial Infrastructure implementation by the focused validation in `docs/spike/security-library-validation.md`. It supports the current .NET target, explicit parameters, the official compatibility vector, and both validated operating-system families without native runtime dependencies. Its 2024 release date requires ongoing dependency monitoring and a maintenance review before security-sensitive upgrades.
 
 Memory, iteration, parallelism, salt length, derived-key length, and maximum concurrent verification settings are calibrated through a technical benchmark on both the server baseline and the supported Windows single-device baseline. Parameters must meet current security guidance without making login an application-level denial-of-service vector. They are configuration with secure lower bounds, not user settings.
 
@@ -216,4 +216,4 @@ Before sensitive personal or health data is implemented, Tauri must use a restri
 - Cloud password reset requires generic responses, single-use token tests, expiration tests, rate limiting, session invalidation, offline-verifier invalidation, and audit tests.
 - Single-device recovery requires one-time-display, invalid-code, brute-force protection, session invalidation, security-state rotation, no-bypass, and future encryption-key compatibility tests.
 - Package format version 1 and the rule that user data is not replaced during package return remain unchanged.
-- Implementation must follow ADR-010 through ADR-012 for identity storage, tenant isolation, roles, permissions, and security auditing. Security-library selection, calibrated parameters, the required audit/package-security validation, and the privacy lifecycle remain prerequisites for their affected production features.
+- Implementation must follow ADR-010 through ADR-012 for identity storage, tenant isolation, roles, permissions, and security auditing. Strength-library selection, final calibrated Argon2id parameters, the required audit/package-security validation, and the privacy lifecycle remain prerequisites for their affected production features.
