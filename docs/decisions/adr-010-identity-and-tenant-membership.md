@@ -18,9 +18,22 @@ User identities belong to the Platform module.
 
 - Every user has a stable, randomly generated `Guid` user ID.
 - A confirmed email address is the unique cloud sign-in identifier.
-- The original email representation is retained for display.
-- A normalized representation is used for lookup and uniqueness.
+- The submitted email address is trimmed and otherwise retained in its original representation for display.
+- A normalized representation produced with invariant uppercase conversion (`ToUpperInvariant`) is used for lookup and uniqueness.
+- Display and normalized representations have an initial technical storage limit of 320 UTF-16 code units. Public syntax validation remains a separate decision.
+- PostgreSQL and SQLite both enforce a unique index on the normalized representation. Provider-specific comparison features such as PostgreSQL `citext` are not used, so both providers retain the same behavior.
+- Email validation and internationalized-domain handling are separate concerns and must be defined before public account registration is implemented.
 - One cloud user may be a member of multiple tenants.
+
+Cloud users must prove control of their sign-in email address before normal password authentication is enabled. For an administrator-created invitation, successful redemption of the single-use invitation link confirms the email address at the same time. Preparing local-server offline access does not repeat email confirmation because it requires an already confirmed cloud account and a fresh cloud authentication. A standalone single-device security record is not a cloud account and requires neither an email address nor email confirmation.
+
+The global cloud account has one of these lifecycle states:
+
+- `PendingConfirmation`: control of the sign-in email has not yet been confirmed and normal authentication is disabled.
+- `Active`: normal authentication is allowed, subject to credential verification and technical rate limits.
+- `Disabled`: the account is administratively or security-disabled and normal authentication is denied independently of tenant memberships.
+
+Temporary throttling or lockout after failed authentication attempts is technical security state and is not represented as an account lifecycle value. Account deletion and anonymisation remain outside this initial model until the open privacy-lifecycle decision is resolved.
 
 ### Account and membership separation
 
@@ -32,6 +45,16 @@ The global user account and its tenant memberships are separate records.
 - Roles and permissions attach to tenant or camp membership, not to the password-verifier record.
 - Authentication establishes identity but does not grant tenant or camp access by itself.
 
+Tenant memberships have their own stable, randomly generated `Guid` membership ID and one of these lifecycle states:
+
+- `Active`: the membership grants access according to its assigned roles and permissions.
+- `Suspended`: the membership and its assignments are retained, but it grants no tenant or camp access until explicitly restored.
+- `Removed`: the membership is permanently ended and retained only as historical security and audit context.
+
+A removed membership is never reactivated. A later invitation creates a new membership with a new membership ID. State transitions, including suspension, restoration, and removal, are security-sensitive operations and emit the events defined by ADR-012.
+
+For each user and tenant, at most one membership may be in a non-removed state. Both `Active` and `Suspended` therefore prevent another invitation. After the existing membership reaches `Removed`, a new membership with a new ID may be created. Application rules enforce this invariant and provider-specific filtered unique indexes enforce the same outcome in PostgreSQL and SQLite, including for concurrent requests.
+
 The initial extensible role catalogue and permission matrix are defined by ADR-011. Future modules may add documented permissions and roles without attaching authorization state to the password-verifier record.
 
 ### Tenant isolation
@@ -41,6 +64,7 @@ Every tenant-scoped request is evaluated inside an explicit tenant context.
 - A tenant ID supplied by request content is never trusted by itself.
 - The requested tenant is resolved from the route or owning resource and checked against the authenticated user's active membership.
 - A user may switch between tenants in which the user has an active membership. Every request performs its own server-side membership and authorization check.
+- Suspended and removed memberships grant no access. Historical memberships must never satisfy an authorization check.
 - Tenant-owned aggregate roots, including Camp, carry an immutable tenant ID.
 - Child entities derive tenant ownership through their owning aggregate when they do not store a tenant ID directly.
 - Queries are constrained to the authorized tenant or camps before materialization. Frontend filtering is not an authorization control.
@@ -55,6 +79,14 @@ PostgreSQL schemas remain module-specific rather than tenant-specific. Tenant is
 ### Credential storage
 
 The central Argon2id password verifier is stored only in the cloud Platform Infrastructure persistence area.
+
+The Platform Domain `UserAccount` contains only the stable user ID, display email, normalized email, and account lifecycle state. The technical `PasswordCredential` is a separate one-to-zero-or-one Platform Infrastructure record keyed by the user ID. It contains:
+
+- the versioned Argon2id verifier
+- a positive security version beginning at `1`
+- the UTC timestamp of the last password change
+
+The security version is incremented when a password is changed or reset and whenever existing authentication sessions must be invalidated for security reasons. Authentication failures, rate-limit state, and email-confirmation tokens are separate technical records and are not stored in the password credential. A pending account may exist without a password credential.
 
 - Domain assemblies do not reference ASP.NET Core Identity, cookie middleware, token providers, or password-hashing libraries.
 - Framework-dependent identity stores and credential services belong to Platform Infrastructure.

@@ -38,6 +38,106 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Platform
 
                     b.ToTable("Tenants", "platform");
                 });
+
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.TenantMembership", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("UserId", "TenantId")
+                        .IsUnique()
+                        .HasFilter("\"State\" <> 2");
+
+                    b.ToTable("TenantMemberships", "platform");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.UserAccount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedEmail")
+                        .IsUnique();
+
+                    b.ToTable("UserAccounts", "platform");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Infrastructure.Authentication.PasswordCredential", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ChangedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("SecurityVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Verifier")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("PasswordCredentials", "platform");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.TenantMembership", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Platform.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Platform.Domain.UserAccount", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Infrastructure.Authentication.PasswordCredential", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Platform.Domain.UserAccount", null)
+                        .WithOne()
+                        .HasForeignKey("ScoutCampPlanner.Platform.Infrastructure.Authentication.PasswordCredential", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
 #pragma warning restore 612, 618
         }
     }

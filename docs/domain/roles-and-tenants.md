@@ -80,6 +80,18 @@ Authentication does not grant access by itself. Tenant membership, camp assignme
 
 A user may belong to multiple tenants. Authentication establishes the stable user identity only; access requires an active membership in the requested tenant and, where applicable, the requested camp.
 
+Tenant memberships have stable IDs and the states `Active`, `Suspended`, and `Removed`. Suspension temporarily removes all access while retaining the membership and its assignments. Removal is permanent; a later invitation creates a new membership with a new ID so historical audit references remain unambiguous.
+
+For one user and tenant, no more than one membership may be `Active` or `Suspended`. A new invitation is possible only after the previous membership was removed. This invariant is protected in application behavior and by equivalent filtered unique indexes for PostgreSQL and SQLite.
+
+Cloud sign-in email addresses are stored in trimmed display form. Lookup and uniqueness use a second invariant-uppercase representation with the same unique-index behavior in PostgreSQL and SQLite, as defined by ADR-010.
+
+A cloud account must confirm control of its sign-in email before normal authentication. Redeeming an administrator-created invitation confirms the address. Prepared offline access relies on the already confirmed cloud identity, while a standalone single-device security record has no email-confirmation requirement.
+
+Global cloud accounts use the states `PendingConfirmation`, `Active`, and `Disabled`. Temporary authentication throttling is separate technical state. Account deletion and anonymisation are intentionally not represented until the privacy lifecycle is decided.
+
+The Domain account contains identity and lifecycle state but no password verifier. Platform Infrastructure stores an optional, separate password credential keyed by user ID with the versioned Argon2id verifier, a positive security version, and the last password-change time in UTC. Failure counters, rate limits, and confirmation tokens remain separate technical state.
+
 Prepared offline access stores effective permission identifiers and a role-definition version rather than relying only on role names.
 
 Security-sensitive identity, membership, role, authentication, offline-access, and package operations emit the audit events defined by [ADR-012](../decisions/adr-012-security-audit-events.md). Audit records contain stable identifiers and result codes, not credentials or domain payloads.

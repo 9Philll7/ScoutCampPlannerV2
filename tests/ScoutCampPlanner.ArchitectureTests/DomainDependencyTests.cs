@@ -14,7 +14,8 @@ public sealed class DomainDependencyTests
             typeof(Camp.Domain.Camp).Assembly,
             typeof(Catering.Domain.MealPlan).Assembly
         ];
-        string[] forbiddenPrefixes = ["Microsoft.AspNetCore", "Microsoft.EntityFrameworkCore", "Npgsql"];
+        string[] forbiddenPrefixes =
+            ["Microsoft.AspNetCore", "Microsoft.EntityFrameworkCore", "Npgsql", "Konscious", "zxcvbn"];
 
         var violations = domainAssemblies
             .SelectMany(assembly => assembly.GetReferencedAssemblies()
@@ -43,5 +44,19 @@ public sealed class DomainDependencyTests
              reference.Name.StartsWith("Konscious", StringComparison.Ordinal) ||
              reference.Name.StartsWith("zxcvbn", StringComparison.Ordinal) ||
              reference.Name.EndsWith(".Infrastructure", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void CampAndCateringInfrastructureDoNotReferencePlatformInfrastructure()
+    {
+        Assembly[] assemblies =
+        [
+            typeof(Camp.Infrastructure.CampDbContext).Assembly,
+            typeof(Catering.Infrastructure.CateringDbContext).Assembly,
+        ];
+
+        Assert.All(assemblies, assembly => Assert.DoesNotContain(
+            assembly.GetReferencedAssemblies(),
+            reference => reference.Name == "ScoutCampPlanner.Platform.Infrastructure"));
     }
 }
