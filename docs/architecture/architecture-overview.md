@@ -100,7 +100,7 @@ Central password verifiers are not exported and local verifiers are not part of 
 - database migrations are provider- and module-specific and SQLite pre-upgrade backups are automatic as defined by [ADR-008](../decisions/adr-008-database-migration-strategy.md); operational clean-machine restore validation remains open
 - camp-package schema migration and compatibility beyond version 1
 - package and sensitive-local-data encryption and signing, technical validation of the defined audit model, legal retention review, privacy retention, archival, and anonymisation
-- final Argon2id parameter calibration, real denylist snapshot acquisition and release packaging, audit/package-security spike validation, and legal retention review; authentication, Unicode password-length counting, denylist policy, format and generator, identity, authorization, the initial password-security libraries, and the audit transfer direction are defined by ADR-009 through ADR-012 and the focused security-library validation
+- Windows 10 compatibility benchmarking of the defined single-device Argon2id profile, real denylist snapshot acquisition and release packaging, audit/package-security spike validation, and legal retention review; authentication and operating-mode Argon2id profiles, Unicode password-length counting, denylist policy, format and generator, identity, authorization, the initial password-security libraries, and the audit transfer direction are defined by ADR-009 through ADR-012 and the focused security-library validation
 - stable API error contracts
 - release-readiness checks for packaged desktop installers on the ADR-013 platform matrix, including final desktop Argon2id calibration
 

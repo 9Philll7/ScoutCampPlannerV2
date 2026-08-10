@@ -53,7 +53,7 @@ An operating system that no longer receives applicable security updates is not a
 
 The desktop Argon2id profile is calibrated against the four-logical-processor and 8-GB baseline. Windows 10 tolerance means the final calibration must include a maintained Windows 10 22H2 x64 test device or an equivalently constrained representative device before the profile is declared final.
 
-The current 19-MiB, two-iteration, single-lane Argon2id profile remains a candidate rather than a final production parameter set until that measurement is recorded. Operating-system tolerance does not permit lowering the documented secure parameter floor for one individual device.
+The 19-MiB, two-iteration, single-lane Argon2id profile defined by ADR-009 is the initial single-device implementation profile. It is not release-validated for the Windows 10 compatibility tier until that measurement is recorded. Operating-system tolerance does not permit lowering this secure parameter floor for one individual device.
 
 ## Consequences
 

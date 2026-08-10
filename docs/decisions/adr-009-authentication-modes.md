@@ -81,7 +81,13 @@ Cloud, local-server offline, and optional single-device password verifiers use A
 
 `Konscious.Security.Cryptography.Argon2` 1.3.1 is accepted as the initial Infrastructure implementation by the focused validation in `docs/spike/security-library-validation.md`. It supports the current .NET target, explicit parameters, the official compatibility vector, and both validated operating-system families without native runtime dependencies. Its 2024 release date requires ongoing dependency monitoring and a maintenance review before security-sensitive upgrades.
 
-Memory, iteration, parallelism, salt length, derived-key length, and maximum concurrent verification settings are calibrated through a technical benchmark on both the server baseline and the supported Windows single-device baseline. Parameters must meet current security guidance without making login an application-level denial-of-service vector. They are configuration with secure lower bounds, not user settings.
+Memory, iteration, parallelism, salt length, derived-key length, and maximum concurrent verification settings are calibrated through technical benchmarks. Parameters are versioned configuration with secure lower bounds, not user settings.
+
+- Cloud and local-server instances use 64 MiB memory, three iterations, one lane, a 16-byte salt, and a 32-byte derived value.
+- Single-device instances initially use 19 MiB memory, two iterations, one lane, a 16-byte salt, and a 32-byte derived value.
+- Every application instance permits at most two concurrent Argon2id derivations. Authentication rate limiting remains separately required.
+- Configuration may raise these values after benchmark validation but must not lower them below the operating-mode profile without a new security decision.
+- The server profile was validated with a 2-vCPU/2-GB Docker limit. The single-device profile was validated on Windows 11; the Windows 10 compatibility measurement remains an ADR-013 release-readiness check because no maintained Windows 10 test device is currently available.
 
 ### Single-device instance
 
@@ -222,4 +228,4 @@ Before sensitive personal or health data is implemented, Tauri must use a restri
 - Cloud password reset requires generic responses, single-use token tests, expiration tests, rate limiting, session invalidation, offline-verifier invalidation, and audit tests.
 - Single-device recovery requires one-time-display, invalid-code, brute-force protection, session invalidation, security-state rotation, no-bypass, and future encryption-key compatibility tests.
 - Package format version 1 and the rule that user data is not replaced during package return remain unchanged.
-- Implementation must follow ADR-010 through ADR-012 for identity storage, tenant isolation, roles, permissions, and security auditing. Final calibrated Argon2id parameters, real denylist snapshot acquisition and release packaging, the required audit/package-security validation, and the privacy lifecycle remain prerequisites for their affected production features.
+- Implementation must follow ADR-010 through ADR-012 for identity storage, tenant isolation, roles, permissions, and security auditing. The Windows 10 compatibility benchmark, real denylist snapshot acquisition and release packaging, the required audit/package-security validation, and the privacy lifecycle remain prerequisites for their affected production releases.

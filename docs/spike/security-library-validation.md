@@ -71,9 +71,11 @@ Measurements use Release builds, five sequential derivations per profile after o
 | Environment | Profile | Parameters (`m`, `t`, `p`) | Median |
 | --- | --- | --- | ---: |
 | Windows 11, .NET 10.0.4, 12 logical processors | interactive minimum | 19 MiB, 2, 1 | 81.9 ms |
-| Windows 11, .NET 10.0.4, 12 logical processors | server candidate | 64 MiB, 3, 1 | 336.6 ms |
+| Windows 11, .NET 10.0.4, 12 logical processors | server profile | 64 MiB, 3, 1 | 336.6 ms |
 | Docker Linux, .NET 10.0.10, 12 logical processors | interactive minimum | 19 MiB, 2, 1 | 80.5 ms |
-| Docker Linux, .NET 10.0.10, 12 logical processors | server candidate | 64 MiB, 3, 1 | 362.4 ms |
+| Docker Linux, .NET 10.0.10, 12 logical processors | server profile | 64 MiB, 3, 1 | 362.4 ms |
+
+A subsequent constrained Docker run used the ADR-013 server minimum of 2 vCPU and 2 GB RAM. The 64-MiB/3-iteration profile reached a 353.4-ms median, while the 19-MiB/2-iteration profile reached an 83.0-ms median. Eight minimum-profile derivations remained limited to an observed peak of two concurrent operations.
 
 Eight derivations of the 19-MiB profile were also run through a gate limited to two concurrent operations. Both Windows and Docker observed a peak of exactly two operations.
 
@@ -114,13 +116,13 @@ The acceptance is subject to these constraints:
 - Golden score fixtures must detect behavioral changes when replacing or upgrading the estimator.
 - Backend policy combines length, zxcvbn score, and the independent denylist; the estimator alone never decides password acceptance.
 
-The production parameter profile is not final. The 64-MiB/3-iteration profile is a viable server candidate on the measured machine, while the 19-MiB/2-iteration profile is the current secure lower-bound candidate. Final profiles require a Release benchmark on the ADR-013 minimum Windows baseline, including the tolerated Windows 10 compatibility tier, the production server baseline, and the configured container memory limit.
+The server parameter profile is accepted as 64 MiB memory, three iterations, one lane, a 16-byte salt, and a 32-byte derived value, with at most two concurrent password derivations per application instance. It was validated against the initial 2-vCPU/2-GB container baseline.
+
+The initial single-device implementation profile is 19 MiB memory, two iterations, one lane, a 16-byte salt, and a 32-byte derived value, with at most two concurrent password derivations. It is the secure lower-bound candidate and was measured successfully on the available Windows 11 development machine. No maintained Windows 10 test device is currently available. The Windows 10 22H2 compatibility measurement required by ADR-013 therefore remains a release-readiness check; it does not block implementation and must not lead to parameters below this floor.
 
 ## Still open
 
-- final server and single-device parameter profiles
-- maximum concurrent verification counts per operating model
-- measurements under real container memory and CPU limits
+- Windows 10 22H2 measurement of the initial single-device profile on representative ADR-013 minimum hardware
 - acquisition of a pinned real HIBP snapshot plus attribution, packaging, and update-process validation for the generated denylist asset
 - the productive password-verifier persistence and rehash workflow
 
