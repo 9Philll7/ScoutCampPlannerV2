@@ -60,6 +60,7 @@ A 100,000-entry version-1 file is approximately 2 MB plus its small header. The 
 The focused implementation and synthetic fixtures are located in:
 
 - `tools/ScoutCampPlanner.PasswordDenylist`
+- `src/backend/ScoutCampPlanner.Platform.Infrastructure/Authentication/BinaryPasswordDenylist.cs`
 - `tests/ScoutCampPlanner.SecuritySpikeTests/Fixtures/denylist-source.txt`
 - `tests/ScoutCampPlanner.SecuritySpikeTests/DenylistFileTests.cs`
 - `tests/ScoutCampPlanner.SecuritySpikeTests/PwnedPasswordsGeneratorTests.cs`
@@ -97,4 +98,4 @@ Before productive authentication is complete, the repository still needs:
 - a release check that rejects missing, stale, or unexpected dataset versions
 - operational monitoring for load failure without logging passwords
 
-Until those controls exist, the generator and format are production-oriented tooling, but the generated dataset is not yet a production release asset and no productive denylist service consumes it.
+Until those controls exist, the generator, format, and Platform Infrastructure reader are production-oriented components, but the generated dataset is not yet a production release asset. The reader is consumed by the password-policy implementation, while application startup wiring and release-asset provisioning remain intentionally open.

@@ -1,7 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <PackageReference Include="Konscious.Security.Cryptography.Argon2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="zxcvbn-core" />
+    <ProjectReference Include="../ScoutCampPlanner.Platform.Application/ScoutCampPlanner.Platform.Application.csproj" />
     <ProjectReference Include="../ScoutCampPlanner.Platform.Contracts/ScoutCampPlanner.Platform.Contracts.csproj" />
     <ProjectReference Include="../ScoutCampPlanner.Platform.Domain/ScoutCampPlanner.Platform.Domain.csproj" />
   </ItemGroup>

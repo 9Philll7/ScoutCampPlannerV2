@@ -31,4 +31,17 @@ public sealed class DomainDependencyTests
         var references = typeof(Catering.Domain.MealPlan).Assembly.GetReferencedAssemblies();
         Assert.DoesNotContain(references, x => x.Name is not null && x.Name.StartsWith("ScoutCampPlanner.Camp", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void Platform_application_has_no_infrastructure_dependencies()
+    {
+        var references = typeof(Platform.Application.Authentication.IPasswordPolicy).Assembly.GetReferencedAssemblies();
+
+        Assert.DoesNotContain(references, reference =>
+            reference.Name is not null &&
+            (reference.Name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal) ||
+             reference.Name.StartsWith("Konscious", StringComparison.Ordinal) ||
+             reference.Name.StartsWith("zxcvbn", StringComparison.Ordinal) ||
+             reference.Name.EndsWith(".Infrastructure", StringComparison.Ordinal)));
+    }
 }

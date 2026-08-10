@@ -9,6 +9,8 @@
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <ProjectReference Include="../../tools/ScoutCampPlanner.PasswordDenylist/ScoutCampPlanner.PasswordDenylist.csproj" />
+    <ProjectReference Include="../../src/backend/ScoutCampPlanner.Platform.Application/ScoutCampPlanner.Platform.Application.csproj" />
+    <ProjectReference Include="../../src/backend/ScoutCampPlanner.Platform.Infrastructure/ScoutCampPlanner.Platform.Infrastructure.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Update="Fixtures/denylist-source.txt" CopyToOutputDirectory="PreserveNewest" />

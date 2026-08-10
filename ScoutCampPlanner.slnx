@@ -2,6 +2,7 @@
   <Folder Name="/src/backend/">
     <Project Path="src/backend/ScoutCampPlanner.Api/ScoutCampPlanner.Api.csproj" />
     <Project Path="src/backend/ScoutCampPlanner.Platform.Contracts/ScoutCampPlanner.Platform.Contracts.csproj" />
+    <Project Path="src/backend/ScoutCampPlanner.Platform.Application/ScoutCampPlanner.Platform.Application.csproj" />
     <Project Path="src/backend/ScoutCampPlanner.Platform.Domain/ScoutCampPlanner.Platform.Domain.csproj" />
     <Project Path="src/backend/ScoutCampPlanner.Platform.Infrastructure/ScoutCampPlanner.Platform.Infrastructure.csproj" />
     <Project Path="src/backend/ScoutCampPlanner.Camp.Contracts/ScoutCampPlanner.Camp.Contracts.csproj" />
