@@ -121,7 +121,7 @@ The production parameter profile is not final. The 64-MiB/3-iteration profile is
 - final server and single-device parameter profiles
 - maximum concurrent verification counts per operating model
 - measurements under real container memory and CPU limits
-- the productive HIBP snapshot generation, attribution, packaging, and update process for the validated denylist format
+- acquisition of a pinned real HIBP snapshot plus attribution, packaging, and update-process validation for the generated denylist asset
 - the productive password-verifier persistence and rehash workflow
 
 These points must be resolved before productive authentication is considered complete.

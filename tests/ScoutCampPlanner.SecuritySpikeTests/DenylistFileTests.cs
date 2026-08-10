@@ -1,6 +1,6 @@
 using System.Text;
 using System.Security.Cryptography;
-using ScoutCampPlanner.SecuritySpike;
+using ScoutCampPlanner.PasswordDenylist;
 using Xunit;
 
 namespace ScoutCampPlanner.SecuritySpikeTests;

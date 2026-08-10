@@ -32,7 +32,7 @@ The global user account and its tenant memberships are separate records.
 - Roles and permissions attach to tenant or camp membership, not to the password-verifier record.
 - Authentication establishes identity but does not grant tenant or camp access by itself.
 
-The exact role catalogue and permission matrix remain open.
+The initial extensible role catalogue and permission matrix are defined by ADR-011. Future modules may add documented permissions and roles without attaching authorization state to the password-verifier record.
 
 ### Tenant isolation
 
