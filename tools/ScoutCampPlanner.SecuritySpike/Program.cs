@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Konscious.Security.Cryptography;
+using Zxcvbn;
 
 var profiles = new[]
 {
@@ -17,12 +18,14 @@ foreach (var profile in profiles)
 }
 
 var concurrency = await RunConcurrencyProbe(profiles[0], attempts: 8, maximumConcurrency: 2);
+var strengthResults = RunPasswordStrengthProbe();
 var report = new SpikeReport(
     Environment.OSVersion.ToString(),
     Environment.Version.ToString(),
     Environment.ProcessorCount,
     results,
-    concurrency);
+    concurrency,
+    strengthResults);
 
 Console.WriteLine(JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
 
@@ -121,6 +124,28 @@ static byte[] Derive(byte[] password, byte[] salt, Argon2Profile profile)
     return argon2.GetBytes(profile.DerivedKeyLength);
 }
 
+static IReadOnlyList<StrengthResult> RunPasswordStrengthProbe()
+{
+    var samples = new[]
+    {
+        new StrengthSample("common-word", "password"),
+        new StrengthSample("repeated-pattern", "aaaaaaaaaaaa"),
+        new StrengthSample("short-generated", "z9!Kp2@Lm7#Qx"),
+        new StrengthSample("unicode-passphrase", "Pfadfinder ⚜ Wald 2026!"),
+        new StrengthSample("maximum-policy-length", string.Concat(Enumerable.Repeat("A7!pfad", 19))[..128]),
+    };
+
+    _ = Core.EvaluatePassword("warm-up-only");
+
+    return samples.Select(sample =>
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var result = Core.EvaluatePassword(sample.Password);
+        stopwatch.Stop();
+        return new StrengthResult(sample.Name, result.Score, stopwatch.Elapsed.TotalMilliseconds);
+    }).ToArray();
+}
+
 internal sealed record Argon2Profile(
     string Name,
     int MemoryKiB,
@@ -146,4 +171,9 @@ internal sealed record SpikeReport(
     string Runtime,
     int ProcessorCount,
     IReadOnlyList<ProfileResult> Profiles,
-    ConcurrencyResult Concurrency);
+    ConcurrencyResult Concurrency,
+    IReadOnlyList<StrengthResult> PasswordStrength);
+
+internal sealed record StrengthSample(string Name, string Password);
+
+internal sealed record StrengthResult(string Name, int Score, double Milliseconds);
