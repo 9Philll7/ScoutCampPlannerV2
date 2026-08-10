@@ -8,7 +8,7 @@ Accepted
 
 ScoutCampPlanner supports cloud/server operation, a local Docker-based camp instance, and a Windows single-device instance. Authentication must continue to work when a local camp instance loses its internet connection without exporting central password verifiers or making an active offline phase depend on the cloud.
 
-The single-device instance has a different risk and usability profile: it is operated by one person on one Windows device and must remain usable without mandatory technical setup.
+The single-device instance has a different risk and usability profile: it is operated by one person on one Windows device and must remain usable without mandatory technical setup. ADR-013 defines Windows 11 x64 as the supported desktop reference and security-maintained Windows 10 22H2 x64 as a tolerated transitional compatibility tier.
 
 This ADR decides the authentication modes, the relationship between online and offline passwords, the session models, the user-facing password policy, Argon2id hashing, strength-check behavior, cloud password reset, and single-device password recovery. The focused validation documented in [`security-library-validation.md`](../spike/security-library-validation.md) accepts the initial Argon2id and password-strength libraries. The versioned denylist format, dataset policy, and bounded generator are defined in [`password-denylist.md`](../architecture/password-denylist.md). Calibrated production Argon2id parameters and the real denylist asset packaging remain open. Identity and tenant membership are defined by ADR-010, roles and permissions by ADR-011, and the security audit model by ADR-012.
 

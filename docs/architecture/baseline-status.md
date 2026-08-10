@@ -29,7 +29,7 @@ The detailed evidence is in [ADR-006](../decisions/adr-006-architecture-spike-va
 - Server database: PostgreSQL 18
 - Single-device database: SQLite
 - Local server deployment: Docker Compose with ASP.NET Core and PostgreSQL
-- Windows desktop: Tauri 2 with a self-contained ASP.NET Core sidecar
+- Windows desktop: Tauri 2 with a self-contained ASP.NET Core sidecar; Windows 11 x64 is supported and security-maintained Windows 10 22H2 x64 is tolerated as a transitional best-effort platform under ADR-013
 - Architecture: Modular Monolith with directional contracts and module-owned persistence
 - Offline transfer: versioned ZIP camp package with JSON payload and SHA-256 checksum; no automatic synchronization or merge
 
@@ -43,7 +43,7 @@ The following decisions are required before the affected areas are production-re
 - final Argon2id parameter calibration, real denylist snapshot acquisition and release packaging, audit/package-security spike validation and legal retention review, and privacy lifecycle; authentication, Unicode password-length counting, denylist policy, format and generator, identity, authorization, the initial password-security libraries, and the audit transfer direction are defined by ADR-009 through ADR-012 and the focused security-library validation
 - retention, archival, deletion, and anonymisation rules for personal and health data
 - a stable API Problem Details contract
-- clean-machine installer/removal and normal desktop shutdown checks
+- clean-machine installer/removal, normal desktop shutdown, minimum-hardware validation, and the Windows 10 compatibility smoke check defined by ADR-013
 - remediation of the recorded Angular development-server dependency advisory when a compatible patched release is available
 
 ADR-007 records the architecture risks and required validation without pre-deciding their solutions.

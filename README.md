@@ -2,6 +2,8 @@
 
 ScoutCampPlanner is being developed as a modular monolith for cloud, local server, and Windows single-device operation. The Architecture Spike is complete; this repository is the validated technical baseline for subsequent product development, not a product release.
 
+Windows 11 x64 is the supported desktop reference. A security-maintained Windows 10 22H2 x64 installation is tolerated as a transitional best-effort platform under [ADR-013](docs/decisions/adr-013-desktop-platform-support.md); unpatched Windows installations are not supported for sensitive data.
+
 ## Prerequisites
 
 - .NET SDK 10.0.200

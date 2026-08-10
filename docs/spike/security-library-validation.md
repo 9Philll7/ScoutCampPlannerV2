@@ -114,7 +114,7 @@ The acceptance is subject to these constraints:
 - Golden score fixtures must detect behavioral changes when replacing or upgrading the estimator.
 - Backend policy combines length, zxcvbn score, and the independent denylist; the estimator alone never decides password acceptance.
 
-The production parameter profile is not final. The 64-MiB/3-iteration profile is a viable server candidate on the measured machine, while the 19-MiB/2-iteration profile is the current secure lower-bound candidate. Final profiles require a Release benchmark on the supported minimum Windows device, the production server baseline, and the configured container memory limit.
+The production parameter profile is not final. The 64-MiB/3-iteration profile is a viable server candidate on the measured machine, while the 19-MiB/2-iteration profile is the current secure lower-bound candidate. Final profiles require a Release benchmark on the ADR-013 minimum Windows baseline, including the tolerated Windows 10 compatibility tier, the production server baseline, and the configured container memory limit.
 
 ## Still open
 

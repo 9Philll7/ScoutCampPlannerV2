@@ -28,6 +28,8 @@ Database:
 
 Desktop:
 - Tauri with local ASP.NET Core sidecar
+- Windows 11 x64 as the supported release reference
+- security-maintained Windows 10 22H2 x64 as a tolerated transitional best-effort platform under [ADR-013](../decisions/adr-013-desktop-platform-support.md)
 
 Architecture:
 - Modular Monolith
@@ -78,9 +80,9 @@ These decisions were validated for PostgreSQL and SQLite by the Architecture Spi
 
 1. Cloud/server: ASP.NET Core and PostgreSQL
 2. Local camp instance: Docker-based ASP.NET Core and PostgreSQL
-3. Single device: Windows, Tauri, ASP.NET Core sidecar, and SQLite
+3. Single device: Windows x64, Tauri, ASP.NET Core sidecar, and SQLite
 
-All three operating models are technically confirmed. Clean-machine desktop installation/removal and normal user-driven shutdown remain release-readiness checks rather than architecture blockers.
+All three operating models are technically confirmed. Windows 11 x64 is the supported desktop reference. Security-maintained Windows 10 22H2 x64 is tolerated on a transitional best-effort basis as defined by ADR-013. Clean-machine desktop installation/removal, normal user-driven shutdown, Windows 10 smoke coverage, and minimum-hardware validation remain release-readiness checks rather than architecture blockers.
 
 ## Authentication modes
 
@@ -100,7 +102,7 @@ Central password verifiers are not exported and local verifiers are not part of 
 - package and sensitive-local-data encryption and signing, technical validation of the defined audit model, legal retention review, privacy retention, archival, and anonymisation
 - final Argon2id parameter calibration, real denylist snapshot acquisition and release packaging, audit/package-security spike validation, and legal retention review; authentication, Unicode password-length counting, denylist policy, format and generator, identity, authorization, the initial password-security libraries, and the audit transfer direction are defined by ADR-009 through ADR-012 and the focused security-library validation
 - stable API error contracts
-- release-readiness checks for packaged desktop installers
+- release-readiness checks for packaged desktop installers on the ADR-013 platform matrix, including final desktop Argon2id calibration
 
 These open items must be resolved before the affected production functionality is released. They do not invalidate the proven technical baseline.
 

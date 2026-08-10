@@ -20,6 +20,7 @@ The migration structure, SQLite pre-upgrade backup, retention policy, and upgrad
 - Module-specific migration histories and a PostgreSQL advisory migration lock are implemented.
 - SQLite and PostgreSQL upgrade preservation are covered by automated V1-to-V2 tests; the PostgreSQL test runs when a dedicated test connection is configured and was validated against the Docker development database on 2026-08-08.
 - SQLite automatically creates an integrity-checked pre-upgrade backup and retains the configured newest generations.
+- ADR-013 defines Windows 11 x64 as the supported desktop reference and security-maintained Windows 10 22H2 x64 as a tolerated transitional compatibility tier.
 
 ### To clarify
 
@@ -36,6 +37,7 @@ Without a regularly exercised restore procedure, a failed desktop upgrade could 
 - failure and recovery tests
 - verification that module ownership remains visible in migrations
 - validation in Docker/server and packaged desktop operation
+- clean-machine validation on the supported Windows 11 baseline and a maintained Windows 10 compatibility device
 
 ## Camp-package migration
 
