@@ -55,6 +55,7 @@ The automated checks prove:
 - an application-level concurrency gate for resource-exhaustion control
 - stable expected scores for common, repeated, generated, and passphrase fixtures
 - acceptance of Unicode and spaces without normalization by the estimator
+- Unicode-scalar length counting independent from UTF-16 code-unit count
 - use of application-specific input to reduce context-dependent strength
 - completion at the 128-character policy boundary
 - the plaintext-bearing `Result` behavior that the future adapter must contain
@@ -119,7 +120,6 @@ The production parameter profile is not final. The 64-MiB/3-iteration profile is
 - maximum concurrent verification counts per operating model
 - measurements under real container memory and CPU limits
 - the versioned local compromised-password denylist and update process
-- whether password length boundaries count UTF-16 code units, Unicode scalar values, or grapheme clusters
 - the productive password-verifier persistence and rehash workflow
 
 These points must be resolved before productive authentication is considered complete.

@@ -10,7 +10,7 @@ ScoutCampPlanner supports cloud/server operation, a local Docker-based camp inst
 
 The single-device instance has a different risk and usability profile: it is operated by one person on one Windows device and must remain usable without mandatory technical setup.
 
-This ADR decides the authentication modes, the relationship between online and offline passwords, the session models, the user-facing password policy, Argon2id hashing, strength-check behavior, cloud password reset, and single-device password recovery. The focused validation documented in [`security-library-validation.md`](../spike/security-library-validation.md) accepts the initial Argon2id and password-strength libraries but does not yet finalize calibrated production parameters, the versioned denylist, or Unicode length counting. Identity and tenant membership are defined by ADR-010, roles and permissions by ADR-011, and the security audit model by ADR-012.
+This ADR decides the authentication modes, the relationship between online and offline passwords, the session models, the user-facing password policy, Argon2id hashing, strength-check behavior, cloud password reset, and single-device password recovery. The focused validation documented in [`security-library-validation.md`](../spike/security-library-validation.md) accepts the initial Argon2id and password-strength libraries but does not yet finalize calibrated production parameters or the versioned denylist. Identity and tenant membership are defined by ADR-010, roles and permissions by ADR-011, and the security audit model by ADR-012.
 
 ## Decision
 
@@ -29,6 +29,8 @@ The same policy applies to cloud passwords and optional single-device passwords:
 - Passwords with 15 or more characters have no composition requirement.
 - The maximum accepted length is 128 characters.
 - Spaces, Unicode, and all printable characters are allowed.
+- Minimum, strength-policy, and maximum length boundaries count Unicode scalar values. In .NET this means enumerating `System.Text.Rune` values rather than using UTF-16 `string.Length`.
+- Combining sequences are not normalized and are not collapsed into user-perceived grapheme clusters. Each Unicode scalar value counts separately. This preserves the rule that passwords are processed exactly as entered and avoids Unicode-version-dependent grapheme segmentation in the authentication contract.
 - Passwords are never silently truncated or normalized into a different value.
 - Paste and password-manager use must be supported.
 - Known common and compromised passwords are rejected regardless of length.
@@ -218,4 +220,4 @@ Before sensitive personal or health data is implemented, Tauri must use a restri
 - Cloud password reset requires generic responses, single-use token tests, expiration tests, rate limiting, session invalidation, offline-verifier invalidation, and audit tests.
 - Single-device recovery requires one-time-display, invalid-code, brute-force protection, session invalidation, security-state rotation, no-bypass, and future encryption-key compatibility tests.
 - Package format version 1 and the rule that user data is not replaced during package return remain unchanged.
-- Implementation must follow ADR-010 through ADR-012 for identity storage, tenant isolation, roles, permissions, and security auditing. Final calibrated Argon2id parameters, the versioned denylist, Unicode length counting, the required audit/package-security validation, and the privacy lifecycle remain prerequisites for their affected production features.
+- Implementation must follow ADR-010 through ADR-012 for identity storage, tenant isolation, roles, permissions, and security auditing. Final calibrated Argon2id parameters, the versioned denylist, the required audit/package-security validation, and the privacy lifecycle remain prerequisites for their affected production features.

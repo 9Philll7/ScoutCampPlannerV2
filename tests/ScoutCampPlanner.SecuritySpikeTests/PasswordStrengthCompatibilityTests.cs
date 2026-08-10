@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using Xunit;
 using Zxcvbn;
 
@@ -6,6 +7,15 @@ namespace ScoutCampPlanner.SecuritySpikeTests;
 
 public sealed class PasswordStrengthCompatibilityTests
 {
+    [Fact]
+    public void PasswordLength_CountsUnicodeScalarValuesInsteadOfUtf16CodeUnits()
+    {
+        const string password = "abcde😀f";
+
+        Assert.Equal(8, password.Length);
+        Assert.Equal(7, password.EnumerateRunes().Count());
+    }
+
     [Theory]
     [InlineData("password", 0)]
     [InlineData("password1", 0)]
