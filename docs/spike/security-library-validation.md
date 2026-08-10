@@ -56,6 +56,8 @@ The automated checks prove:
 - stable expected scores for common, repeated, generated, and passphrase fixtures
 - acceptance of Unicode and spaces without normalization by the estimator
 - Unicode-scalar length counting independent from UTF-16 code-unit count
+- versioned denylist metadata, frequency selection, deduplication, exact UTF-8 lookup, and corruption detection
+- a 100,000-entry synthetic denylist with an approximately 2 MB binary representation
 - use of application-specific input to reduce context-dependent strength
 - completion at the 128-character policy boundary
 - the plaintext-bearing `Result` behavior that the future adapter must contain
@@ -119,7 +121,7 @@ The production parameter profile is not final. The 64-MiB/3-iteration profile is
 - final server and single-device parameter profiles
 - maximum concurrent verification counts per operating model
 - measurements under real container memory and CPU limits
-- the versioned local compromised-password denylist and update process
+- the productive HIBP snapshot generation, attribution, packaging, and update process for the validated denylist format
 - the productive password-verifier persistence and rehash workflow
 
 These points must be resolved before productive authentication is considered complete.
