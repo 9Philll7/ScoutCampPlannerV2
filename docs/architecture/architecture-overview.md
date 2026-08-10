@@ -91,14 +91,14 @@ All three operating models are technically confirmed. Clean-machine desktop inst
 - a separately derived local verifier using the same user password for prepared offline access
 - an optional, device-local password for Windows single-device operation
 
-Central password verifiers are not exported and local verifiers are not part of camp packages. Concrete identity storage, sessions, password policy, reset, roles, tenant isolation, permissions, and audit behavior remain to be decided before implementation.
+Central password verifiers are not exported and local verifiers are not part of camp packages. Cloud and local server instances use instance-bound, server-managed cookie sessions. Tauri uses a per-launch channel secret and, when a local password is configured, an additional in-memory unlock session. ADR-009 defines password and session behavior. ADR-010 assigns identities, memberships, and credential persistence to Platform and requires explicit tenant isolation. ADR-011 defines the extensible initial roles, permissions, and audit access roles. [ADR-012](../decisions/adr-012-security-audit-events.md) defines the security audit catalogue, Platform-owned append-only persistence, HMAC-chain integrity model, technical retention defaults, authorized access, and version-2 transfer direction. Security-library selection and calibrated parameters plus audit/package security validation and legal retention review remain open.
 
 ## Still open
 
 - database migrations are provider- and module-specific and SQLite pre-upgrade backups are automatic as defined by [ADR-008](../decisions/adr-008-database-migration-strategy.md); operational clean-machine restore validation remains open
 - camp-package schema migration and compatibility beyond version 1
-- encryption, signing, permissions, audit logging, retention, archival, and anonymisation
-- identity storage, sessions, password policy, password reset, tenant authorization, audit behavior, and the concrete role model; authentication modes are defined by ADR-009
+- package and sensitive-local-data encryption and signing, technical validation of the defined audit model, legal retention review, privacy retention, archival, and anonymisation
+- security-library selection and calibrated parameters plus audit/package-security spike validation and legal retention review; authentication, identity, authorization, and the audit transfer direction are defined by ADR-009 through ADR-012
 - stable API error contracts
 - release-readiness checks for packaged desktop installers
 

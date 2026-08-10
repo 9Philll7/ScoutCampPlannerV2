@@ -40,7 +40,7 @@ The following decisions are required before the affected areas are production-re
 - operational backup-restore validation on a packaged clean-machine installation; migrations and automatic SQLite pre-upgrade backups are defined by ADR-008
 - a package migration registry, historic compatibility fixtures, and a supported compatibility window
 - encryption and authenticity protection for packages and sensitive local data
-- identity storage, sessions, password policy, password reset, tenant authorization, roles, audit logging, and privacy lifecycle; operating-mode authentication is defined by ADR-009
+- security-library selection and calibrated parameters, audit/package-security spike validation and legal retention review, and privacy lifecycle; authentication, identity, authorization, and the audit transfer direction are defined by ADR-009 through ADR-012
 - retention, archival, deletion, and anonymisation rules for personal and health data
 - a stable API Problem Details contract
 - clean-machine installer/removal and normal desktop shutdown checks

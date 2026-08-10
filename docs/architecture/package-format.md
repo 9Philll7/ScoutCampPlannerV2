@@ -43,3 +43,16 @@ Version 1 requires the `Camp` and `Catering` module payloads. Platform data is l
 ## Versioning
 
 The implementation currently accepts exactly version 1. Compatibility fixtures and an explicit migration registry must be added before a second format version is introduced.
+
+## Planned audit transfer in version 2
+
+ADR-012 requires a future format version 2 to carry a separate, cryptographically protected audit section for the local phase.
+
+- The audit section is append-only and is not a replaceable Platform module payload.
+- It identifies the source instance and audit sequence range and carries chain-bound verification material.
+- Import is idempotent for byte-identical events and rejects conflicting duplicate identities.
+- A mandatory invalid or incomplete audit section rejects the return package.
+- Verified audit ingestion is independent from the atomic Camp/Catering replacement so evidence remains when domain import is rejected or rolled back.
+- Audit transfer never replaces cloud users, memberships, roles, credentials, or tenant-wide Platform state.
+
+Version 2 must not be implemented until package migration, encryption, signatures, source-instance key binding, compatibility fixtures, and the ADR-012 integrity spike are complete.

@@ -10,7 +10,7 @@ ScoutCampPlanner supports cloud/server operation, a local Docker-based camp inst
 
 The single-device instance has a different risk and usability profile: it is operated by one person on one Windows device and must remain usable without mandatory technical setup.
 
-This ADR decides the authentication modes and the relationship between online and offline passwords. It does not yet define the concrete role set, permission matrix, password policy, session mechanism, password-reset process, or audit events.
+This ADR decides the authentication modes, the relationship between online and offline passwords, the session models, the user-facing password policy, Argon2id hashing, strength-check behavior, cloud password reset, and single-device password recovery. It does not select the Argon2id and strength-check libraries or calibrated parameters. Identity and tenant membership are defined by ADR-010, roles and permissions by ADR-011, and the security audit model by ADR-012.
 
 ## Decision
 
@@ -18,7 +18,64 @@ This ADR decides the authentication modes and the relationship between online an
 
 Cloud and local server authentication use a normal user password as the primary authenticator.
 
-Passwords are never stored in plaintext. The concrete password hashing component and password policy must follow the security requirements established before implementation.
+Passwords are never stored in plaintext. Password verifiers use Argon2id as defined below. The concrete library, calibrated parameters, and strength-check component must be validated before implementation.
+
+### Password policy
+
+The same policy applies to cloud passwords and optional single-device passwords:
+
+- The hard minimum length is 8 characters.
+- Passwords from 8 through 14 characters are accepted only when a server-side strength check rates them as sufficiently resistant to guessing.
+- Passwords with 15 or more characters have no composition requirement.
+- The maximum accepted length is 128 characters.
+- Spaces, Unicode, and all printable characters are allowed.
+- Passwords are never silently truncated or normalized into a different value.
+- Paste and password-manager use must be supported.
+- Known common and compromised passwords are rejected regardless of length.
+- The UI recommends a long passphrase even though the hard minimum is 8 characters.
+- Periodic password changes are not required. A change is required after suspected or confirmed compromise and remains available at the user's request.
+- A normal password change requires the current password. Recovery uses the separately controlled reset process.
+- The system does not maintain an arbitrary password-history rule such as prohibiting the last five passwords.
+
+The strength check and compromised-password check are enforced by the backend. Frontend feedback may assist the user but is not the security boundary.
+
+### Password strength checks
+
+Passwords from 8 through 14 characters require a score of at least 3 on a zxcvbn-compatible 0-to-4 strength scale.
+
+The server-side evaluation must consider at least:
+
+- common words and known password patterns
+- repeated and sequential characters
+- keyboard sequences
+- user-specific inputs such as name and email-address components
+- predictable combinations and substitutions
+
+All password lengths are checked against a local, versioned denylist of common and known compromised passwords. A denylisted password is rejected even when the strength estimator otherwise accepts it.
+
+- Cleartext passwords and complete unsalted password hashes are never sent to an external breach-checking service.
+- The required checks work without internet connectivity, including on a single-device instance.
+- The backend remains authoritative. Angular may run an equivalent estimator only to provide immediate feedback.
+- The estimator implementation and denylist version are recorded so that policy changes remain testable.
+- Updating the estimator or denylist does not invalidate an existing password automatically. A password change is required when a concrete compromise or unacceptable risk is identified.
+
+The selected .NET implementation must support deterministic tests and must be reviewed for maintenance status, licensing, package size, and consistent behavior on server and Windows single-device targets.
+
+### Password hashing
+
+Cloud, local-server offline, and optional single-device password verifiers use Argon2id.
+
+- Every verifier uses a cryptographically random, unique salt.
+- The stored representation is versioned and includes the Argon2 version and all parameters needed for verification.
+- Cloud and local offline preparation derive independent verifiers with independent salts even though the user enters the same password.
+- A central verifier is never reused as a local verifier.
+- The implementation must support detecting outdated parameters and rehashing after the next successful password verification.
+- Passwords, salts, derived values, and timing details are never written to application logs.
+- Verification uses a constant-time comparison for the derived value.
+
+The selected .NET Argon2id library must be actively maintained, support the current .NET target, expose explicit parameters, and permit deterministic compatibility tests. Introducing this dependency requires a focused security and maintenance review.
+
+Memory, iteration, parallelism, salt length, derived-key length, and maximum concurrent verification settings are calibrated through a technical benchmark on both the server baseline and the supported Windows single-device baseline. Parameters must meet current security guidance without making login an application-level denial-of-service vector. They are configuration with secure lower bounds, not user settings.
 
 ### Single-device instance
 
@@ -64,12 +121,99 @@ Cloud password changes, account locks, and permission revocations cannot take ef
 - A changed cloud password or invalidated credential state disables the existing offline verifier. The user must prepare offline login again with the current password.
 - The UI must show whether offline login is prepared and when the local security state was last confirmed by the cloud.
 
+### Cloud password reset
+
+A user who has forgotten the cloud password can request a reset link for the confirmed account email address.
+
+- The public response is identical whether or not an account exists for the submitted address.
+- The reset token is cryptographically random, single-use, and valid for 30 minutes.
+- No usable plaintext reset token is stored in the database.
+- The replacement password must satisfy the current password policy, strength check, and denylist.
+- A successful reset does not sign the user in automatically.
+- A successful reset invalidates all cloud sessions for the account.
+- Previously prepared local offline verifiers become invalid at the next successful cloud contact and must be prepared again with the new password.
+- Reset requests are rate-limited by account identifier and request origin to reduce enumeration, brute force, and email flooding.
+- Reset request and completion events are audited without recording the token, password, or password-derived data.
+
+A cloud password cannot be reset through a fully disconnected local server instance. A local administrator cannot replace a cloud password. Cloud connectivity and control of the confirmed reset channel are required.
+
+The email delivery provider, token-protection implementation, rate limits, and notification wording are selected and tested during implementation.
+
+### Single-device password recovery
+
+Enabling an optional single-device password generates a cryptographically random recovery code.
+
+- The complete recovery code is shown exactly once.
+- The user is instructed to print it or store it in a password manager outside the device.
+- ScoutCampPlanner stores only a verifier or wrapped recovery material, never a usable plaintext recovery code.
+- A valid recovery code permits setting a new local password that satisfies the current password and strength policy.
+- Successful recovery invalidates all local sessions and rotates the local security state.
+- Recovery is audited locally without recording the recovery code, password, or derived values.
+- The recovery code is device-specific and cannot reset a cloud password.
+- The cloud cannot recover or bypass an independent single-device password.
+
+There is no hidden bypass when both password and recovery code are unavailable. Recovery then requires restoring an appropriate protected backup or creating a new local instance. Offline changes that were not returned may be lost.
+
+When local database encryption is introduced, the recovery mechanism must be extended so that the recovery code safely unlocks or rewraps the data-encryption key. The current decision must not be implemented as a plaintext database-key store.
+
+### Cloud and local server sessions
+
+Cloud and local Docker-based server instances use server-managed sessions with a random, signed authentication cookie.
+
+- The cookie is `HttpOnly` and is not accessible to Angular code.
+- Authentication tokens are not stored in browser `localStorage` or `sessionStorage`.
+- Production server cookies are transmitted only over HTTPS.
+- A session belongs to exactly one application instance and is not copied between cloud and local instances.
+- After successful cloud authentication, a local server instance creates its own local session.
+- Successful offline password verification creates the same type of local session; only the credential verification source differs.
+- Signing out invalidates the current session.
+- Password changes, account locks, and role changes invalidate affected online sessions when cloud connectivity exists.
+
+Session limits are:
+
+- 30 minutes without activity
+- 12 hours absolute lifetime regardless of activity
+- no persistent "remember me" session initially
+
+Sensitive operations require recent password confirmation. This includes at least camp export, user and permission administration, and future access to health data. The exact re-authentication interval and operation list must be finalized with the authorization and privacy model.
+
+### Tauri single-device sessions
+
+The Tauri WebView and loopback ASP.NET Core sidecar use a per-launch channel secret in addition to an optional user session:
+
+- The Rust host generates a cryptographically random secret with at least 256 bits for every application start.
+- The secret is passed to the sidecar at process start and is required for every sidecar API request.
+- The sidecar remains bound to loopback and does not treat loopback access alone as trusted.
+- The channel secret exists only in process memory. It is not written to SQLite, configuration, logs, `localStorage`, or `sessionStorage`.
+- Closing Tauri terminates the sidecar and invalidates the channel secret and all local sessions.
+
+If no optional single-device password is configured, possession of the running Tauri application and its channel secret constitutes the unlocked local session.
+
+If a single-device password is configured:
+
+- startup leaves the application locked
+- successful local password verification creates an additional random user-session token
+- the user-session token remains in memory and is required together with the channel secret
+- the application can be locked manually
+- 30 minutes without user activity locks the application
+- restarting the application always requires a new unlock
+
+Future sensitive operations may require recent password confirmation even when the application is currently unlocked. The operation list and confirmation interval must be finalized with the privacy and authorization model.
+
+Before sensitive personal or health data is implemented, Tauri must use a restrictive Content Security Policy. The current spike configuration with disabled CSP is not acceptable for tokens or sensitive data because injected WebView code could act with the in-memory session.
+
 ## Consequences
 
 - Offline capability does not require distributing central password hashes.
+- The 8-character hard minimum is a usability compromise. A strength score of at least 3 is mandatory for passwords shorter than 15 characters, and the local denylist applies to every password length.
+- Argon2id adds a justified security dependency and requires benchmark, compatibility, resource-exhaustion, outdated-parameter, and rehash tests.
 - Every user who needs offline access must prepare it before the local instance disconnects.
 - Loss of connectivity creates an unavoidable delay for cloud-side revocation. This risk must be reflected in authorization scope, audit events, and offline-phase procedures.
 - The local authentication store becomes security-sensitive and must be covered by encryption, backup, retention, and secure-deletion decisions.
+- Server-rendered authentication cookies keep credentials out of Angular storage but require HTTPS, CSRF protection, cookie-key protection, and explicit session invalidation tests.
+- The Tauri channel secret protects the loopback sidecar from unrelated local callers but is not a replacement for an optional user password or operating-system security.
+- Tauri implementation requires cryptographically secure secret generation, request authentication, inactivity tracking, manual locking, secret redaction, and CSP tests.
+- Cloud password reset requires generic responses, single-use token tests, expiration tests, rate limiting, session invalidation, offline-verifier invalidation, and audit tests.
+- Single-device recovery requires one-time-display, invalid-code, brute-force protection, session invalidation, security-state rotation, no-bypass, and future encryption-key compatibility tests.
 - Package format version 1 and the rule that user data is not replaced during package return remain unchanged.
-- Implementation must wait for the remaining identity, session, role, tenant-isolation, audit, and privacy decisions.
-
+- Implementation must follow ADR-010 through ADR-012 for identity storage, tenant isolation, roles, permissions, and security auditing. Security-library selection, calibrated parameters, the required audit/package-security validation, and the privacy lifecycle remain prerequisites for their affected production features.

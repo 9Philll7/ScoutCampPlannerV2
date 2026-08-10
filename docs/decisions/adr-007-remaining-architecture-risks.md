@@ -71,7 +71,7 @@ Without an explicit migration pipeline, a later package version could make exist
 
 - Package payloads are protected by a SHA-256 checksum.
 - Packages are not encrypted or signed.
-- Authentication modes are defined by ADR-009. Identity storage, sessions, password policy, password reset, authorization, audit logging, retention, archival, and anonymisation remain open.
+- Authentication behavior is defined by ADR-009, identity and tenant isolation by ADR-010, roles and permissions by ADR-011, and security audit events, persistence, integrity model, technical retention defaults, access, and transfer direction by ADR-012. Security-library selection and calibrated parameters, audit/package-security spike validation, legal retention review, privacy retention, archival, and anonymisation remain open. A restrictive Tauri Content Security Policy is required before sensitive data is supported.
 - The domain documentation identifies health data and a privacy lifecycle, but the complete workflow is not defined.
 
 ### To clarify
