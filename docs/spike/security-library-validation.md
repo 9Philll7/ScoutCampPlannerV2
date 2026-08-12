@@ -124,6 +124,6 @@ The initial single-device implementation profile is 19 MiB memory, two iteration
 
 - Windows 10 22H2 measurement of the initial single-device profile on representative ADR-013 minimum hardware
 - acquisition of a pinned real HIBP snapshot plus attribution, packaging, and update-process validation for the generated denylist asset
-- the productive password-verifier persistence and rehash workflow
+- authentication use-case wiring, including transactional verifier replacement after successful rehash detection
 
 These points must be resolved before productive authentication is considered complete.

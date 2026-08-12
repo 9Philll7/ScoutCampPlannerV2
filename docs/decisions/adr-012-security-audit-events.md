@@ -167,6 +167,8 @@ The chain provides tamper evidence, not absolute protection. An actor controllin
 
 ### Required technical validation
 
+Phase 1 of the focused validation is recorded in [`audit-security-validation.md`](../spike/audit-security-validation.md). It confirms a dependency-free canonical UTF-8 JSON candidate, identical golden bytes on Windows and Linux, HMAC-chain verification against an external protected head, manipulation detection, and initial in-memory performance. Persistence atomicity, concurrency, key storage and rotation, segment retention, blocked mode, and package binding remain open; therefore the complete spike is not yet accepted.
+
 Before implementation, a focused security spike must validate:
 
 - deterministic canonical encoding across supported .NET versions and both providers
