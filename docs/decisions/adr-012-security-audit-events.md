@@ -41,6 +41,8 @@ The following events are audited:
 - attempt to remove or demote the last active `TenantOwner`
 - denied administrative or otherwise sensitive operation
 
+For role changes, the versioned metadata contains the membership ID plus the previous and new stable role identifiers. The common fields provide actor user ID, tenant ID, timestamp, result, and role-definition version. Display names, email addresses, and other copied personal data are not added for role-history convenience. This audit journal is the authoritative role-change history; role persistence stores only current assignments.
+
 Ordinary denied read requests are logged operationally where needed but do not automatically become permanent audit records. This avoids creating an unbounded audit stream from routine probing. Sensitive denials are defined by the permission and privacy catalogues.
 
 ### Offline and package events

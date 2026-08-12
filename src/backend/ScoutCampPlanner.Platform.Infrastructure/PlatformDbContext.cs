@@ -10,6 +10,7 @@ public sealed class PlatformDbContext(DbContextOptions<PlatformDbContext> option
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<UserAccount> UserAccounts => Set<UserAccount>();
     public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
+    public DbSet<TenantRoleAssignment> TenantRoleAssignments => Set<TenantRoleAssignment>();
     public DbSet<PasswordCredential> PasswordCredentials => Set<PasswordCredential>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -41,6 +42,16 @@ public sealed class PlatformDbContext(DbContextOptions<PlatformDbContext> option
             entity.HasIndex(x => new { x.UserId, x.TenantId })
                 .IsUnique()
                 .HasFilter("\"State\" <> 2");
+        });
+        modelBuilder.Entity<TenantRoleAssignment>(entity =>
+        {
+            entity.ToTable("TenantRoleAssignments");
+            entity.HasKey(x => new { x.MembershipId, x.RoleIdentifier });
+            entity.Property(x => x.RoleIdentifier).HasMaxLength(100);
+            entity.HasOne<TenantMembership>().WithMany().HasForeignKey(x => x.MembershipId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => x.MembershipId)
+                .IsUnique()
+                .HasFilter("\"RoleIdentifier\" IN ('TenantOwner', 'TenantAdmin', 'TenantMember')");
         });
         modelBuilder.Entity<PasswordCredential>(entity =>
         {

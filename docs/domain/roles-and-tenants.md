@@ -22,6 +22,14 @@ Initial tenant roles:
 - `TenantMember`
 - `TenantAuditor`
 
+Every active tenant membership has exactly one mutually exclusive base role: `TenantOwner`, `TenantAdmin`, or `TenantMember`. `TenantAuditor` is an optional additional role and may be combined with one base role. Suspension retains assignments without granting access; removal freezes the final assignments as historical context.
+
+Tenant ownership transfer promotes the active target membership to `TenantOwner` and changes the previous owner to `TenantAdmin` atomically. Demotion, suspension, or removal must never leave a tenant without at least one active owner, including under concurrent changes.
+
+Membership persistence stores only current role assignments. The append-only security audit from ADR-012 is the authoritative history for assignments and ownership transfers. Productive role-changing endpoints remain disabled until state and audit event can be committed atomically.
+
+Current roles use a separate assignment relation with a unique membership-and-role pair. A filtered unique index prevents multiple base roles, while Application validation requires one complete, known tenant base role and permits `TenantAuditor` as the only initial additional role. Incomplete transactional intermediate state never grants authorization.
+
 Initial camp roles:
 
 - `CampAdmin`

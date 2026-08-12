@@ -67,6 +67,24 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Platform
                     b.ToTable("TenantMemberships", "platform");
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.TenantRoleAssignment", b =>
+                {
+                    b.Property<Guid>("MembershipId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RoleIdentifier")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("MembershipId", "RoleIdentifier");
+
+                    b.HasIndex("MembershipId")
+                        .IsUnique()
+                        .HasFilter("\"RoleIdentifier\" IN ('TenantOwner', 'TenantAdmin', 'TenantMember')");
+
+                    b.ToTable("TenantRoleAssignments", "platform");
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.UserAccount", b =>
                 {
                     b.Property<Guid>("Id")
@@ -127,6 +145,15 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Platform
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.TenantRoleAssignment", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Platform.Domain.TenantMembership", null)
+                        .WithMany()
+                        .HasForeignKey("MembershipId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

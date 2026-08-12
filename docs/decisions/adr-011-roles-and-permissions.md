@@ -57,6 +57,29 @@ Tenant administration does not automatically grant access to camp content or fut
 
 `TenantAuditor` is an additional tenant role and can be assigned alongside another tenant role.
 
+### Tenant role assignment shape
+
+Every active tenant membership has exactly one base role:
+
+- `TenantOwner`
+- `TenantAdmin`
+- `TenantMember`
+
+The base roles are mutually exclusive. Redundant combinations such as `TenantOwner` plus `TenantAdmin` are not allowed. `TenantAuditor` is an optional additional role and may be combined with any one base role.
+
+Suspending a membership retains all role assignments but they grant no permissions while the membership is suspended. Removing a membership permanently ends authorization while retaining its final role assignments as historical security context. A removed membership cannot receive or change role assignments.
+
+### Tenant ownership transfer
+
+Ownership transfer is one atomic application operation and database transaction:
+
+1. The target membership must be `Active` in the same tenant.
+2. The target membership becomes `TenantOwner`.
+3. The previous owner becomes `TenantAdmin` in the same transaction.
+4. The transaction may commit only after the tenant still has at least one active owner.
+
+Directly demoting, suspending, or removing the last active owner is forbidden. When multiple active owners exist, one may be demoted to `TenantAdmin`, suspended, or removed only if at least one other active owner remains. Concurrent ownership changes must preserve the same invariant through transactional persistence and concurrency handling.
+
 ### Initial camp roles
 
 #### `CampAdmin`
@@ -140,6 +163,12 @@ The initial catalogue is intentionally not complete.
 - Existing roles may gain a new permission only when that is consistent with their documented responsibility and does not silently grant access to sensitive data.
 - Removing or narrowing a permission requires compatibility and offline-snapshot analysis.
 - A role change that materially alters trust boundaries requires an ADR update or a new ADR.
+
+Role persistence stores only the current assignment state. A separate role-history table is not introduced. Role assignment, removal, ownership transfer, and attempted last-owner violations are recorded through the append-only security audit defined by ADR-012, which is the authoritative history.
+
+Current tenant roles are stored in a separate `TenantRoleAssignments` relation rather than fixed columns on the membership. The membership-and-role combination is unique. A provider-specific filtered unique index permits at most one of the three base-role identifiers per membership, while allowing the additional `TenantAuditor` role. Application validation requires exactly one known tenant base role, at most one auditor assignment, no camp-scoped or unknown roles, and no role changes on removed memberships. A temporarily incomplete set may exist only inside a transaction and must never be used as an authorization result or committed by a role-management use case.
+
+Production role-changing endpoints must not be enabled before the required audit persistence can commit the role change and its audit event in the same transaction. This restriction does not prevent implementing and testing the role-assignment persistence model beforehand.
 
 ### Offline authorization snapshot
 

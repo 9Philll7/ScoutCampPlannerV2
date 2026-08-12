@@ -2,51 +2,60 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ScoutCampPlanner.Platform.Infrastructure;
 
 #nullable disable
 
-namespace ScoutCampPlanner.Migrations.Sqlite.Platform
+namespace ScoutCampPlanner.Migrations.PostgreSql.Platform
 {
     [DbContext(typeof(PlatformDbContext))]
-    partial class PlatformDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260812190136_AddTenantRoleAssignments")]
+    partial class AddTenantRoleAssignments
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.5");
+            modelBuilder
+                .HasDefaultSchema("platform")
+                .HasAnnotation("ProductVersion", "10.0.5")
+                .HasAnnotation("Relational:MaxIdentifierLength", 63);
+
+            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.Tenant", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(200)");
 
                     b.HasKey("Id");
 
-                    b.ToTable("Tenants", (string)null);
+                    b.ToTable("Tenants", "platform");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.TenantMembership", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("State")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -58,17 +67,17 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Platform
                         .IsUnique()
                         .HasFilter("\"State\" <> 2");
 
-                    b.ToTable("TenantMemberships", (string)null);
+                    b.ToTable("TenantMemberships", "platform");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.TenantRoleAssignment", b =>
                 {
                     b.Property<Guid>("MembershipId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("RoleIdentifier")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.HasKey("MembershipId", "RoleIdentifier");
 
@@ -76,55 +85,55 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Platform
                         .IsUnique()
                         .HasFilter("\"RoleIdentifier\" IN ('TenantOwner', 'TenantAdmin', 'TenantMember')");
 
-                    b.ToTable("TenantRoleAssignments", (string)null);
+                    b.ToTable("TenantRoleAssignments", "platform");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.UserAccount", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(320)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(320)");
 
                     b.Property<string>("NormalizedEmail")
                         .IsRequired()
                         .HasMaxLength(320)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(320)");
 
                     b.Property<int>("State")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
                     b.HasIndex("NormalizedEmail")
                         .IsUnique();
 
-                    b.ToTable("UserAccounts", (string)null);
+                    b.ToTable("UserAccounts", "platform");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Platform.Infrastructure.Authentication.PasswordCredential", b =>
                 {
                     b.Property<Guid>("UserId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("ChangedAtUtc")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<long>("SecurityVersion")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("bigint");
 
                     b.Property<string>("Verifier")
                         .IsRequired()
                         .HasMaxLength(512)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(512)");
 
                     b.HasKey("UserId");
 
-                    b.ToTable("PasswordCredentials", (string)null);
+                    b.ToTable("PasswordCredentials", "platform");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.TenantMembership", b =>

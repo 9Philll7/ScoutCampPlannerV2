@@ -72,4 +72,29 @@ public sealed class IdentityModelTests
         Assert.Equal(2, await database.TenantMemberships.CountAsync(TestContext.Current.CancellationToken));
         Assert.Equal(1, await database.PasswordCredentials.CountAsync(TestContext.Current.CancellationToken));
     }
+
+    [Fact]
+    public async Task Sqlite_allowsAuditorButRejectsDuplicateBaseRoleForMembership()
+    {
+        SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_winsqlite3());
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        var options = new DbContextOptionsBuilder<PlatformDbContext>().UseSqlite(connection).Options;
+        await using var database = new PlatformDbContext(options);
+        await database.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
+
+        var tenant = new Tenant(Guid.NewGuid(), "Role Tenant");
+        var user = new UserAccount(Guid.NewGuid(), "roles@example.com");
+        var membership = new TenantMembership(Guid.NewGuid(), user.Id, tenant.Id);
+        database.AddRange(tenant, user, membership);
+        database.TenantRoleAssignments.AddRange(
+            new TenantRoleAssignment(membership.Id, "TenantMember"),
+            new TenantRoleAssignment(membership.Id, "TenantAuditor"));
+        await database.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        database.TenantRoleAssignments.Add(new TenantRoleAssignment(membership.Id, "TenantAdmin"));
+
+        await Assert.ThrowsAsync<DbUpdateException>(() =>
+            database.SaveChangesAsync(TestContext.Current.CancellationToken));
+    }
 }
