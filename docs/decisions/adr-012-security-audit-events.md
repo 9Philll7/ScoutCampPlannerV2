@@ -160,6 +160,13 @@ The current chain head uses a pragmatic two-level model:
 
 This model makes straightforward deletion of checkpointed newest rows detectable while accepting a small, explicitly bounded uncheckpointed suffix after a storage failure. Security-sensitive workflows require a successful checkpoint before another such workflow is accepted. A future offline transfer also carries verified segment boundaries and chain heads rather than flattening or rewriting the source journal.
 
+Audit append concurrency follows the validated provider-specific operating model:
+
+- SQLite append operations are serialized by one process-wide asynchronous gate before beginning the transaction. SQLite is used only by the single-sidecar operating model and is not supported as a shared multi-process audit writer.
+- PostgreSQL append transactions lock the one database-head row for the application instance with `SELECT ... FOR UPDATE` before reading the predecessor and allocating the next sequence number.
+- The lock or gate is held through insertion of the event, update of the database head, associated business-state changes, and transaction commit or rollback.
+- The unique instance-and-sequence key remains the final database safeguard against duplicate allocation.
+
 ### Verification failure
 
 Audit verification runs incrementally when appending, checks the recent chain section during startup, runs fully for audit export or administrative verification, and can run periodically in the background.
@@ -176,7 +183,7 @@ The chain provides tamper evidence, not absolute protection. An actor controllin
 
 ### Required technical validation
 
-The focused validation is recorded in [`audit-security-validation.md`](../spike/audit-security-validation.md). Phase 1 confirms a dependency-free canonical UTF-8 JSON candidate, identical golden bytes on Windows and Linux, HMAC-chain verification, manipulation detection, and initial in-memory performance. The first part of phase 2 confirms atomic business/event/database-head transactions in PostgreSQL and SQLite plus idempotent recovery when external checkpoint advancement was interrupted. Concurrent append locking, concrete protected storage, key rotation, segment retention, blocked mode, and package binding remain open; therefore the complete spike is not yet accepted.
+The focused validation is recorded in [`audit-security-validation.md`](../spike/audit-security-validation.md). Phase 1 confirms a dependency-free canonical UTF-8 JSON candidate, identical golden bytes on Windows and Linux, HMAC-chain verification, manipulation detection, and initial in-memory performance. Phase 2 confirms atomic business/event/database-head transactions, idempotent recovery after interrupted external-checkpoint advancement, and safe concurrent append allocation using a SQLite process gate and PostgreSQL head-row locking. Concrete protected storage, key rotation, segment retention, blocked mode, and package binding remain open; therefore the complete spike is not yet accepted.
 
 Before implementation, a focused security spike must validate:
 

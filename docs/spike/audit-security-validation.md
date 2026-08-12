@@ -2,7 +2,7 @@
 
 ## Status
 
-Phase 1 and the atomicity/reconciliation part of phase 2 completed on 2026-08-12. Canonical event encoding, the in-memory HMAC-chain model, database transaction atomicity, and crash reconciliation are technically validated. The complete ADR-012 security spike is not yet complete.
+Phase 1 and phase 2 completed on 2026-08-12. Canonical event encoding, the in-memory HMAC-chain model, database transaction atomicity, crash reconciliation, and concurrent append allocation are technically validated. The complete ADR-012 security spike is not yet complete.
 
 ## Scope of phase 1
 
@@ -89,13 +89,21 @@ Provider-level spike tables validate the intended transaction boundary without p
 - Reconciliation is idempotent when the checkpoint is current.
 - A checkpoint ahead of the database, a mismatching head, a missing suffix, or a modified suffix is rejected.
 
-This confirms that a distributed two-phase transaction is unnecessary. It does not yet validate competing writers or the concrete protected-storage adapters.
+This confirms that a distributed two-phase transaction is unnecessary.
+
+### Concurrent append validation
+
+Twelve parallel append requests produced exactly the contiguous sequence range 1 through 12 without conflicts for both supported providers.
+
+- SQLite uses a process-wide asynchronous gate held for the complete transaction. This matches the single ASP.NET Core sidecar process and intentionally does not claim shared multi-process SQLite support.
+- PostgreSQL locks the application-instance database-head row with `SELECT ... FOR UPDATE` before reading the predecessor and allocating the next sequence.
+
+The final productive schema must additionally enforce a unique instance-and-sequence constraint.
 
 ## Remaining ADR-012 validation
 
 Before productive audit implementation, the spike still must validate:
 
-- safe concurrent append behavior and provider-specific locking
 - key loading, protection, rotation, and historic verification for cloud, Docker, and Windows single-device operation
 - segment transitions and deletion of complete retained segments
 - persistence round trips without canonical-value drift
