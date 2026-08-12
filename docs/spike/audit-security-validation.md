@@ -114,14 +114,25 @@ The dependency-free rotation candidate uses a versioned protected key bundle wit
 - Incomplete, mismatching, or unverifiable intermediate state is rejected.
 - Historic keys remain resolvable for verification and cannot be activated again.
 
-The tests prove that verification requires both old and new key material and rejects modified boundary metadata. Concrete protected key-bundle serialization, atomic file replacement, DPAPI, Docker-volume permissions, cloud secret integration, and rotation of persisted provider data remain open.
+The tests prove that verification requires both old and new key material and rejects modified boundary metadata.
+
+### Protected-file and operating-system probes
+
+- The versioned key-bundle format round-trips one active, one optional prepared, and historical keys and rejects unsupported versions, invalid states, invalid material lengths, and invalid active/prepared cardinality.
+- The checkpoint uses a versioned envelope, canonical payload, explicit checkpoint-purpose domain separation, and HMAC-SHA-256 authentication with the referenced audit key.
+- Checkpoint modification, wrong keys, and unavailable keys are rejected.
+- Same-directory temporary-file writing with write-through and atomic replacement leaves either the previous or complete new file and does not treat temporary files as active state.
+- Windows 11 `CurrentUser` DPAPI successfully protected and restored a 32-byte key fixture and rejected a modified protected payload. The probe uses the official .NET Windows reference API without a third-party dependency.
+- The Docker ASP.NET Core image runs as the official non-root `app` identity (UID/GID 1654). Its dedicated persistent security volume is mounted only into the backend; a probe file created with umask `077` was owned by `app:app` with mode `0600`. PostgreSQL had no mount for this volume, and the application health endpoint remained available.
+
+Cloud secret injection remains an operational adapter contract because no specific cloud or orchestrator is selected. Productive code must accept protected key-bundle bytes from deployment-secret configuration without inventing a ScoutCampPlanner cloud-encryption format.
 
 ## Remaining ADR-012 validation
 
 Before productive audit implementation, the spike still must validate:
 
-- protected key-bundle and checkpoint serialization plus atomic file replacement
-- cloud secret integration, Docker-volume permissions, and Windows DPAPI behavior
+- productive storage adapters and startup wiring for cloud secret input, the Docker security volume, and Windows DPAPI files
+- backup and restore runbook validation for database, key bundle, and checkpoint as one recovery set
 - persisted provider-level rotation transaction and historic full-chain verification across multiple segments
 - segment transitions and deletion of complete retained segments
 - persistence round trips without canonical-value drift

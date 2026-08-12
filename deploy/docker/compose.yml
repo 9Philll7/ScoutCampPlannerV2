@@ -25,9 +25,12 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
     ports:
       - "5180:8080"
+    volumes:
+      - scoutcampplanner-audit-security:/var/lib/scoutcampplanner/security
     depends_on:
       postgres:
         condition: service_healthy
 
 volumes:
   scoutcampplanner-postgres18:
+  scoutcampplanner-audit-security:

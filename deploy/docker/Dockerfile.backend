@@ -6,6 +6,10 @@ RUN dotnet publish src/backend/ScoutCampPlanner.Api/ScoutCampPlanner.Api.csproj 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=build /app .
+USER root
+RUN mkdir -p /var/lib/scoutcampplanner/security \
+    && chown -R app:app /app /var/lib/scoutcampplanner
+USER app
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "ScoutCampPlanner.Api.dll"]
