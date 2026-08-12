@@ -143,11 +143,37 @@ The HMAC covers the canonical representation of every mandatory event field, met
 
 The HMAC key is not stored in the audit database:
 
-- cloud operation uses a deployment secret or managed secret store
-- local Docker operation uses a protected instance secret outside PostgreSQL
-- Windows single-device operation uses operating-system-protected local key storage
+- Cloud operation receives the 32-byte key through deployment-secret configuration or a managed secret store. ScoutCampPlanner does not introduce its own cloud secret-encryption format. Docker Secrets, Kubernetes Secrets, or a provider-managed secret store may supply the same application contract.
+- Local Docker operation stores a randomly generated 32-byte key in a dedicated persistent secret volume outside PostgreSQL. The file is readable only by the backend container identity and is never baked into an image, committed to Git, or passed through a normal environment variable. Backup and recovery procedures treat the key file and protected checkpoint as required companions to the database backup.
+- Windows single-device operation generates a random 32-byte key, protects it with Windows DPAPI for the current Windows user, and stores only the protected representation in the local application-data directory. No additional user input is required.
 
-Key rotation creates a new chain segment whose first record references the verified head of the previous segment. Historic keys remain available for verification according to the future audit-retention policy but cannot be used to append new events.
+Every key has a random stable key ID that is safe to store with audit records. Raw key material is never logged, exported, stored in audit metadata, or returned through application APIs.
+
+Initial key creation is allowed only when the instance has no existing audit journal or database head. If an existing instance references a missing, unreadable, or unprotectable key, the application enters the verification-failure diagnosis mode and never silently creates a replacement key or starts a new apparently valid chain.
+
+Automatic calendar-based rotation is not introduced initially. Rotation is an explicit controlled security operation used for concrete compromise, algorithm or storage changes, or an operationally approved key transition. It creates a new segment as described below.
+
+Protected key storage contains a small versioned key bundle with exactly one active key and zero or more historical keys.
+
+- Only the active key may append new audit events or advance the checkpoint.
+- Historical keys are read-only verification material and cannot become active again.
+- A key remains available for at least as long as any retained audit segment or protected checkpoint references its key ID.
+- A historical key may be removed only after no retained segment, segment-closing proof, or protected checkpoint requires it.
+- Active and historical status belongs to the protected key bundle and is not controlled by rows in the audit database.
+- Rotation is an explicit administrative security operation, starts a new chain segment, and is itself audited. No automatic schedule or user interface is introduced initially.
+
+Key rotation creates a new chain segment with a bidirectionally authenticated transition:
+
+1. A new random segment ID and key are created. The protected key bundle stores the new key as `Prepared`; it is available for verification but cannot append ordinary events.
+2. The old segment appends a closing rotation event signed with the old active key. Its metadata identifies the new segment and prepared key.
+3. The new segment appends a start event signed with the prepared new key. Its metadata identifies the old segment, old key, closing sequence, and closing head.
+4. Both transition events and the new database head are committed in one database transaction. The per-instance sequence remains monotonically increasing across the segment boundary.
+5. After commit, the protected key bundle atomically changes the old key to `Historical` and the prepared key to `Active`.
+6. The protected external checkpoint is advanced to the new segment afterward.
+
+The new start event's predecessor is the old closing event HMAC, so the chain also remains directly continuous. The old-key closing signature prevents possession of only a new key from authorizing an arbitrary replacement history. The new-key start signature proves possession of the new key at the declared boundary.
+
+At most one prepared key may exist. If the process stops after preparation but before the database transition commits, the unused prepared key is removed after verifying that no audit row or database head references it. If the database transition committed before key-bundle activation, startup verifies both transition records with the active and prepared keys and completes activation idempotently. No ordinary security-sensitive operation proceeds while a prepared rotation requires reconciliation.
 
 The current chain head uses a pragmatic two-level model:
 
@@ -157,6 +183,16 @@ The current chain head uses a pragmatic two-level model:
 - If checkpoint writing fails, the committed database transaction is not reversed. The failure is surfaced operationally and checkpoint advancement is retried before the next security-sensitive state change.
 - Startup verifies that the database chain contains and matches the external checkpoint. A valid database suffix after that checkpoint represents a recoverable crash between database commit and checkpoint advancement; the checkpoint may be advanced after verification.
 - A checkpoint ahead of the database, a mismatching checkpoint head, or an invalid suffix triggers the verification-failure behavior below.
+
+The external checkpoint uses the same operating-mode protection boundary as the HMAC key:
+
+- Cloud operation writes it to persistent protected state outside the audit database.
+- Local Docker operation writes it to the dedicated secret volume outside PostgreSQL.
+- Windows single-device operation stores a DPAPI-protected checkpoint file in the local application-data directory.
+
+The checkpoint representation is versioned and contains the application instance ID, sequence number, chain head, key ID, chain-format version, and its own HMAC. The checkpoint is not confidential, but it is authenticated with the referenced audit key. Its canonical HMAC input includes an explicit checkpoint-purpose identifier so checkpoint and event signatures cannot be confused. A second key hierarchy is not introduced initially.
+
+File-backed checkpoints are written to a new temporary file in the same directory, flushed, and atomically moved or replaced only after complete serialization and authentication. A partial temporary file is never treated as the active checkpoint. The key and checkpoint may be included in the same protected operational backup, but neither is stored inside the PostgreSQL or SQLite audit database.
 
 This model makes straightforward deletion of checkpointed newest rows detectable while accepting a small, explicitly bounded uncheckpointed suffix after a storage failure. Security-sensitive workflows require a successful checkpoint before another such workflow is accepted. A future offline transfer also carries verified segment boundaries and chain heads rather than flattening or rewriting the source journal.
 
@@ -183,7 +219,7 @@ The chain provides tamper evidence, not absolute protection. An actor controllin
 
 ### Required technical validation
 
-The focused validation is recorded in [`audit-security-validation.md`](../spike/audit-security-validation.md). Phase 1 confirms a dependency-free canonical UTF-8 JSON candidate, identical golden bytes on Windows and Linux, HMAC-chain verification, manipulation detection, and initial in-memory performance. Phase 2 confirms atomic business/event/database-head transactions, idempotent recovery after interrupted external-checkpoint advancement, and safe concurrent append allocation using a SQLite process gate and PostgreSQL head-row locking. Concrete protected storage, key rotation, segment retention, blocked mode, and package binding remain open; therefore the complete spike is not yet accepted.
+The focused validation is recorded in [`audit-security-validation.md`](../spike/audit-security-validation.md). Phase 1 confirms a dependency-free canonical UTF-8 JSON candidate, identical golden bytes on Windows and Linux, HMAC-chain verification, manipulation detection, and initial in-memory performance. Phase 2 confirms atomic business/event/database-head transactions, idempotent recovery after interrupted external-checkpoint advancement, and safe concurrent append allocation using a SQLite process gate and PostgreSQL head-row locking. The rotation-model part of phase 3 confirms prepared-key staging, bidirectionally signed segment boundaries, historic verification, and recovery before or after the database transition. Concrete protected-storage adapters, persisted rotation, segment retention, blocked mode, and package binding remain open; therefore the complete spike is not yet accepted.
 
 Before implementation, a focused security spike must validate:
 

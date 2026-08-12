@@ -2,7 +2,7 @@
 
 ## Status
 
-Phase 1 and phase 2 completed on 2026-08-12. Canonical event encoding, the in-memory HMAC-chain model, database transaction atomicity, crash reconciliation, and concurrent append allocation are technically validated. The complete ADR-012 security spike is not yet complete.
+Phase 1 and phase 2 completed on 2026-08-12. The key-rotation model portion of phase 3 is also validated. Canonical event encoding, the in-memory HMAC-chain model, database transaction atomicity, crash reconciliation, concurrent append allocation, bidirectional segment transitions, and rotation-state recovery are technically validated. The complete ADR-012 security spike is not yet complete.
 
 ## Scope of phase 1
 
@@ -76,6 +76,7 @@ The encoding and HMAC cost is small enough to proceed to persistence validation.
 - `tools/ScoutCampPlanner.AuditSecuritySpike`
 - `tests/ScoutCampPlanner.SecuritySpikeTests/AuditHmacChainTests.cs`
 - `tests/ScoutCampPlanner.SecuritySpikeTests/AuditCheckpointTests.cs`
+- `tests/ScoutCampPlanner.SecuritySpikeTests/AuditKeyRotationTests.cs`
 - `tests/ScoutCampPlanner.DatabaseMigrationTests/AuditPersistenceSpikeTests.cs`
 
 ## Phase 2 atomicity and crash reconciliation
@@ -100,15 +101,32 @@ Twelve parallel append requests produced exactly the contiguous sequence range 1
 
 The final productive schema must additionally enforce a unique instance-and-sequence constraint.
 
+## Phase 3 key-rotation model
+
+The dependency-free rotation candidate uses a versioned protected key bundle with exactly one active key, at most one prepared key, and retained historical verification keys.
+
+- A new key is staged as `Prepared` before database changes.
+- The old key signs a segment-closing event that identifies the new segment and key.
+- The new key signs the next contiguous segment-start event, whose predecessor is the closing HMAC and whose metadata identifies the old boundary.
+- Only after the transition transaction commits does the protected bundle atomically make the old key `Historical` and the prepared key `Active`.
+- A crash before database commit allows the unreferenced prepared key to be discarded.
+- A crash after database commit allows the two signed boundary events and database head to authorize idempotent activation.
+- Incomplete, mismatching, or unverifiable intermediate state is rejected.
+- Historic keys remain resolvable for verification and cannot be activated again.
+
+The tests prove that verification requires both old and new key material and rejects modified boundary metadata. Concrete protected key-bundle serialization, atomic file replacement, DPAPI, Docker-volume permissions, cloud secret integration, and rotation of persisted provider data remain open.
+
 ## Remaining ADR-012 validation
 
 Before productive audit implementation, the spike still must validate:
 
-- key loading, protection, rotation, and historic verification for cloud, Docker, and Windows single-device operation
+- protected key-bundle and checkpoint serialization plus atomic file replacement
+- cloud secret integration, Docker-volume permissions, and Windows DPAPI behavior
+- persisted provider-level rotation transaction and historic full-chain verification across multiple segments
 - segment transitions and deletion of complete retained segments
 - persistence round trips without canonical-value drift
 - startup incremental verification and full verification at realistic journal sizes
 - blocked mode and protected recovery behavior after verification failure
 - package-version-2 binding and transfer separately before audit transfer is implemented
 
-Phase 1 validates the encoding and cryptographic chain candidate only. It does not authorize productive role-changing endpoints.
+The completed phases validate the encoding, chain, transaction, concurrency, checkpoint-recovery, and key-rotation model candidates. They do not authorize productive role-changing endpoints.
