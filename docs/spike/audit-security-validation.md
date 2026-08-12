@@ -2,7 +2,7 @@
 
 ## Status
 
-Phase 1 completed on 2026-08-12. Canonical event encoding and the in-memory HMAC-chain model are technically validated. The complete ADR-012 security spike is not yet complete.
+Phase 1 and the atomicity/reconciliation part of phase 2 completed on 2026-08-12. Canonical event encoding, the in-memory HMAC-chain model, database transaction atomicity, and crash reconciliation are technically validated. The complete ADR-012 security spike is not yet complete.
 
 ## Scope of phase 1
 
@@ -75,12 +75,26 @@ The encoding and HMAC cost is small enough to proceed to persistence validation.
 
 - `tools/ScoutCampPlanner.AuditSecuritySpike`
 - `tests/ScoutCampPlanner.SecuritySpikeTests/AuditHmacChainTests.cs`
+- `tests/ScoutCampPlanner.SecuritySpikeTests/AuditCheckpointTests.cs`
+- `tests/ScoutCampPlanner.DatabaseMigrationTests/AuditPersistenceSpikeTests.cs`
+
+## Phase 2 atomicity and crash reconciliation
+
+Provider-level spike tables validate the intended transaction boundary without prematurely introducing productive audit migrations.
+
+- SQLite and PostgreSQL commit the business-state change, audit row, and database head together.
+- Explicit rollback leaves all three at their previous values.
+- The external protected checkpoint is intentionally outside this transaction and advances only after commit.
+- A verified database suffix after an older checkpoint is treated as recoverable interrupted checkpoint advancement.
+- Reconciliation is idempotent when the checkpoint is current.
+- A checkpoint ahead of the database, a mismatching head, a missing suffix, or a modified suffix is rejected.
+
+This confirms that a distributed two-phase transaction is unnecessary. It does not yet validate competing writers or the concrete protected-storage adapters.
 
 ## Remaining ADR-012 validation
 
 Before productive audit implementation, the spike still must validate:
 
-- atomic event, sequence, protected-head, and business-state updates for PostgreSQL and SQLite
 - safe concurrent append behavior and provider-specific locking
 - key loading, protection, rotation, and historic verification for cloud, Docker, and Windows single-device operation
 - segment transitions and deletion of complete retained segments

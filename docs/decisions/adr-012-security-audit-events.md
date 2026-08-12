@@ -149,7 +149,16 @@ The HMAC key is not stored in the audit database:
 
 Key rotation creates a new chain segment whose first record references the verified head of the previous segment. Historic keys remain available for verification according to the future audit-retention policy but cannot be used to append new events.
 
-The current chain head is stored in protected state outside the audit table. This makes straightforward deletion of the newest table rows detectable. A future offline transfer also carries verified segment boundaries and chain heads rather than flattening or rewriting the source journal.
+The current chain head uses a pragmatic two-level model:
+
+- A Platform-owned database head is updated atomically with the audit event and associated business-state change.
+- Protected state outside the audit database stores an idempotent checkpoint containing the instance ID, sequence number, head HMAC, key ID, and chain-format version.
+- The external checkpoint is advanced only after the database transaction commits. A custom distributed or two-phase transaction between the database and protected storage is not introduced.
+- If checkpoint writing fails, the committed database transaction is not reversed. The failure is surfaced operationally and checkpoint advancement is retried before the next security-sensitive state change.
+- Startup verifies that the database chain contains and matches the external checkpoint. A valid database suffix after that checkpoint represents a recoverable crash between database commit and checkpoint advancement; the checkpoint may be advanced after verification.
+- A checkpoint ahead of the database, a mismatching checkpoint head, or an invalid suffix triggers the verification-failure behavior below.
+
+This model makes straightforward deletion of checkpointed newest rows detectable while accepting a small, explicitly bounded uncheckpointed suffix after a storage failure. Security-sensitive workflows require a successful checkpoint before another such workflow is accepted. A future offline transfer also carries verified segment boundaries and chain heads rather than flattening or rewriting the source journal.
 
 ### Verification failure
 
@@ -167,12 +176,12 @@ The chain provides tamper evidence, not absolute protection. An actor controllin
 
 ### Required technical validation
 
-Phase 1 of the focused validation is recorded in [`audit-security-validation.md`](../spike/audit-security-validation.md). It confirms a dependency-free canonical UTF-8 JSON candidate, identical golden bytes on Windows and Linux, HMAC-chain verification against an external protected head, manipulation detection, and initial in-memory performance. Persistence atomicity, concurrency, key storage and rotation, segment retention, blocked mode, and package binding remain open; therefore the complete spike is not yet accepted.
+The focused validation is recorded in [`audit-security-validation.md`](../spike/audit-security-validation.md). Phase 1 confirms a dependency-free canonical UTF-8 JSON candidate, identical golden bytes on Windows and Linux, HMAC-chain verification, manipulation detection, and initial in-memory performance. The first part of phase 2 confirms atomic business/event/database-head transactions in PostgreSQL and SQLite plus idempotent recovery when external checkpoint advancement was interrupted. Concurrent append locking, concrete protected storage, key rotation, segment retention, blocked mode, and package binding remain open; therefore the complete spike is not yet accepted.
 
 Before implementation, a focused security spike must validate:
 
 - deterministic canonical encoding across supported .NET versions and both providers
-- atomic event, sequence, chain-head, and business-state updates
+- atomic event, sequence, database-head, and business-state updates plus crash-safe reconciliation with the protected external checkpoint
 - cloud, Docker, and Windows key storage
 - key rotation and historic verification
 - detection of edits, deletion, insertion, reordering, truncation, wrong keys, and broken segment links
