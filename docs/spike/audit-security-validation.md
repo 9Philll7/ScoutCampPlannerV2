@@ -172,11 +172,24 @@ The recovery archive candidate treats database bytes, the complete plaintext key
 
 The operational sequence is documented in [`audit-backup-and-restore.md`](../architecture/audit-backup-and-restore.md). The current candidate buffers the archive in memory and is therefore validation code, not the final large-database backup implementation.
 
+## Monthly segments and retention
+
+The retention probe separates segment lifecycle from key lifecycle. A UTC month change closes the active segment and starts a new segment with the same active key at the first subsequent audit append. Months without events do not produce empty segments. Explicit key rotation continues to create an immediate two-key boundary independently.
+
+- Closing and starting records use consecutive instance sequence numbers.
+- The starting predecessor is the closing HMAC, and both records use the unchanged key ID for a monthly boundary.
+- Complete transition verification succeeds through the existing canonical HMAC-chain verifier.
+- A segment is eligible only when it is closed, was fully verified, and the latest retention expiry among all contained events has passed.
+- Any legal hold or active offline transfer affecting the segment blocks deletion of the complete segment.
+- Eligible deletion produces a non-personal closing proof containing segment ID, sequence range, predecessor hash, closing hash, key ID, and chain-format version.
+- The probe never deletes rows, rewrites later events, or resigns a chain. Provider-specific transactional deletion and deletion-event persistence belong to productive audit storage implementation.
+
+Automated tests cover continuity, unchanged keys, open and unverified segments, longest-retention behavior, legal hold, active offline transfer, and proof creation.
+
 ## Remaining ADR-012 validation
 
 Before productive audit implementation, the spike still must validate:
 
-- segment transitions and deletion of complete retained segments
 - productive database-loading performance for startup and full verification
 - package-version-2 binding and transfer separately before audit transfer is implemented
 
