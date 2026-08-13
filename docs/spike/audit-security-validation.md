@@ -186,11 +186,21 @@ The retention probe separates segment lifecycle from key lifecycle. A UTC month 
 
 Automated tests cover continuity, unchanged keys, open and unverified segments, longest-retention behavior, legal hold, active offline transfer, and proof creation.
 
+## Provider-backed loading performance
+
+The database-loading probe persists 100,000 canonical chain entries, then measures query, materialization, JSON reconstruction, and HMAC verification together. Data generation and insertion are outside the measured interval. Both providers use an indexed primary-key sequence query matching the intended productive access path.
+
+| Environment | Load and verify latest 1,000 | Load and verify all 100,000 |
+| --- | ---: | ---: |
+| SQLite file, Windows 11, .NET 10 | 31.7 ms | 1,449.7 ms |
+| PostgreSQL 18 in Docker, Windows host, .NET 10 | 43.4 ms | 1,628.6 ms |
+
+The automated acceptance limits are deliberately generous at 5 seconds for the startup window and 20 seconds for the full journal to reduce hardware-dependent test instability. Both measured providers remain far below those limits. The result validates the existing startup policy; it is not a general capacity promise for larger journals, concurrent production load, remote cloud latency, or slower storage.
+
 ## Remaining ADR-012 validation
 
 Before productive audit implementation, the spike still must validate:
 
-- productive database-loading performance for startup and full verification
 - package-version-2 binding and transfer separately before audit transfer is implemented
 
 The completed phases validate the encoding, chain, transaction, concurrency, checkpoint-recovery, and key-rotation model candidates. They do not authorize productive role-changing endpoints.
