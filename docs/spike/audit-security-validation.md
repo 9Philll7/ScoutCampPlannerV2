@@ -159,11 +159,23 @@ The validated storage boundary is now represented by productive contracts in Pla
 
 Platform integration tests validate explicit creation, reload, missing and partial state, immutable deployment keys, and a real Windows DPAPI modification rejection. Host registration remains intentionally deferred until the productive audit journal is introduced; the application startup coordinator and adapter boundary are ready for that composition.
 
+## Encrypted recovery-set probe
+
+The recovery archive candidate treats database bytes, the complete plaintext key-bundle representation, and the authenticated checkpoint as exactly one encrypted set. This specifically resolves the portability limitation of Windows CurrentUser DPAPI without weakening protection of the active local key file.
+
+- Argon2id derives a 256-bit archive key from the user-supplied backup password with the already accepted password-derivation baseline.
+- AES-256-GCM encrypts and authenticates the complete ZIP payload with an explicit version-1 recovery-archive purpose value.
+- Every archive receives a fresh random 16-byte salt and 12-byte nonce.
+- The archive envelope fixes and validates its version, KDF, parameters, cipher, salt, nonce, and authentication-tag sizes.
+- Restore requires exactly the database, key bundle, and checkpoint entries and rejects empty components.
+- Tests confirm round trip, independent archive output, wrong-password rejection, ciphertext-modification rejection, and refusal to create incomplete sets.
+
+The operational sequence is documented in [`audit-backup-and-restore.md`](../architecture/audit-backup-and-restore.md). The current candidate buffers the archive in memory and is therefore validation code, not the final large-database backup implementation.
+
 ## Remaining ADR-012 validation
 
 Before productive audit implementation, the spike still must validate:
 
-- backup and restore runbook validation for database, key bundle, and checkpoint as one recovery set
 - segment transitions and deletion of complete retained segments
 - productive database-loading performance for startup and full verification
 - package-version-2 binding and transfer separately before audit transfer is implemented

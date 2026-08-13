@@ -2,4 +2,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Konscious.Security.Cryptography.Argon2" />
+  </ItemGroup>
 </Project>
