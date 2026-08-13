@@ -147,11 +147,22 @@ The framework-free policy probe models the global operating state after audit ve
 
 Automated tests cover the blocked-operation matrix, local-operator boundary, preservation after failed verification, and successful release after full verification. Productive adapters must map a denied operation to a stable service-unavailable response without exposing the internal failure code.
 
+## Productive protected-storage adapters
+
+The validated storage boundary is now represented by productive contracts in Platform Application and operating-model adapters in Platform Infrastructure. It stores the versioned key-bundle and authenticated checkpoint as opaque bytes; audit encoding and key lifecycle rules remain independent of operating-system storage.
+
+- `FileAuditProtectedMaterialStore` atomically replaces each file. A crash between the two replacements leaves a detectable partial state rather than silently generating a replacement key. On Linux it applies owner-only `0600` permissions, matching the dedicated non-root Docker security volume.
+- `WindowsDpapiAuditKeyBundleProtection` uses the official .NET `System.Security.Cryptography.ProtectedData` implementation with `CurrentUser` scope and explicit purpose entropy. Its API is marked Windows-only, so cross-platform callers require an operating-system guard.
+- `ConfiguredAuditProtectedMaterialStore` reads the cloud key bundle from base64 deployment-secret input and writes only the external checkpoint. It refuses to replace a deployment-owned key.
+- Plain file protection is permitted only for the already isolated Docker security volume; it is not an encryption mechanism.
+- Startup distinguishes an explicitly new instance from an existing instance. Only the former may create initial material. Missing, partial, unreadable, or unprotectable existing state fails closed and must not call the key factory.
+
+Platform integration tests validate explicit creation, reload, missing and partial state, immutable deployment keys, and a real Windows DPAPI modification rejection. Host registration remains intentionally deferred until the productive audit journal is introduced; the application startup coordinator and adapter boundary are ready for that composition.
+
 ## Remaining ADR-012 validation
 
 Before productive audit implementation, the spike still must validate:
 
-- productive storage adapters and startup wiring for cloud secret input, the Docker security volume, and Windows DPAPI files
 - backup and restore runbook validation for database, key bundle, and checkpoint as one recovery set
 - segment transitions and deletion of complete retained segments
 - productive database-loading performance for startup and full verification

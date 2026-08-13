@@ -3,6 +3,7 @@
     <PackageReference Include="Konscious.Security.Cryptography.Argon2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
     <PackageReference Include="zxcvbn-core" />
     <ProjectReference Include="../ScoutCampPlanner.Platform.Application/ScoutCampPlanner.Platform.Application.csproj" />
     <ProjectReference Include="../ScoutCampPlanner.Platform.Contracts/ScoutCampPlanner.Platform.Contracts.csproj" />
