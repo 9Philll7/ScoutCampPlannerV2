@@ -213,15 +213,17 @@ When verification fails:
 
 - the application never silently repairs, deletes, or resigns records
 - the security status becomes clearly visible
-- sensitive administration, offline preparation, package export, and package import are blocked
-- read-only diagnosis and protected recovery remain available
+- existing authenticated sessions may only read non-sensitive data; anonymous access remains limited to a generic degraded health status
+- new sign-ins, all business-data changes, sensitive administration, offline preparation, package export, and package import are blocked because their mandatory audit events cannot be recorded reliably
+- diagnosis, restoration of protected state, and the required full verification remain available only through a local operator path; they are not exposed by a public recovery API
+- normal operation resumes only after protected state has been restored and a complete verification succeeds
 - an operational alert is emitted without leaking key material
 
 The chain provides tamper evidence, not absolute protection. An actor controlling the database, application runtime, protected key store, and external chain-head state remains outside this threat model.
 
 ### Required technical validation
 
-The focused validation is recorded in [`audit-security-validation.md`](../spike/audit-security-validation.md). Phase 1 confirms a dependency-free canonical UTF-8 JSON candidate, identical golden bytes on Windows and Linux, HMAC-chain verification, manipulation detection, and initial in-memory performance. Phase 2 confirms atomic business/event/database-head transactions, idempotent recovery after interrupted external-checkpoint advancement, and safe concurrent append allocation using a SQLite process gate and PostgreSQL head-row locking. Phase 3 confirms prepared-key staging, bidirectionally signed segment boundaries, historic verification, rotation recovery, versioned key-bundle and authenticated-checkpoint files, atomic file replacement, Windows CurrentUser DPAPI, and a non-root Docker security volume isolated from PostgreSQL. Provider round trips preserve canonical bytes across a persisted multi-segment transition, and the 100,000-event performance baseline supports the bounded 1,000-event startup policy. Productive storage wiring and database-loading benchmarks, segment retention, blocked mode, and package binding remain open; therefore the complete spike is not yet accepted.
+The focused validation is recorded in [`audit-security-validation.md`](../spike/audit-security-validation.md). Phase 1 confirms a dependency-free canonical UTF-8 JSON candidate, identical golden bytes on Windows and Linux, HMAC-chain verification, manipulation detection, and initial in-memory performance. Phase 2 confirms atomic business/event/database-head transactions, idempotent recovery after interrupted external-checkpoint advancement, and safe concurrent append allocation using a SQLite process gate and PostgreSQL head-row locking. Phase 3 confirms prepared-key staging, bidirectionally signed segment boundaries, historic verification, rotation recovery, versioned key-bundle and authenticated-checkpoint files, atomic file replacement, Windows CurrentUser DPAPI, and a non-root Docker security volume isolated from PostgreSQL. Provider round trips preserve canonical bytes across a persisted multi-segment transition, and the 100,000-event performance baseline supports the bounded 1,000-event startup policy. A framework-free policy spike confirms fail-closed operation, narrowly scoped read-only continuity, local-only recovery, and release only after successful full verification. Productive storage wiring and database-loading benchmarks, segment retention, and package binding remain open; therefore the complete spike is not yet accepted.
 
 Before implementation, a focused security spike must validate:
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Phase 1 and phase 2 completed on 2026-08-12. The key-rotation model portion of phase 3 is also validated. Canonical event encoding, the in-memory HMAC-chain model, database transaction atomicity, crash reconciliation, concurrent append allocation, bidirectional segment transitions, and rotation-state recovery are technically validated. The complete ADR-012 security spike is not yet complete.
+Phase 1 and phase 2 completed on 2026-08-12. The key-rotation model portion of phase 3 and the blocked-mode policy are also validated. Canonical event encoding, the in-memory HMAC-chain model, database transaction atomicity, crash reconciliation, concurrent append allocation, bidirectional segment transitions, rotation-state recovery, and fail-closed behavior after verification failure are technically validated. The complete ADR-012 security spike is not yet complete.
 
 ## Scope of phase 1
 
@@ -133,6 +133,20 @@ Provider-level spike tables store sequence, predecessor hash, key ID, format ver
 
 The performance baseline uses 100,000 retained events per instance. Full in-memory verification remains well below one second on the Windows development system and close to 0.6 seconds in the constrained Linux container after the events are available in memory. The bounded latest-1,000 startup verification remains below 10 ms in both measurements. Database-loading time must be added to the productive benchmark.
 
+## Blocked-mode and protected-recovery policy
+
+The framework-free policy probe models the global operating state after audit verification fails. It deliberately does not add productive middleware, endpoints, authentication, or recovery tooling.
+
+- An anonymous caller can see only a generic degraded health status.
+- An existing authenticated session can continue to read non-sensitive data, but cannot mutate data.
+- New sign-ins, business changes, sensitive administration, offline preparation, and package import or export fail closed because their mandatory audit events cannot be trusted.
+- Diagnosis, protected-state restoration, and full verification require a local operator path. A normal authenticated application session is insufficient and no public recovery API is implied.
+- A failed or partial verification keeps the blocked state and its original failure code.
+- Only a successful full-chain verification clears the failure and returns the instance to normal operation.
+- The policy never repairs, deletes, resigns, or recreates protected material automatically.
+
+Automated tests cover the blocked-operation matrix, local-operator boundary, preservation after failed verification, and successful release after full verification. Productive adapters must map a denied operation to a stable service-unavailable response without exposing the internal failure code.
+
 ## Remaining ADR-012 validation
 
 Before productive audit implementation, the spike still must validate:
@@ -141,7 +155,6 @@ Before productive audit implementation, the spike still must validate:
 - backup and restore runbook validation for database, key bundle, and checkpoint as one recovery set
 - segment transitions and deletion of complete retained segments
 - productive database-loading performance for startup and full verification
-- blocked mode and protected recovery behavior after verification failure
 - package-version-2 binding and transfer separately before audit transfer is implemented
 
 The completed phases validate the encoding, chain, transaction, concurrency, checkpoint-recovery, and key-rotation model candidates. They do not authorize productive role-changing endpoints.
