@@ -64,12 +64,12 @@ Automated tests reject:
 
 The Release probe appends and then verifies 10,000 synthetic events. It does not write a database and is not a production capacity benchmark.
 
-| Environment | Append 10,000 | Verify 10,000 | Golden fixture |
-| --- | ---: | ---: | --- |
-| Windows 11, .NET 10 | 124.8 ms | 123.5 ms | matched |
-| Docker Linux, .NET 10, 2 CPU / 2 GB | 166.9 ms | 138.1 ms | matched |
+| Environment | Append 100,000 | Verify 100,000 | Verify latest 1,000 | Golden fixture |
+| --- | ---: | ---: | ---: | --- |
+| Windows 11, .NET 10 | 968.3 ms | 588.1 ms | 8.6 ms | matched |
+| Docker Linux, .NET 10, 2 CPU / 2 GB | 1,224.8 ms | 617.4 ms | 6.0 ms | matched |
 
-The encoding and HMAC cost is small enough to proceed to persistence validation. Database transactions, locking, storage size, startup verification, and realistically sized journals remain unmeasured.
+The encoding and HMAC cost is small enough for the defined startup and full-verification model. These measurements exclude database reads; productive end-to-end measurements remain required after the final schema and storage adapter exist.
 
 ## Evidence
 
@@ -127,16 +127,20 @@ The tests prove that verification requires both old and new key material and rej
 
 Cloud secret injection remains an operational adapter contract because no specific cloud or orchestrator is selected. Productive code must accept protected key-bundle bytes from deployment-secret configuration without inventing a ScoutCampPlanner cloud-encryption format.
 
+## Persisted multi-segment compatibility
+
+Provider-level spike tables store sequence, predecessor hash, key ID, format version, serialized common event data, and HMAC as separate values. SQLite and PostgreSQL both round-trip a two-key segment transition, reconstruct byte-identical canonical version-1 representations, and verify the complete chain with the retained old and new keys. This validates provider type behavior and JSON value preservation for the current candidate.
+
+The performance baseline uses 100,000 retained events per instance. Full in-memory verification remains well below one second on the Windows development system and close to 0.6 seconds in the constrained Linux container after the events are available in memory. The bounded latest-1,000 startup verification remains below 10 ms in both measurements. Database-loading time must be added to the productive benchmark.
+
 ## Remaining ADR-012 validation
 
 Before productive audit implementation, the spike still must validate:
 
 - productive storage adapters and startup wiring for cloud secret input, the Docker security volume, and Windows DPAPI files
 - backup and restore runbook validation for database, key bundle, and checkpoint as one recovery set
-- persisted provider-level rotation transaction and historic full-chain verification across multiple segments
 - segment transitions and deletion of complete retained segments
-- persistence round trips without canonical-value drift
-- startup incremental verification and full verification at realistic journal sizes
+- productive database-loading performance for startup and full verification
 - blocked mode and protected recovery behavior after verification failure
 - package-version-2 binding and transfer separately before audit transfer is implemented
 

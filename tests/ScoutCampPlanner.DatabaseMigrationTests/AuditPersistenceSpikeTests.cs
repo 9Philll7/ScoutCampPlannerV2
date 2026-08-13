@@ -1,6 +1,8 @@
 using System.Data.Common;
 using Microsoft.Data.Sqlite;
 using Npgsql;
+using ScoutCampPlanner.AuditSecuritySpike;
+using System.Text.Json;
 using Xunit;
 
 namespace ScoutCampPlanner.DatabaseMigrationTests;
@@ -82,6 +84,29 @@ public sealed class AuditPersistenceSpikeTests
         await using var verification = new NpgsqlConnection(connectionString);
         await verification.OpenAsync();
         await AssertContiguousSequencesAsync(verification);
+    }
+
+    [Fact]
+    public async Task Sqlite_roundTripsMultiSegmentChainWithoutCanonicalDrift()
+    {
+        SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_winsqlite3());
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        await AssertMultiSegmentRoundTripAsync(connection, sqlite: true);
+    }
+
+    [Fact]
+    public async Task PostgreSql_roundTripsMultiSegmentChainWithoutCanonicalDrift()
+    {
+        string? connectionString = Environment.GetEnvironmentVariable("SCOUTCAMPPLANNER_POSTGRES_TEST");
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await ExecuteAsync(connection, "DROP TABLE IF EXISTS audit_spike_roundtrip;");
+
+        await AssertMultiSegmentRoundTripAsync(connection, sqlite: false);
     }
 
     private static async Task AssertAtomicRollbackAsync(DbConnection connection)
@@ -174,6 +199,89 @@ public sealed class AuditPersistenceSpikeTests
             "SELECT COUNT(*) FROM audit_spike_concurrent_events"));
         Assert.Equal(ConcurrentAppendCount * (ConcurrentAppendCount + 1) / 2, await ScalarAsync<long>(connection,
             "SELECT SUM(sequence) FROM audit_spike_concurrent_events"));
+    }
+
+    private static async Task AssertMultiSegmentRoundTripAsync(DbConnection connection, bool sqlite)
+    {
+        string binaryType = sqlite ? "BLOB" : "bytea";
+        await ExecuteAsync(connection, $"CREATE TABLE audit_spike_roundtrip(sequence bigint PRIMARY KEY, previous_hash {binaryType} NOT NULL, key_id text NOT NULL, format_version integer NOT NULL, event_json text NOT NULL, hmac {binaryType} NOT NULL);");
+
+        byte[] oldKey = Enumerable.Range(1, 32).Select(value => (byte)value).ToArray();
+        byte[] newKey = Enumerable.Range(33, 32).Select(value => (byte)value).ToArray();
+        var transition = AuditKeyRotation.CreateTransition(
+            Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            Guid.Parse("22222222-2222-2222-2222-222222222222"),
+            1,
+            new byte[32],
+            "old-key",
+            oldKey,
+            "new-key",
+            newKey,
+            Guid.Parse("33333333-3333-3333-3333-333333333333"),
+            Guid.Parse("44444444-4444-4444-4444-444444444444"),
+            new DateTimeOffset(2026, 8, 13, 10, 0, 0, TimeSpan.Zero));
+        AuditChainEntry[] original = [transition.ClosingEntry, transition.StartingEntry];
+        foreach (var entry in original) await InsertAuditEntryAsync(connection, entry);
+
+        var restored = await ReadAuditEntriesAsync(connection);
+        Assert.Equal(original.Length, restored.Count);
+        for (var index = 0; index < original.Length; index++)
+        {
+            Assert.Equal(
+                AuditCanonicalEncoding.Encode(original[index].Sequence, original[index].PreviousHash, original[index].KeyId, original[index].Event),
+                AuditCanonicalEncoding.Encode(restored[index].Sequence, restored[index].PreviousHash, restored[index].KeyId, restored[index].Event));
+        }
+
+        var verification = AuditHmacChain.Verify(restored, new byte[32], restored[^1].Hmac, keyId => keyId switch
+        {
+            "old-key" => oldKey,
+            "new-key" => newKey,
+            _ => null,
+        });
+        Assert.True(verification.IsValid);
+    }
+
+    private static async Task InsertAuditEntryAsync(DbConnection connection, AuditChainEntry entry)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "INSERT INTO audit_spike_roundtrip(sequence, previous_hash, key_id, format_version, event_json, hmac) VALUES (@sequence, @previous, @key, @format, @event, @hmac)";
+        AddParameter(command, "@sequence", entry.Sequence);
+        AddParameter(command, "@previous", entry.PreviousHash);
+        AddParameter(command, "@key", entry.KeyId);
+        AddParameter(command, "@format", entry.FormatVersion);
+        AddParameter(command, "@event", JsonSerializer.Serialize(entry.Event));
+        AddParameter(command, "@hmac", entry.Hmac);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<IReadOnlyList<AuditChainEntry>> ReadAuditEntriesAsync(DbConnection connection)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT sequence, previous_hash, key_id, format_version, event_json, hmac FROM audit_spike_roundtrip ORDER BY sequence";
+        await using var reader = await command.ExecuteReaderAsync();
+        var entries = new List<AuditChainEntry>();
+        while (await reader.ReadAsync())
+        {
+            var auditEvent = JsonSerializer.Deserialize<AuditEventData>(reader.GetString(4))
+                ?? throw new InvalidDataException("Persisted audit event is invalid.");
+            entries.Add(new AuditChainEntry(
+                reader.GetInt64(0),
+                (byte[])reader.GetValue(1),
+                reader.GetString(2),
+                reader.GetInt32(3),
+                auditEvent,
+                (byte[])reader.GetValue(5)));
+        }
+
+        return entries;
+    }
+
+    private static void AddParameter(DbCommand command, string name, object value)
+    {
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = name;
+        parameter.Value = value;
+        command.Parameters.Add(parameter);
     }
 
     private static async Task ExecuteAsync(DbConnection connection, string sql, DbTransaction? transaction = null)

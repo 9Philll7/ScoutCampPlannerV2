@@ -207,6 +207,8 @@ Audit append concurrency follows the validated provider-specific operating model
 
 Audit verification runs incrementally when appending, checks the recent chain section during startup, runs fully for audit export or administrative verification, and can run periodically in the background.
 
+The initial sizing and startup policy uses 100,000 retained events per application instance as the focused validation baseline. Normal startup verifies the protected checkpoint, the most recent completed segment transition, and at most the latest 1,000 events or the smaller uncheckpointed suffix. A full-chain verification is required for audit export and administrative diagnosis and may run periodically in the background; it does not block every normal startup when the bounded checks succeed.
+
 When verification fails:
 
 - the application never silently repairs, deletes, or resigns records
@@ -219,7 +221,7 @@ The chain provides tamper evidence, not absolute protection. An actor controllin
 
 ### Required technical validation
 
-The focused validation is recorded in [`audit-security-validation.md`](../spike/audit-security-validation.md). Phase 1 confirms a dependency-free canonical UTF-8 JSON candidate, identical golden bytes on Windows and Linux, HMAC-chain verification, manipulation detection, and initial in-memory performance. Phase 2 confirms atomic business/event/database-head transactions, idempotent recovery after interrupted external-checkpoint advancement, and safe concurrent append allocation using a SQLite process gate and PostgreSQL head-row locking. Phase 3 confirms prepared-key staging, bidirectionally signed segment boundaries, historic verification, rotation recovery, versioned key-bundle and authenticated-checkpoint files, atomic file replacement, Windows CurrentUser DPAPI, and a non-root Docker security volume isolated from PostgreSQL. Productive storage wiring, persisted rotation, segment retention, blocked mode, and package binding remain open; therefore the complete spike is not yet accepted.
+The focused validation is recorded in [`audit-security-validation.md`](../spike/audit-security-validation.md). Phase 1 confirms a dependency-free canonical UTF-8 JSON candidate, identical golden bytes on Windows and Linux, HMAC-chain verification, manipulation detection, and initial in-memory performance. Phase 2 confirms atomic business/event/database-head transactions, idempotent recovery after interrupted external-checkpoint advancement, and safe concurrent append allocation using a SQLite process gate and PostgreSQL head-row locking. Phase 3 confirms prepared-key staging, bidirectionally signed segment boundaries, historic verification, rotation recovery, versioned key-bundle and authenticated-checkpoint files, atomic file replacement, Windows CurrentUser DPAPI, and a non-root Docker security volume isolated from PostgreSQL. Provider round trips preserve canonical bytes across a persisted multi-segment transition, and the 100,000-event performance baseline supports the bounded 1,000-event startup policy. Productive storage wiring and database-loading benchmarks, segment retention, blocked mode, and package binding remain open; therefore the complete spike is not yet accepted.
 
 Before implementation, a focused security spike must validate:
 

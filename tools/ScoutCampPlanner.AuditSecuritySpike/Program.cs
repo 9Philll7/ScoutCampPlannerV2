@@ -3,7 +3,8 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using ScoutCampPlanner.AuditSecuritySpike;
 
-const int eventCount = 10_000;
+const int eventCount = 100_000;
+const int startupVerificationLimit = 1_000;
 const string expectedGoldenHash = "A4B35365C0824C46D93804CAC8CB33C98F632C2FB76D053ACA0F562E107B4C0E";
 var goldenEvent = new AuditEventData(
     Guid.Parse("11111111-1111-1111-1111-111111111111"),
@@ -64,13 +65,26 @@ var appendDuration = stopwatch.Elapsed;
 stopwatch.Restart();
 var verification = AuditHmacChain.Verify(entries, new byte[32], head, keyId => keyId == "spike-key-1" ? key : null);
 stopwatch.Stop();
+var fullVerificationDuration = stopwatch.Elapsed;
+int startupStartIndex = Math.Max(0, entries.Count - startupVerificationLimit);
+byte[] startupPredecessor = startupStartIndex == 0 ? new byte[32] : entries[startupStartIndex - 1].Hmac;
+stopwatch.Restart();
+var startupVerification = AuditHmacChain.Verify(
+    entries.GetRange(startupStartIndex, entries.Count - startupStartIndex),
+    startupPredecessor,
+    head,
+    keyId => keyId == "spike-key-1" ? key : null);
+stopwatch.Stop();
 CryptographicOperations.ZeroMemory(key);
 
 Console.WriteLine(JsonSerializer.Serialize(new
 {
     eventCount,
     appendMilliseconds = appendDuration.TotalMilliseconds,
-    verificationMilliseconds = stopwatch.Elapsed.TotalMilliseconds,
-    verification.IsValid,
+    fullVerificationMilliseconds = fullVerificationDuration.TotalMilliseconds,
+    startupVerificationCount = entries.Count - startupStartIndex,
+    startupVerificationMilliseconds = stopwatch.Elapsed.TotalMilliseconds,
+    fullVerificationValid = verification.IsValid,
+    startupVerificationValid = startupVerification.IsValid,
     goldenCanonicalSha256 = goldenHash,
 }, new JsonSerializerOptions { WriteIndented = true }));
