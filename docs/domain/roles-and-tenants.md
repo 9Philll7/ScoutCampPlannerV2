@@ -38,6 +38,8 @@ Initial camp roles:
 
 Tenant roles do not automatically grant camp-content access. Every camp access requires an explicit camp membership. No initial role automatically grants access to future health data.
 
+When a camp is created, the creator does not automatically receive a camp role. The creating user must have `tenant.camps.create`; assigning the initial camp members additionally requires `tenant.camps.assign-members`. At least one active member of the same tenant must be assigned `CampAdmin` atomically with creation so that the camp is not left without an administrator. The selected administrator may be the creator or another active tenant member.
+
 The catalogue can grow with implemented modules. New roles and permissions must document their scope, assignment authority, offline behavior, and sensitive-data impact.
 
 Initial tenant permissions:

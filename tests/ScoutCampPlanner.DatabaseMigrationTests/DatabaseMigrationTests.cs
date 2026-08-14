@@ -39,16 +39,18 @@ public sealed class DatabaseMigrationTests
         await MigrateToCurrentAsync(databases);
         await AssertBaselineDataAsync(databases, identities);
 
-        Assert.Equal(5, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_platform"));
-        Assert.Equal(2, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_camp"));
+        Assert.Equal(6, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_platform"));
+        Assert.Equal(3, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_camp"));
         Assert.Equal(2, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_catering"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_Camps_TenantId_Name'"));
+        Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_Camps_TenantId_NormalizedName_StartDate_EndDate'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_MealPlans_CampId'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_UserAccounts_NormalizedEmail'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_TenantMemberships_UserId_TenantId'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_TenantRoleAssignments_MembershipId'"));
         Assert.Equal(3, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('AuditEvents', 'AuditJournalHeads', 'AuditSegments')"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'AuthenticationSessions'"));
+        Assert.Equal(2, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('CampMemberships', 'CampRoleAssignments')"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_AuditEvents_InstanceId_EventId'"));
 
         await MigrateToCurrentAsync(databases);
@@ -75,16 +77,18 @@ public sealed class DatabaseMigrationTests
         await MigrateToCurrentAsync(databases);
         await AssertBaselineDataAsync(databases, identities);
 
-        Assert.Equal(5, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM platform.\"__EFMigrationsHistory\""));
-        Assert.Equal(2, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM camp.\"__EFMigrationsHistory\""));
+        Assert.Equal(6, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM platform.\"__EFMigrationsHistory\""));
+        Assert.Equal(3, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM camp.\"__EFMigrationsHistory\""));
         Assert.Equal(2, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM catering.\"__EFMigrationsHistory\""));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'camp' AND indexname = 'IX_Camps_TenantId_Name'"));
+        Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'camp' AND indexname = 'IX_Camps_TenantId_NormalizedName_StartDate_EndDate'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'catering' AND indexname = 'IX_MealPlans_CampId'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'platform' AND indexname = 'IX_UserAccounts_NormalizedEmail'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'platform' AND indexname = 'IX_TenantMemberships_UserId_TenantId'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'platform' AND indexname = 'IX_TenantRoleAssignments_MembershipId'"));
         Assert.Equal(3, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'platform' AND table_name IN ('AuditEvents', 'AuditJournalHeads', 'AuditSegments')"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'platform' AND table_name = 'AuthenticationSessions'"));
+        Assert.Equal(2, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'platform' AND table_name IN ('CampMemberships', 'CampRoleAssignments')"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'platform' AND indexname = 'IX_AuditEvents_InstanceId_EventId'"));
 
         await AssertConcurrentProductivePostgreSqlAuditAppendsAsync(connectionString, databases.Platform);
@@ -142,10 +146,19 @@ public sealed class DatabaseMigrationTests
     {
         var identities = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
         databases.Platform.Tenants.Add(new Tenant(identities.Item1, "Migration Tenant"));
-        databases.Camp.Camps.Add(new Camp.Domain.Camp(identities.Item2, identities.Item1, "Migration Camp"));
         databases.Camp.CookingUnits.Add(new CookingUnit(identities.Item3, identities.Item2, "Migration Unit"));
         databases.Catering.MealPlans.Add(new MealPlan(identities.Item4, identities.Item2, "Migration Meal"));
         await databases.Platform.SaveChangesAsync();
+        if (databases.Camp.Database.IsNpgsql())
+            await databases.Camp.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO camp."Camps" ("Id", "TenantId", "Name", "IsFrozen", "ActiveTransferId", "BaselineVersion")
+                VALUES ({identities.Item2}, {identities.Item1}, {"Migration Camp"}, {false}, {null}, {0L})
+                """);
+        else
+            await databases.Camp.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO "Camps" ("Id", "TenantId", "Name", "IsFrozen", "ActiveTransferId", "BaselineVersion")
+                VALUES ({identities.Item2}, {identities.Item1}, {"Migration Camp"}, {false}, {null}, {0L})
+                """);
         await databases.Camp.SaveChangesAsync();
         await databases.Catering.SaveChangesAsync();
         return identities;

@@ -56,7 +56,9 @@ public sealed class CampPackageService(
             if (!await platform.Tenants.AnyAsync(x => x.Id == package.Tenant.Id, cancellationToken))
                 platform.Tenants.Add(new Tenant(package.Tenant.Id, package.Tenant.Name));
 
-            var importedCamp = new Camp.Domain.Camp(package.Camp.Id, package.Camp.TenantId, package.Camp.Name);
+            var importedCamp = new Camp.Domain.Camp(
+                package.Camp.Id, package.Camp.TenantId, package.Camp.Name,
+                package.Camp.StartDate, package.Camp.EndDate);
             importedCamp.Freeze(package.Manifest.TransferId);
             camp.Camps.Add(importedCamp);
             camp.CookingUnits.AddRange(package.CookingUnits.Select(x => new CookingUnit(x.Id, x.CampId, x.Name)));
@@ -126,7 +128,11 @@ public sealed class CampPackageService(
             entity.ActiveTransferId!.Value, entity.BaselineVersion, direction, IncludedModules,
             timeProvider.GetUtcNow());
         return CampPackageSerializer.Serialize(new CampPackagePayload(manifest,
-            new TenantData(tenant.Id, tenant.Name), new CampData(entity.Id, entity.TenantId, entity.Name), units, meals));
+            new TenantData(tenant.Id, tenant.Name), new CampData(
+                entity.Id, entity.TenantId, entity.Name,
+                entity.StartDate ?? throw new InvalidOperationException("Legacy camps without a period cannot be exported."),
+                entity.EndDate ?? throw new InvalidOperationException("Legacy camps without a period cannot be exported.")),
+            units, meals));
     }
 
     private async Task EnlistAsync(IDbContextTransaction transaction, CancellationToken cancellationToken)

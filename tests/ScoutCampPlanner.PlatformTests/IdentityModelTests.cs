@@ -10,6 +10,13 @@ namespace ScoutCampPlanner.PlatformTests;
 public sealed class IdentityModelTests
 {
     [Fact]
+    public void CampRejectsEndDateBeforeStartDate()
+    {
+        Assert.Throws<ArgumentException>(() => new ScoutCampPlanner.Camp.Domain.Camp(
+            Guid.NewGuid(), Guid.NewGuid(), "Test", new DateOnly(2027, 7, 14), new DateOnly(2027, 7, 1)));
+    }
+
+    [Fact]
     public void UserAccount_retainsTrimmedDisplayEmailAndNormalizesLookupEmail()
     {
         var account = new UserAccount(Guid.NewGuid(), "  Max.Example@example.com  ");
@@ -28,6 +35,19 @@ public sealed class IdentityModelTests
         membership.Remove();
 
         Assert.Equal(TenantMembershipState.Removed, membership.State);
+        Assert.Throws<InvalidOperationException>(membership.Restore);
+        Assert.Throws<InvalidOperationException>(membership.Suspend);
+    }
+
+    [Fact]
+    public void RemovedCampMembershipCannotBeRestored()
+    {
+        var membership = new CampMembership(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        membership.Suspend();
+        membership.Restore();
+        membership.Remove();
+
+        Assert.Equal(CampMembershipState.Removed, membership.State);
         Assert.Throws<InvalidOperationException>(membership.Restore);
         Assert.Throws<InvalidOperationException>(membership.Suspend);
     }

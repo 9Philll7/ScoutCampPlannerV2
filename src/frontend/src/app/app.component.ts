@@ -3,12 +3,14 @@ import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSelectModule } from '@angular/material/select';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { AuthenticationApiService, AuthenticatedUser } from './features/authentication/authentication-api.service';
-import { CampApiService, CampSummary } from './features/camp/camp-api.service';
+import { CampAdministratorOption, CampApiService, CampSummary, TenantOption } from './features/camp/camp-api.service';
 import { SetupApiService } from './features/setup/setup-api.service';
 
 type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
@@ -16,8 +18,8 @@ type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
 @Component({
   selector: 'scp-root',
   standalone: true,
-  imports: [FormsModule, MatButtonModule, MatCardModule, MatFormFieldModule, MatInputModule,
-    MatProgressSpinnerModule, MatToolbarModule],
+  imports: [FormsModule, MatButtonModule, MatCardModule, MatCheckboxModule, MatFormFieldModule, MatInputModule,
+    MatProgressSpinnerModule, MatSelectModule, MatToolbarModule],
   template: `
     <mat-toolbar color="primary">
       <span>ScoutCampPlanner</span>
@@ -75,11 +77,56 @@ type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
         }
         @case ('application') {
           <h1>Lager</h1>
+          @if (tenants().length > 1) {
+            <mat-form-field appearance="outline"><mat-label>Organisation</mat-label>
+              <mat-select [ngModel]="selectedTenant()?.id" (ngModelChange)="selectTenant($event)">
+                @for (tenant of tenants(); track tenant.id) { <mat-option [value]="tenant.id">{{ tenant.name }}</mat-option> }
+              </mat-select>
+            </mat-form-field>
+          }
           @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
+          @if (notice()) { <p role="status">{{ notice() }}</p> }
+          @if (selectedTenant(); as tenant) {
+            <mat-card>
+              <mat-card-header>
+                <mat-card-title>Neues Lager anlegen</mat-card-title>
+                <mat-card-subtitle>{{ tenant.name }}</mat-card-subtitle>
+              </mat-card-header>
+              <mat-card-content>
+                <form id="create-camp" (ngSubmit)="createCamp()">
+                  <mat-form-field appearance="outline"><mat-label>Name des Lagers</mat-label>
+                    <input matInput name="campName" [(ngModel)]="campName" maxlength="200" required>
+                  </mat-form-field>
+                  <mat-form-field appearance="outline"><mat-label>Startdatum</mat-label>
+                    <input matInput name="campStartDate" [(ngModel)]="campStartDate" type="date" required>
+                  </mat-form-field>
+                  <mat-form-field appearance="outline"><mat-label>Enddatum</mat-label>
+                    <input matInput name="campEndDate" [(ngModel)]="campEndDate" type="date" required>
+                  </mat-form-field>
+                  <p>Mindestens einen Camp-Administrator auswählen:</p>
+                  @for (candidate of administratorCandidates(); track candidate.membershipId) {
+                    <mat-checkbox [checked]="isAdministratorSelected(candidate.membershipId)"
+                      (change)="setAdministratorSelected(candidate.membershipId, $event.checked)">
+                      {{ candidate.email }}
+                    </mat-checkbox>
+                  } @empty {
+                    <p>Keine berechtigten Mitglieder verfügbar.</p>
+                  }
+                </form>
+              </mat-card-content>
+              <mat-card-actions align="end">
+                <button matButton="filled" form="create-camp" type="submit" [disabled]="submitting()">Lager anlegen</button>
+              </mat-card-actions>
+            </mat-card>
+          }
           @for (camp of camps(); track camp.id) {
             <mat-card><mat-card-header><mat-card-title>{{ camp.name }}</mat-card-title></mat-card-header>
-              <mat-card-content><p>{{ camp.isFrozen ? 'Offlinephase aktiv' : 'Online bearbeitbar' }}</p></mat-card-content>
-              <mat-card-actions><button matButton="filled" [disabled]="camp.isFrozen" (click)="exportCamp(camp)">Offlinepaket erstellen</button></mat-card-actions>
+              <mat-card-content>
+                <p>{{ camp.startDate && camp.endDate ? camp.startDate + ' bis ' + camp.endDate : 'Legacy-Lager ohne Zeitraum' }}</p>
+                <p>{{ camp.isFrozen ? 'Offlinephase aktiv' : 'Online bearbeitbar' }}</p>
+              </mat-card-content>
+              <mat-card-actions><button matButton="filled" [disabled]="camp.isFrozen || !camp.startDate || !camp.endDate"
+                (click)="exportCamp(camp)">Offlinepaket erstellen</button></mat-card-actions>
             </mat-card>
           } @empty { <p>Noch keine Lager vorhanden.</p> }
         }
@@ -100,11 +147,19 @@ export class AppComponent {
   readonly state = signal<ViewState>('loading');
   readonly submitting = signal(false);
   readonly error = signal<string | null>(null);
+  readonly notice = signal<string | null>(null);
   readonly user = signal<AuthenticatedUser | null>(null);
   readonly camps = signal<CampSummary[]>([]);
+  readonly tenants = signal<TenantOption[]>([]);
+  readonly selectedTenant = signal<TenantOption | null>(null);
+  readonly administratorCandidates = signal<CampAdministratorOption[]>([]);
+  readonly selectedAdministratorIds = signal<ReadonlySet<string>>(new Set());
   tenantName = '';
   email = '';
   password = '';
+  campName = '';
+  campStartDate = '';
+  campEndDate = '';
 
   constructor() { this.initialize(); }
 
@@ -157,6 +212,58 @@ export class AppComponent {
     });
   }
 
+  isAdministratorSelected(membershipId: string) {
+    return this.selectedAdministratorIds().has(membershipId);
+  }
+
+  setAdministratorSelected(membershipId: string, selected: boolean) {
+    const next = new Set(this.selectedAdministratorIds());
+    selected ? next.add(membershipId) : next.delete(membershipId);
+    this.selectedAdministratorIds.set(next);
+  }
+
+  createCamp() {
+    const tenant = this.selectedTenant();
+    if (!tenant || this.submitting()) return;
+    this.submitting.set(true); this.error.set(null); this.notice.set(null);
+    const selectedAdministratorIds = [...this.selectedAdministratorIds()];
+    this.campApi.create(tenant.id, {
+      name: this.campName,
+      startDate: this.campStartDate,
+      endDate: this.campEndDate,
+      initialAdministratorMembershipIds: selectedAdministratorIds
+    }).subscribe({
+      next: camp => {
+        this.submitting.set(false); this.campName = ''; this.campStartDate = ''; this.campEndDate = '';
+        this.selectedAdministratorIds.set(new Set());
+        const currentUserIsAdmin = this.administratorCandidates().some(candidate =>
+          candidate.userId === this.user()?.userId && selectedAdministratorIds.includes(candidate.membershipId));
+        this.notice.set(currentUserIsAdmin
+          ? 'Das Lager wurde angelegt.'
+          : 'Das Lager wurde angelegt. Du hast dir selbst keinen Camp-Zugriff zugewiesen.');
+        this.loadCamps(tenant.id);
+      },
+      error: (response: HttpErrorResponse) => {
+        this.submitting.set(false);
+        const errors = response.error?.errors as Record<string, string[]> | undefined;
+        this.error.set(response.status === 403 ? 'Du darfst in diesem Mandanten kein Lager anlegen.' :
+          errors ? Object.values(errors).flat()[0] ?? 'Die Eingaben sind ungültig.' : 'Das Lager konnte nicht angelegt werden.');
+      }
+    });
+  }
+
+  selectTenant(tenantId: string) {
+    const tenant = this.tenants().find(candidate => candidate.id === tenantId) ?? null;
+    this.selectedTenant.set(tenant); this.camps.set([]); this.administratorCandidates.set([]);
+    this.selectedAdministratorIds.set(new Set()); this.error.set(null); this.notice.set(null);
+    if (!tenant) return;
+    this.loadCamps(tenant.id);
+    this.campApi.listAdministratorCandidates(tenant.id).subscribe({
+      next: candidates => this.administratorCandidates.set(candidates),
+      error: () => this.administratorCandidates.set([])
+    });
+  }
+
   private loadSession() {
     this.authenticationApi.current().subscribe({
       next: user => this.openApplication(user),
@@ -167,14 +274,33 @@ export class AppComponent {
   private openApplication(user: AuthenticatedUser) {
     this.user.set(user);
     this.state.set('application');
-    this.campApi.list().subscribe({
+    this.campApi.listTenants().subscribe({
+      next: tenants => {
+        this.tenants.set(tenants);
+        const tenant = tenants[0] ?? null;
+        this.selectedTenant.set(tenant);
+        if (!tenant) { this.error.set('Für dieses Konto ist kein aktiver Mandant verfügbar.'); return; }
+        this.loadCamps(tenant.id);
+        this.campApi.listAdministratorCandidates(tenant.id).subscribe({
+          next: candidates => this.administratorCandidates.set(candidates),
+          error: () => this.administratorCandidates.set([])
+        });
+      },
+      error: () => this.error.set('Die Mandanten konnten nicht geladen werden.')
+    });
+  }
+
+  private loadCamps(tenantId: string) {
+    this.campApi.list(tenantId).subscribe({
       next: camps => this.camps.set(camps),
       error: () => this.error.set('Die Lager konnten nicht geladen werden.')
     });
   }
 
   private clearSession() {
-    this.user.set(null); this.camps.set([]); this.error.set(null); this.state.set('login');
+    this.user.set(null); this.camps.set([]); this.tenants.set([]); this.selectedTenant.set(null);
+    this.administratorCandidates.set([]); this.selectedAdministratorIds.set(new Set());
+    this.error.set(null); this.notice.set(null); this.state.set('login');
   }
 
   private showUnavailable() {

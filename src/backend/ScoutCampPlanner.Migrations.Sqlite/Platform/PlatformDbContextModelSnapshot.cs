@@ -17,6 +17,48 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Platform
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.5");
 
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.CampMembership", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CampId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("State")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("TenantMembershipId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampId");
+
+                    b.HasIndex("TenantMembershipId");
+
+                    b.HasIndex("TenantMembershipId", "CampId")
+                        .IsUnique()
+                        .HasFilter("\"State\" <> 2");
+
+                    b.ToTable("CampMemberships", (string)null);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.CampRoleAssignment", b =>
+                {
+                    b.Property<Guid>("MembershipId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RoleIdentifier")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("MembershipId", "RoleIdentifier");
+
+                    b.ToTable("CampRoleAssignments", (string)null);
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.Tenant", b =>
                 {
                     b.Property<Guid>("Id")
@@ -328,6 +370,24 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Platform
                     b.HasKey("UserId");
 
                     b.ToTable("PasswordCredentials", (string)null);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.CampMembership", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Platform.Domain.TenantMembership", null)
+                        .WithMany()
+                        .HasForeignKey("TenantMembershipId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.CampRoleAssignment", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Platform.Domain.CampMembership", null)
+                        .WithMany()
+                        .HasForeignKey("MembershipId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.TenantMembership", b =>

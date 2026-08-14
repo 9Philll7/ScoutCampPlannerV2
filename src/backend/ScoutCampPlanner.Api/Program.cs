@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using ScoutCampPlanner.Api.Camps;
 using ScoutCampPlanner.Camp.Infrastructure;
 using ScoutCampPlanner.Catering.Infrastructure;
 using ScoutCampPlanner.Migrations.PostgreSql;
@@ -82,6 +83,7 @@ builder.Services.AddDbContext<PlatformDbContext>((services, options) => Configur
 builder.Services.AddDbContext<CampDbContext>((services, options) => Configure(options, services.GetRequiredService<DbConnection>(), provider, "camp"));
 builder.Services.AddDbContext<CateringDbContext>((services, options) => Configure(options, services.GetRequiredService<DbConnection>(), provider, "catering"));
 builder.Services.AddScoped<CampPackageService>();
+builder.Services.AddScoped<CampManagementService>();
 builder.Services.AddSingleton<IPasswordPolicy, PasswordPolicy>();
 builder.Services.AddSingleton<IPasswordVerifier>(
     _ => new Argon2idPasswordVerifier(Argon2idOperatingMode.Server));
@@ -203,11 +205,60 @@ app.MapDelete("/api/session", async (
     await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     return Results.NoContent();
 }).RequireAuthorization();
-app.MapGet("/api/camps", async (CampDbContext db, CancellationToken cancellationToken) =>
-    await db.Camps.Select(x => new { x.Id, x.TenantId, x.Name, x.IsFrozen }).ToListAsync(cancellationToken))
+app.MapGet("/api/tenants", async (
+    ClaimsPrincipal principal, CampManagementService management, CancellationToken cancellationToken) =>
+    await management.ListTenantsAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken))
     .RequireAuthorization();
-app.MapPost("/api/camps/{campId:guid}/offline-package", async (Guid campId, CampPackageService packages, CancellationToken cancellationToken) =>
-    Results.File(await packages.StartOfflineTransferAsync(campId, cancellationToken), "application/vnd.scoutcampplanner.camp-package", $"camp-{campId}.scoutcamp"))
+app.MapGet("/api/tenants/{tenantId:guid}/camp-administrator-candidates", async (
+    Guid tenantId, ClaimsPrincipal principal, CampManagementService management, CancellationToken cancellationToken) =>
+    await management.ListAdministratorCandidatesAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), tenantId, cancellationToken))
+    .RequireAuthorization();
+app.MapGet("/api/tenants/{tenantId:guid}/camps", async (
+    Guid tenantId, ClaimsPrincipal principal, CampManagementService management, CancellationToken cancellationToken) =>
+    await management.ListCampsAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), tenantId, cancellationToken))
+    .RequireAuthorization();
+app.MapPost("/api/tenants/{tenantId:guid}/camps", async (
+    Guid tenantId, CreateCampRequest request, ClaimsPrincipal principal,
+    CampManagementService management, CancellationToken cancellationToken) =>
+{
+    CreateCampResult result = await management.CreateAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), tenantId, request, cancellationToken);
+    if (result.IsSuccessful)
+        return Results.Created($"/api/tenants/{tenantId}/camps/{result.Camp!.Id}", result.Camp);
+    return result.Failure == CreateCampFailure.Forbidden
+        ? Results.Forbid()
+        : Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            [result.Failure switch
+            {
+                CreateCampFailure.InvalidName => "name",
+                CreateCampFailure.InvalidPeriod or CreateCampFailure.DuplicateCamp => "period",
+                _ => "initialAdministratorMembershipIds",
+            }] =
+                [result.Failure switch
+                {
+                    CreateCampFailure.InvalidName => "Bitte gib einen Lagernamen mit höchstens 200 Zeichen ein.",
+                    CreateCampFailure.InvalidPeriod => "Das Enddatum darf nicht vor dem Startdatum liegen.",
+                    CreateCampFailure.DuplicateCamp => "Ein Lager mit diesem Namen und Zeitraum existiert bereits.",
+                    CreateCampFailure.MissingAdministrator => "Wähle mindestens einen Camp-Administrator aus.",
+                    _ => "Die ausgewählten Camp-Administratoren sind nicht gültig.",
+                }]
+        });
+}).RequireAuthorization();
+app.MapGet("/api/camps", () => Results.BadRequest(new { code = "tenant_context_required" }))
+    .RequireAuthorization();
+app.MapPost("/api/camps/{campId:guid}/offline-package", async (
+    Guid campId, ClaimsPrincipal principal, CampManagementService management,
+    CampPackageService packages, CancellationToken cancellationToken) =>
+    await management.HasCampPermissionAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId,
+        ScoutCampPlanner.Platform.Application.Authorization.Permissions.Camp.ExportPackage, cancellationToken)
+        ? Results.File(await packages.StartOfflineTransferAsync(campId, cancellationToken),
+            "application/vnd.scoutcampplanner.camp-package", $"camp-{campId}.scoutcamp")
+        : Results.NotFound())
     .RequireAuthorization();
 app.MapPost("/api/packages/import-initial", async (HttpRequest request, CampPackageService packages, CancellationToken cancellationToken) =>
 {

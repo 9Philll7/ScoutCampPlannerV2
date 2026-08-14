@@ -29,6 +29,9 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Camp
                     b.Property<long>("BaselineVersion")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateOnly?>("EndDate")
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("IsFrozen")
                         .HasColumnType("INTEGER");
 
@@ -37,12 +40,22 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Camp
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("NormalizedName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly?>("StartDate")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId", "Name");
+
+                    b.HasIndex("TenantId", "NormalizedName", "StartDate", "EndDate")
+                        .IsUnique();
 
                     b.ToTable("Camps", (string)null);
                 });

@@ -32,7 +32,7 @@ public sealed record CampPackagePayload(
     IReadOnlyList<MealPlanData> MealPlans);
 
 public sealed record TenantData(Guid Id, string Name);
-public sealed record CampData(Guid Id, Guid TenantId, string Name);
+public sealed record CampData(Guid Id, Guid TenantId, string Name, DateOnly StartDate, DateOnly EndDate);
 public sealed record CookingUnitData(Guid Id, Guid CampId, string Name);
 public sealed record MealPlanData(Guid Id, Guid CampId, string Name);
 

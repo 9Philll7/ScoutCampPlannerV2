@@ -55,7 +55,8 @@ public sealed class CampPackageTests
         var cookingUnitId = Guid.NewGuid();
         var mealId = Guid.NewGuid();
         cloud.Platform.Tenants.Add(new Tenant(tenantId, "Stamm Nord"));
-        cloud.Camp.Camps.Add(new Camp.Domain.Camp(campId, tenantId, "Sommerlager"));
+        cloud.Camp.Camps.Add(new Camp.Domain.Camp(
+            campId, tenantId, "Sommerlager", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14)));
         cloud.Camp.CookingUnits.Add(new CookingUnit(cookingUnitId, campId, "Küche Nord"));
         cloud.Catering.MealPlans.Add(new MealPlan(mealId, campId, "Montag"));
         await cloud.SaveAsync();
@@ -79,6 +80,8 @@ public sealed class CampPackageTests
         Assert.Equal(cookingUnitId, importedUnit.Id);
         Assert.Equal(mealId, importedMeal.Id);
         Assert.Equal("Montag offline geändert", importedMeal.Name);
+        Assert.Equal(new DateOnly(2027, 7, 1), completedCamp.StartDate);
+        Assert.Equal(new DateOnly(2027, 7, 14), completedCamp.EndDate);
         Assert.False(completedCamp.IsFrozen);
     }
 
@@ -89,7 +92,8 @@ public sealed class CampPackageTests
         var tenantId = Guid.NewGuid();
         var campId = Guid.NewGuid();
         cloud.Platform.Tenants.Add(new Tenant(tenantId, "Stamm Süd"));
-        cloud.Camp.Camps.Add(new Camp.Domain.Camp(campId, tenantId, "Pfingstlager"));
+        cloud.Camp.Camps.Add(new Camp.Domain.Camp(
+            campId, tenantId, "Pfingstlager", new DateOnly(2027, 5, 14), new DateOnly(2027, 5, 17)));
         cloud.Catering.MealPlans.Add(new MealPlan(Guid.NewGuid(), campId, "Original"));
         await cloud.SaveAsync();
         var initial = await cloud.Packages.StartOfflineTransferAsync(campId);
@@ -110,7 +114,8 @@ public sealed class CampPackageTests
         return new CampPackagePayload(
             new CampPackageManifest(1, tenantId, campId, Guid.NewGuid(), 1, CampPackageDirection.CloudToLocal,
                 ["Camp", "Catering"], DateTimeOffset.UtcNow),
-            new TenantData(tenantId, "Tenant"), new CampData(campId, tenantId, "Camp"), [], []);
+            new TenantData(tenantId, "Tenant"), new CampData(
+                campId, tenantId, "Camp", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14)), [], []);
     }
 
     private sealed class DatabaseHarness : IAsyncDisposable

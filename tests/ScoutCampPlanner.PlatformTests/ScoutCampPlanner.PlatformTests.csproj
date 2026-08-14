@@ -11,5 +11,6 @@
     <ProjectReference Include="../../src/backend/ScoutCampPlanner.Platform.Domain/ScoutCampPlanner.Platform.Domain.csproj" />
     <ProjectReference Include="../../src/backend/ScoutCampPlanner.Platform.Application/ScoutCampPlanner.Platform.Application.csproj" />
     <ProjectReference Include="../../src/backend/ScoutCampPlanner.Platform.Infrastructure/ScoutCampPlanner.Platform.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/backend/ScoutCampPlanner.Api/ScoutCampPlanner.Api.csproj" />
   </ItemGroup>
 </Project>

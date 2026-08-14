@@ -58,6 +58,9 @@ public static class CampPackageSerializer
             throw new CampPackageValidationException("Manifest identity does not match package data.");
         if (package.Camp.TenantId != package.Tenant.Id)
             throw new CampPackageValidationException("Camp does not belong to package tenant.");
+        if (package.Camp.StartDate == default || package.Camp.EndDate == default ||
+            package.Camp.EndDate < package.Camp.StartDate)
+            throw new CampPackageValidationException("Camp period is invalid or missing.");
         if (package.CookingUnits.Any(x => x.CampId != package.Camp.Id) || package.MealPlans.Any(x => x.CampId != package.Camp.Id))
             throw new CampPackageValidationException("Package contains data for another camp.");
         var expectedModules = new[] { "Camp", "Catering" };

@@ -12,6 +12,8 @@ public sealed class PlatformDbContext(DbContextOptions<PlatformDbContext> option
     public DbSet<UserAccount> UserAccounts => Set<UserAccount>();
     public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
     public DbSet<TenantRoleAssignment> TenantRoleAssignments => Set<TenantRoleAssignment>();
+    public DbSet<CampMembership> CampMemberships => Set<CampMembership>();
+    public DbSet<CampRoleAssignment> CampRoleAssignments => Set<CampRoleAssignment>();
     public DbSet<PasswordCredential> PasswordCredentials => Set<PasswordCredential>();
     public DbSet<AuthenticationSession> AuthenticationSessions => Set<AuthenticationSession>();
     public DbSet<AuditEventRecord> AuditEvents => Set<AuditEventRecord>();
@@ -57,6 +59,25 @@ public sealed class PlatformDbContext(DbContextOptions<PlatformDbContext> option
             entity.HasIndex(x => x.MembershipId)
                 .IsUnique()
                 .HasFilter("\"RoleIdentifier\" IN ('TenantOwner', 'TenantAdmin', 'TenantMember')");
+        });
+        modelBuilder.Entity<CampMembership>(entity =>
+        {
+            entity.ToTable("CampMemberships");
+            entity.HasKey(x => x.Id);
+            entity.HasOne<TenantMembership>().WithMany().HasForeignKey(x => x.TenantMembershipId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(x => x.TenantMembershipId);
+            entity.HasIndex(x => x.CampId);
+            entity.HasIndex(x => new { x.TenantMembershipId, x.CampId })
+                .IsUnique().HasFilter("\"State\" <> 2");
+        });
+        modelBuilder.Entity<CampRoleAssignment>(entity =>
+        {
+            entity.ToTable("CampRoleAssignments");
+            entity.HasKey(x => new { x.MembershipId, x.RoleIdentifier });
+            entity.Property(x => x.RoleIdentifier).HasMaxLength(100);
+            entity.HasOne<CampMembership>().WithMany().HasForeignKey(x => x.MembershipId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<PasswordCredential>(entity =>
         {

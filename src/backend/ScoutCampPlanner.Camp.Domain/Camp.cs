@@ -12,11 +12,24 @@ public sealed class Camp
         Id = id;
         TenantId = tenantId;
         Name = name.Trim();
+        NormalizedName = Name.ToUpperInvariant();
+    }
+
+    public Camp(Guid id, Guid tenantId, string name, DateOnly startDate, DateOnly endDate)
+        : this(id, tenantId, name)
+    {
+        if (endDate < startDate)
+            throw new ArgumentException("Camp end date must not precede its start date.", nameof(endDate));
+        StartDate = startDate;
+        EndDate = endDate;
     }
 
     public Guid Id { get; private set; }
     public Guid TenantId { get; private set; }
     public string Name { get; private set; } = string.Empty;
+    public string? NormalizedName { get; private set; }
+    public DateOnly? StartDate { get; private set; }
+    public DateOnly? EndDate { get; private set; }
     public bool IsFrozen { get; private set; }
     public Guid? ActiveTransferId { get; private set; }
     public long BaselineVersion { get; private set; }

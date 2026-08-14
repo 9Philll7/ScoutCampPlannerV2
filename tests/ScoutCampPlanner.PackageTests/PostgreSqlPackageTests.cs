@@ -39,7 +39,8 @@ public sealed class PostgreSqlPackageTests
         var unitId = Guid.NewGuid();
         var mealId = Guid.NewGuid();
         platform.Tenants.Add(new Tenant(tenantId, "PostgreSQL Tenant"));
-        camp.Camps.Add(new Camp.Domain.Camp(campId, tenantId, "PostgreSQL Camp"));
+        camp.Camps.Add(new Camp.Domain.Camp(
+            campId, tenantId, "PostgreSQL Camp", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14)));
         camp.CookingUnits.Add(new CookingUnit(unitId, campId, "Unit"));
         catering.MealPlans.Add(new MealPlan(mealId, campId, "Original"));
         await platform.SaveChangesAsync();

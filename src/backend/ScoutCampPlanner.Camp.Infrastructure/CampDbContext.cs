@@ -18,7 +18,9 @@ public sealed class CampDbContext(DbContextOptions<CampDbContext> options) : DbC
             entity.ToTable("Camps");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(200);
+            entity.Property(x => x.NormalizedName).HasMaxLength(200);
             entity.HasIndex(x => new { x.TenantId, x.Name });
+            entity.HasIndex(x => new { x.TenantId, x.NormalizedName, x.StartDate, x.EndDate }).IsUnique();
         });
         modelBuilder.Entity<CookingUnit>(entity =>
         {
