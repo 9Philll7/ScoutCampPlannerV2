@@ -14,3 +14,8 @@ public interface IPasswordAuthenticationService
 {
     Task<SignInResult> SignInAsync(SignInRequest request, CancellationToken cancellationToken = default);
 }
+
+public interface ISessionTerminationService
+{
+    Task SignOutAsync(Guid sessionId, Guid userId, CancellationToken cancellationToken = default);
+}

@@ -13,3 +13,4 @@ src/desktop/src-tauri/target/
 src/desktop/sidecar-publish/
 src/desktop/src-tauri/binaries/*.exe
 api-smoke*.log
+audit-security/

@@ -23,6 +23,7 @@ services:
       Database__Provider: PostgreSql
       Database__ConnectionString: Host=postgres;Database=scoutcampplanner;Username=scoutcampplanner;Password=local-development-only
       ASPNETCORE_ENVIRONMENT: Development
+      Audit__Directory: /var/lib/scoutcampplanner/security
     ports:
       - "5180:8080"
     volumes:

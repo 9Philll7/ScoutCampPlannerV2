@@ -13,8 +13,10 @@ using ScoutCampPlanner.Migrations.PostgreSql;
 using ScoutCampPlanner.Migrations.Sqlite;
 using ScoutCampPlanner.Package;
 using ScoutCampPlanner.Platform.Application.Authentication;
+using ScoutCampPlanner.Platform.Application.Auditing;
 using ScoutCampPlanner.Platform.Infrastructure;
 using ScoutCampPlanner.Platform.Infrastructure.Authentication;
+using ScoutCampPlanner.Platform.Infrastructure.Auditing;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders();
@@ -85,7 +87,20 @@ builder.Services.AddSingleton<IPasswordVerifier>(
     _ => new Argon2idPasswordVerifier(Argon2idOperatingMode.Server));
 builder.Services.AddScoped<IInitialSetupService, InitialSetupService>();
 builder.Services.AddScoped<IPasswordAuthenticationService, PasswordAuthenticationService>();
+builder.Services.AddScoped<ISessionTerminationService, SessionTerminationService>();
 builder.Services.AddScoped<PlatformCookieEvents>();
+string auditDirectory = builder.Configuration["Audit:Directory"]
+    ?? Path.Combine(builder.Environment.ContentRootPath, "audit-security");
+IAuditKeyBundleProtection auditProtection = OperatingSystem.IsWindows()
+    ? new WindowsDpapiAuditKeyBundleProtection()
+    : new PlainAuditKeyBundleProtection();
+builder.Services.AddSingleton<IAuditProtectedMaterialStore>(
+    new FileAuditProtectedMaterialStore(auditDirectory, auditProtection));
+builder.Services.AddSingleton<IAuditSigningKeyProvider, ProtectedMaterialAuditSigningKeyProvider>();
+builder.Services.AddSingleton<AuditRuntimeState>();
+builder.Services.AddScoped<IAuditJournalAppender, AuditJournalAppender>();
+builder.Services.AddScoped<IAuditedOperationExecutor, AuditedOperationExecutor>();
+builder.Services.AddScoped<AuditRuntimeBootstrapper>();
 
 var app = builder.Build();
 app.MapOpenApi();
@@ -104,6 +119,7 @@ await using (var scope = app.Services.CreateAsyncScope())
         provider,
         scope.ServiceProvider.GetRequiredService<TimeProvider>(),
         sqliteBackupRetention);
+    await scope.ServiceProvider.GetRequiredService<AuditRuntimeBootstrapper>().InitializeAsync();
 }
 
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", databaseProvider = provider }));
@@ -175,14 +191,14 @@ app.MapGet("/api/session", async (
 }).RequireAuthorization();
 app.MapDelete("/api/session", async (
     ClaimsPrincipal principal,
-    PlatformDbContext database,
+    ISessionTerminationService termination,
     HttpContext httpContext,
     CancellationToken cancellationToken) =>
 {
     if (Guid.TryParse(principal.FindFirstValue(PlatformClaimTypes.SessionId), out Guid sessionId))
     {
-        await database.AuthenticationSessions.Where(value => value.Id == sessionId)
-            .ExecuteDeleteAsync(cancellationToken);
+        Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        await termination.SignOutAsync(sessionId, userId, cancellationToken);
     }
     await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     return Results.NoContent();

@@ -5,6 +5,7 @@ using ScoutCampPlanner.Platform.Application.Authorization;
 using ScoutCampPlanner.Platform.Domain;
 using ScoutCampPlanner.Platform.Infrastructure;
 using ScoutCampPlanner.Platform.Infrastructure.Authentication;
+using ScoutCampPlanner.Platform.Infrastructure.Auditing;
 using Xunit;
 
 namespace ScoutCampPlanner.PlatformTests;
@@ -36,6 +37,8 @@ public sealed class InitialSetupServiceTests
         Assert.NotEqual("River maple lantern orbit 47!", credential.Verifier);
         Assert.Equal(Roles.TenantOwner,
             (await fixture.Database.TenantRoleAssignments.SingleAsync(TestContext.Current.CancellationToken)).RoleIdentifier);
+        Assert.Equal("identity.initial-setup",
+            (await fixture.Database.AuditEvents.SingleAsync(TestContext.Current.CancellationToken)).Action);
     }
 
     [Fact]
@@ -75,8 +78,7 @@ public sealed class InitialSetupServiceTests
         Argon2idPasswordVerifier verifier) : IAsyncDisposable
     {
         public PlatformDbContext Database { get; } = database;
-        public InitialSetupService Service { get; } = new(
-            database, new PasswordPolicy(), verifier, new FixedTimeProvider(Now));
+        public InitialSetupService Service { get; private set; } = null!;
 
         public static async Task<SetupFixture> CreateAsync()
         {
@@ -86,8 +88,16 @@ public sealed class InitialSetupServiceTests
             var database = new PlatformDbContext(
                 new DbContextOptionsBuilder<PlatformDbContext>().UseSqlite(connection).Options);
             await database.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
-            return new SetupFixture(connection, database,
-                new Argon2idPasswordVerifier(Argon2idOperatingMode.SingleDevice));
+            var verifier = new Argon2idPasswordVerifier(Argon2idOperatingMode.SingleDevice);
+            var fixture = new SetupFixture(connection, database, verifier);
+            Guid instanceId = Guid.NewGuid();
+            var keys = new FixedAuditKeyProvider();
+            await new AuditJournalInitializer(database, keys).InitializeAsync(
+                instanceId, Guid.NewGuid(), Now, TestContext.Current.CancellationToken);
+            fixture.Service = new InitialSetupService(
+                database, new PasswordPolicy(), verifier, new FixedTimeProvider(Now),
+                new AuditedOperationExecutor(database, keys), new AuditRuntimeState(instanceId));
+            return fixture;
         }
 
         public async ValueTask DisposeAsync()
@@ -101,5 +111,11 @@ public sealed class InitialSetupServiceTests
     private sealed class FixedTimeProvider(DateTimeOffset value) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => value;
+    }
+
+    private sealed class FixedAuditKeyProvider : IAuditSigningKeyProvider
+    {
+        public Task<AuditSigningKey> GetActiveAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AuditSigningKey("test-key", Enumerable.Range(1, 32).Select(value => (byte)value).ToArray()));
     }
 }

@@ -1,8 +1,9 @@
-using System.Data;
 using Microsoft.EntityFrameworkCore;
 using ScoutCampPlanner.Platform.Application.Authentication;
 using ScoutCampPlanner.Platform.Application.Authorization;
+using ScoutCampPlanner.Platform.Application.Auditing;
 using ScoutCampPlanner.Platform.Domain;
+using ScoutCampPlanner.Platform.Infrastructure.Auditing;
 
 namespace ScoutCampPlanner.Platform.Infrastructure.Authentication;
 
@@ -10,10 +11,10 @@ public sealed class InitialSetupService(
     PlatformDbContext database,
     IPasswordPolicy passwordPolicy,
     IPasswordVerifier passwordVerifier,
-    TimeProvider timeProvider) : IInitialSetupService
+    TimeProvider timeProvider,
+    IAuditedOperationExecutor auditedOperation,
+    AuditRuntimeState auditRuntime) : IInitialSetupService
 {
-    private static readonly SemaphoreSlim SqliteGate = new(1, 1);
-
     public async Task<InitialSetupStatus> GetStatusAsync(CancellationToken cancellationToken = default) =>
         new(!await database.UserAccounts.AnyAsync(cancellationToken));
 
@@ -41,46 +42,35 @@ public sealed class InitialSetupService(
             });
 
         string verifier = await passwordVerifier.CreateAsync(request.Password, cancellationToken);
-        bool sqlite = database.Database.ProviderName?.Contains("Sqlite", StringComparison.Ordinal) == true;
-        if (sqlite) await SqliteGate.WaitAsync(cancellationToken);
+        Guid userId = Guid.NewGuid();
+        Guid tenantId = Guid.NewGuid();
+        Guid membershipId = Guid.NewGuid();
         try
         {
-            await using var transaction = await database.Database.BeginTransactionAsync(
-                IsolationLevel.Serializable, cancellationToken);
-            if (!sqlite && database.Database.ProviderName?.Contains("Npgsql", StringComparison.Ordinal) == true)
+            var auditEvent = new AuditEventDraft(
+                Guid.NewGuid(), timeProvider.GetUtcNow(), "identity.initial-setup", "success",
+                userId, tenantId, null, "user-account", userId, "server", auditRuntime.InstanceId,
+                Guid.NewGuid(), 1, AuthorizationCatalogue.DefinitionVersion,
+                new Dictionary<string, string> { ["membershipId"] = membershipId.ToString("D"), ["role"] = Roles.TenantOwner });
+            await auditedOperation.ExecuteAsync(auditEvent, async operationCancellationToken =>
             {
-                await database.Database.ExecuteSqlRawAsync(
-                    "SELECT pg_advisory_xact_lock(72118455371802);", cancellationToken);
-            }
-            if (await database.UserAccounts.AnyAsync(cancellationToken))
-            {
-                await transaction.RollbackAsync(CancellationToken.None);
-                return InitialSetupResult.Rejected(InitialSetupFailure.AlreadyCompleted);
-            }
-
-            Guid userId = Guid.NewGuid();
-            Guid tenantId = Guid.NewGuid();
-            Guid membershipId = Guid.NewGuid();
-            var user = new UserAccount(userId, email);
-            user.ActivateAfterInitialSetup();
-            database.AddRange(
-                new Tenant(tenantId, tenantName),
-                user,
-                new TenantMembership(membershipId, userId, tenantId),
-                new TenantRoleAssignment(membershipId, Roles.TenantOwner),
-                new PasswordCredential(userId, verifier, timeProvider.GetUtcNow()));
-            await database.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
+                if (await database.UserAccounts.AnyAsync(operationCancellationToken))
+                    throw new SetupAlreadyCompletedException();
+                var user = new UserAccount(userId, email);
+                user.ActivateAfterInitialSetup();
+                database.AddRange(
+                    new Tenant(tenantId, tenantName), user,
+                    new TenantMembership(membershipId, userId, tenantId),
+                    new TenantRoleAssignment(membershipId, Roles.TenantOwner),
+                    new PasswordCredential(userId, verifier, timeProvider.GetUtcNow()));
+            }, cancellationToken);
             return InitialSetupResult.Completed(userId, tenantId);
         }
-        catch
+        catch (SetupAlreadyCompletedException)
         {
-            database.ChangeTracker.Clear();
-            throw;
-        }
-        finally
-        {
-            if (sqlite) SqliteGate.Release();
+            return InitialSetupResult.Rejected(InitialSetupFailure.AlreadyCompleted);
         }
     }
+
+    private sealed class SetupAlreadyCompletedException : Exception { }
 }

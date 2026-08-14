@@ -1,8 +1,10 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using ScoutCampPlanner.Platform.Application.Authentication;
+using ScoutCampPlanner.Platform.Application.Auditing;
 using ScoutCampPlanner.Platform.Infrastructure;
 using ScoutCampPlanner.Platform.Infrastructure.Authentication;
+using ScoutCampPlanner.Platform.Infrastructure.Auditing;
 using Xunit;
 
 namespace ScoutCampPlanner.PlatformTests;
@@ -29,6 +31,8 @@ public sealed class PasswordAuthenticationServiceTests
         Assert.True(session.IsValid(Now.AddMinutes(29), 1));
         Assert.False(session.IsValid(Now.AddMinutes(31), 1));
         Assert.False(session.IsValid(Now.AddMinutes(1), 2));
+        Assert.Equal("success", (await fixture.Database.AuditEvents.OrderBy(value => value.Sequence)
+            .LastAsync(TestContext.Current.CancellationToken)).Result);
     }
 
     [Fact]
@@ -43,6 +47,8 @@ public sealed class PasswordAuthenticationServiceTests
         Assert.False(result.IsSuccessful);
         Assert.Null(result.User);
         Assert.Empty(await fixture.Database.AuthenticationSessions.ToArrayAsync(TestContext.Current.CancellationToken));
+        Assert.Equal("invalid-credentials", (await fixture.Database.AuditEvents.OrderBy(value => value.Sequence)
+            .LastAsync(TestContext.Current.CancellationToken)).Result);
     }
 
     [Fact]
@@ -61,11 +67,10 @@ public sealed class PasswordAuthenticationServiceTests
     private sealed class AuthenticationFixture(
         SqliteConnection connection,
         PlatformDbContext database,
-        Argon2idPasswordVerifier verifier,
-        FixedTimeProvider timeProvider) : IAsyncDisposable
+        Argon2idPasswordVerifier verifier) : IAsyncDisposable
     {
         public PlatformDbContext Database { get; } = database;
-        public PasswordAuthenticationService Authentication { get; } = new(database, verifier, timeProvider);
+        public PasswordAuthenticationService Authentication { get; private set; } = null!;
 
         public static async Task<AuthenticationFixture> CreateAsync()
         {
@@ -77,12 +82,23 @@ public sealed class PasswordAuthenticationServiceTests
             await database.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
             var verifier = new Argon2idPasswordVerifier(Argon2idOperatingMode.SingleDevice);
             var timeProvider = new FixedTimeProvider(Now);
-            var setup = new InitialSetupService(database, new PasswordPolicy(), verifier, timeProvider);
+            Guid instanceId = Guid.NewGuid();
+            var keys = new FixedAuditKeyProvider();
+            var auditRuntime = new AuditRuntimeState(instanceId);
+            var auditedOperation = new AuditedOperationExecutor(database, keys);
+            await new AuditJournalInitializer(database, keys).InitializeAsync(
+                instanceId, Guid.NewGuid(), Now, TestContext.Current.CancellationToken);
+            var setup = new InitialSetupService(
+                database, new PasswordPolicy(), verifier, timeProvider, auditedOperation, auditRuntime);
             InitialSetupResult result = await setup.CompleteAsync(
                 new InitialSetupRequest("Test", "owner@example.com", Password),
                 TestContext.Current.CancellationToken);
             Assert.True(result.IsSuccessful);
-            return new AuthenticationFixture(connection, database, verifier, timeProvider);
+            var fixture = new AuthenticationFixture(connection, database, verifier);
+            fixture.Authentication = new PasswordAuthenticationService(
+                database, verifier, timeProvider, auditedOperation,
+                new AuditJournalAppender(database, keys), auditRuntime);
+            return fixture;
         }
 
         public async ValueTask DisposeAsync()
@@ -96,5 +112,11 @@ public sealed class PasswordAuthenticationServiceTests
     private sealed class FixedTimeProvider(DateTimeOffset value) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => value;
+    }
+
+    private sealed class FixedAuditKeyProvider : IAuditSigningKeyProvider
+    {
+        public Task<AuditSigningKey> GetActiveAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AuditSigningKey("test-key", Enumerable.Range(1, 32).Select(value => (byte)value).ToArray()));
     }
 }
