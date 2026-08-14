@@ -1,4 +1,9 @@
 using System.Data.Common;
+using System.Security.Claims;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -18,7 +23,40 @@ builder.Services.AddOpenApi();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
     .WithOrigins("http://localhost:4200", "http://127.0.0.1:4200", "tauri://localhost", "https://tauri.localhost")
     .AllowAnyHeader()
-    .AllowAnyMethod()));
+    .AllowAnyMethod()
+    .AllowCredentials()));
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.Cookie.Name = "ScoutCampPlanner.Session";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.Strict;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.ExpireTimeSpan = TimeSpan.FromHours(12);
+        options.SlidingExpiration = false;
+        options.EventsType = typeof(PlatformCookieEvents);
+        options.LoginPath = "/api/session";
+        options.Events.OnRedirectToLogin = context =>
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        };
+        options.Events.OnRedirectToAccessDenied = context =>
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        };
+    });
+builder.Services.AddAuthorization();
+builder.Services.AddRateLimiter(options => options.AddPolicy("sign-in", context =>
+    RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 5,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+        })));
 builder.Services.AddSingleton(TimeProvider.System);
 if (int.TryParse(builder.Configuration["ParentProcessId"], out var parentProcessId) && parentProcessId > 0)
 {
@@ -46,10 +84,15 @@ builder.Services.AddSingleton<IPasswordPolicy, PasswordPolicy>();
 builder.Services.AddSingleton<IPasswordVerifier>(
     _ => new Argon2idPasswordVerifier(Argon2idOperatingMode.Server));
 builder.Services.AddScoped<IInitialSetupService, InitialSetupService>();
+builder.Services.AddScoped<IPasswordAuthenticationService, PasswordAuthenticationService>();
+builder.Services.AddScoped<PlatformCookieEvents>();
 
 var app = builder.Build();
 app.MapOpenApi();
 app.UseCors();
+app.UseRateLimiter();
+app.UseAuthentication();
+app.UseAuthorization();
 
 await using (var scope = app.Services.CreateAsyncScope())
 {
@@ -91,26 +134,82 @@ app.MapPost("/api/setup", async (
                 }]
         });
 });
+app.MapPost("/api/session", async (
+    SignInRequest request,
+    IPasswordAuthenticationService authentication,
+    HttpContext httpContext,
+    TimeProvider timeProvider,
+    CancellationToken cancellationToken) =>
+{
+    SignInResult result = await authentication.SignInAsync(request, cancellationToken);
+    if (!result.IsSuccessful || result.User is null || result.SessionId is null)
+        return Results.Unauthorized();
+
+    var claims = new[]
+    {
+        new Claim(ClaimTypes.NameIdentifier, result.User.UserId.ToString()),
+        new Claim(PlatformClaimTypes.SessionId, result.SessionId.Value.ToString()),
+    };
+    DateTimeOffset now = timeProvider.GetUtcNow();
+    await httpContext.SignInAsync(
+        CookieAuthenticationDefaults.AuthenticationScheme,
+        new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme)),
+        new AuthenticationProperties
+        {
+            AllowRefresh = false,
+            IsPersistent = false,
+            IssuedUtc = now,
+            ExpiresUtc = now.AddHours(12),
+        });
+    return Results.Ok(result.User);
+}).RequireRateLimiting("sign-in");
+app.MapGet("/api/session", async (
+    ClaimsPrincipal principal,
+    PlatformDbContext database,
+    CancellationToken cancellationToken) =>
+{
+    Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    string email = await database.UserAccounts.Where(value => value.Id == userId)
+        .Select(value => value.Email).SingleAsync(cancellationToken);
+    return Results.Ok(new { userId, email });
+}).RequireAuthorization();
+app.MapDelete("/api/session", async (
+    ClaimsPrincipal principal,
+    PlatformDbContext database,
+    HttpContext httpContext,
+    CancellationToken cancellationToken) =>
+{
+    if (Guid.TryParse(principal.FindFirstValue(PlatformClaimTypes.SessionId), out Guid sessionId))
+    {
+        await database.AuthenticationSessions.Where(value => value.Id == sessionId)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+    await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    return Results.NoContent();
+}).RequireAuthorization();
 app.MapGet("/api/camps", async (CampDbContext db, CancellationToken cancellationToken) =>
-    await db.Camps.Select(x => new { x.Id, x.TenantId, x.Name, x.IsFrozen }).ToListAsync(cancellationToken));
+    await db.Camps.Select(x => new { x.Id, x.TenantId, x.Name, x.IsFrozen }).ToListAsync(cancellationToken))
+    .RequireAuthorization();
 app.MapPost("/api/camps/{campId:guid}/offline-package", async (Guid campId, CampPackageService packages, CancellationToken cancellationToken) =>
-    Results.File(await packages.StartOfflineTransferAsync(campId, cancellationToken), "application/vnd.scoutcampplanner.camp-package", $"camp-{campId}.scoutcamp"));
+    Results.File(await packages.StartOfflineTransferAsync(campId, cancellationToken), "application/vnd.scoutcampplanner.camp-package", $"camp-{campId}.scoutcamp"))
+    .RequireAuthorization();
 app.MapPost("/api/packages/import-initial", async (HttpRequest request, CampPackageService packages, CancellationToken cancellationToken) =>
 {
     using var stream = new MemoryStream();
     await request.Body.CopyToAsync(stream, cancellationToken);
     await packages.ImportInitialPackageAsync(stream.ToArray(), cancellationToken);
     return Results.NoContent();
-});
+}).RequireAuthorization();
 app.MapPost("/api/camps/{campId:guid}/return-package", async (Guid campId, CampPackageService packages, CancellationToken cancellationToken) =>
-    Results.File(await packages.CreateReturnPackageAsync(campId, cancellationToken), "application/vnd.scoutcampplanner.camp-package", $"camp-{campId}-return.scoutcamp"));
+    Results.File(await packages.CreateReturnPackageAsync(campId, cancellationToken), "application/vnd.scoutcampplanner.camp-package", $"camp-{campId}-return.scoutcamp"))
+    .RequireAuthorization();
 app.MapPost("/api/packages/import-return", async (HttpRequest request, CampPackageService packages, CancellationToken cancellationToken) =>
 {
     using var stream = new MemoryStream();
     await request.Body.CopyToAsync(stream, cancellationToken);
     await packages.ImportReturnPackageAsync(stream.ToArray(), cancellationToken);
     return Results.NoContent();
-});
+}).RequireAuthorization();
 
 app.Run();
 

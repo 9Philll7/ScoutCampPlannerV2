@@ -279,6 +279,36 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Platform
                     b.ToTable("AuditSegments", (string)null);
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Infrastructure.Authentication.AuthenticationSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("AbsoluteExpiresAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("LastSeenAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SecurityVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AbsoluteExpiresAtUtc");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("AuthenticationSessions", (string)null);
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Platform.Infrastructure.Authentication.PasswordCredential", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -339,6 +369,15 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Platform
                         .WithMany()
                         .HasForeignKey("InstanceId", "ActiveSegmentId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Infrastructure.Authentication.AuthenticationSession", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Platform.Domain.UserAccount", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

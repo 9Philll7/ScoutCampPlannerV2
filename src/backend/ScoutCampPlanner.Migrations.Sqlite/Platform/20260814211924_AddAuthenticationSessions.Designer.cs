@@ -2,57 +2,54 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ScoutCampPlanner.Platform.Infrastructure;
 
 #nullable disable
 
-namespace ScoutCampPlanner.Migrations.PostgreSql.Platform
+namespace ScoutCampPlanner.Migrations.Sqlite.Platform
 {
     [DbContext(typeof(PlatformDbContext))]
-    partial class PlatformDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260814211924_AddAuthenticationSessions")]
+    partial class AddAuthenticationSessions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder
-                .HasDefaultSchema("platform")
-                .HasAnnotation("ProductVersion", "10.0.5")
-                .HasAnnotation("Relational:MaxIdentifierLength", 63);
-
-            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.5");
 
             modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.Tenant", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
-                    b.ToTable("Tenants", "platform");
+                    b.ToTable("Tenants", (string)null);
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.TenantMembership", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("TEXT");
 
                     b.Property<int>("State")
-                        .HasColumnType("integer");
+                        .HasColumnType("INTEGER");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -64,17 +61,17 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Platform
                         .IsUnique()
                         .HasFilter("\"State\" <> 2");
 
-                    b.ToTable("TenantMemberships", "platform");
+                    b.ToTable("TenantMemberships", (string)null);
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.TenantRoleAssignment", b =>
                 {
                     b.Property<Guid>("MembershipId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("RoleIdentifier")
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasColumnType("TEXT");
 
                     b.HasKey("MembershipId", "RoleIdentifier");
 
@@ -82,114 +79,114 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Platform
                         .IsUnique()
                         .HasFilter("\"RoleIdentifier\" IN ('TenantOwner', 'TenantAdmin', 'TenantMember')");
 
-                    b.ToTable("TenantRoleAssignments", "platform");
+                    b.ToTable("TenantRoleAssignments", (string)null);
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.UserAccount", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(320)
-                        .HasColumnType("character varying(320)");
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("NormalizedEmail")
                         .IsRequired()
                         .HasMaxLength(320)
-                        .HasColumnType("character varying(320)");
+                        .HasColumnType("TEXT");
 
                     b.Property<int>("State")
-                        .HasColumnType("integer");
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
                     b.HasIndex("NormalizedEmail")
                         .IsUnique();
 
-                    b.ToTable("UserAccounts", "platform");
+                    b.ToTable("UserAccounts", (string)null);
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Platform.Infrastructure.Auditing.AuditEventRecord", b =>
                 {
                     b.Property<Guid>("InstanceId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("TEXT");
 
                     b.Property<long>("Sequence")
-                        .HasColumnType("bigint");
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Action")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid?>("ActorUserId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid?>("CampId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid>("CorrelationId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid>("EventId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("TEXT");
 
                     b.Property<int>("FormatVersion")
-                        .HasColumnType("integer");
+                        .HasColumnType("INTEGER");
 
                     b.Property<byte[]>("Hmac")
                         .IsRequired()
                         .HasMaxLength(32)
-                        .HasColumnType("bytea");
+                        .HasColumnType("BLOB");
 
                     b.Property<string>("KeyId")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("MetadataJson")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Origin")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("TEXT");
 
                     b.Property<byte[]>("PreviousHash")
                         .IsRequired()
                         .HasMaxLength(32)
-                        .HasColumnType("bytea");
+                        .HasColumnType("BLOB");
 
                     b.Property<string>("Result")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("TEXT");
 
                     b.Property<int?>("RoleDefinitionVersion")
-                        .HasColumnType("integer");
+                        .HasColumnType("INTEGER");
 
                     b.Property<int?>("SecurityVersion")
-                        .HasColumnType("integer");
+                        .HasColumnType("INTEGER");
 
                     b.Property<Guid>("SegmentId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid?>("TargetId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TargetType")
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid?>("TenantId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset>("TimestampUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("TEXT");
 
                     b.HasKey("InstanceId", "Sequence");
 
@@ -200,111 +197,111 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Platform
 
                     b.HasIndex("InstanceId", "SegmentId", "Sequence");
 
-                    b.ToTable("AuditEvents", "platform");
+                    b.ToTable("AuditEvents", (string)null);
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Platform.Infrastructure.Auditing.AuditJournalHead", b =>
                 {
                     b.Property<Guid>("InstanceId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid>("ActiveSegmentId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("TEXT");
 
                     b.Property<int>("FormatVersion")
-                        .HasColumnType("integer");
+                        .HasColumnType("INTEGER");
 
                     b.Property<byte[]>("Head")
                         .IsRequired()
                         .HasMaxLength(32)
-                        .HasColumnType("bytea");
+                        .HasColumnType("BLOB");
 
                     b.Property<string>("KeyId")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasColumnType("TEXT");
 
                     b.Property<long>("Sequence")
-                        .HasColumnType("bigint");
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("InstanceId");
 
                     b.HasIndex("InstanceId", "ActiveSegmentId");
 
-                    b.ToTable("AuditJournalHeads", "platform");
+                    b.ToTable("AuditJournalHeads", (string)null);
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Platform.Infrastructure.Auditing.AuditSegmentRecord", b =>
                 {
                     b.Property<Guid>("InstanceId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid>("SegmentId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset?>("ClosedAtUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("TEXT");
 
                     b.Property<byte[]>("ClosingHash")
                         .HasMaxLength(32)
-                        .HasColumnType("bytea");
+                        .HasColumnType("BLOB");
 
                     b.Property<DateTimeOffset?>("EventsDeletedAtUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("TEXT");
 
                     b.Property<byte[]>("FirstPredecessorHash")
                         .IsRequired()
                         .HasMaxLength(32)
-                        .HasColumnType("bytea");
+                        .HasColumnType("BLOB");
 
                     b.Property<long>("FirstSequence")
-                        .HasColumnType("bigint");
+                        .HasColumnType("INTEGER");
 
                     b.Property<int>("FormatVersion")
-                        .HasColumnType("integer");
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("KeyId")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasColumnType("TEXT");
 
                     b.Property<long?>("LastSequence")
-                        .HasColumnType("bigint");
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTimeOffset>("OpenedAtUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset?>("VerifiedAtUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("TEXT");
 
                     b.HasKey("InstanceId", "SegmentId");
 
                     b.HasIndex("InstanceId", "FirstSequence")
                         .IsUnique();
 
-                    b.ToTable("AuditSegments", "platform");
+                    b.ToTable("AuditSegments", (string)null);
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Platform.Infrastructure.Authentication.AuthenticationSession", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset>("AbsoluteExpiresAtUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset>("LastSeenAtUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("TEXT");
 
                     b.Property<long>("SecurityVersion")
-                        .HasColumnType("bigint");
+                        .HasColumnType("INTEGER");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -312,28 +309,28 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Platform
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("AuthenticationSessions", "platform");
+                    b.ToTable("AuthenticationSessions", (string)null);
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Platform.Infrastructure.Authentication.PasswordCredential", b =>
                 {
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset>("ChangedAtUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("TEXT");
 
                     b.Property<long>("SecurityVersion")
-                        .HasColumnType("bigint");
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Verifier")
                         .IsRequired()
                         .HasMaxLength(512)
-                        .HasColumnType("character varying(512)");
+                        .HasColumnType("TEXT");
 
                     b.HasKey("UserId");
 
-                    b.ToTable("PasswordCredentials", "platform");
+                    b.ToTable("PasswordCredentials", (string)null);
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.TenantMembership", b =>

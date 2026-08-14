@@ -167,6 +167,8 @@ When local database encryption is introduced, the recovery mechanism must be ext
 
 Cloud and local Docker-based server instances use server-managed sessions with a random, signed authentication cookie.
 
+The productive server session record stores the random session ID, user ID, credential Security Version, creation time, last activity, and absolute expiration in Platform Infrastructure. Each authenticated request validates that record together with the active account and current credential Security Version. Activity persistence is updated at most once per minute.
+
 - The cookie is `HttpOnly` and is not accessible to Angular code.
 - Authentication tokens are not stored in browser `localStorage` or `sessionStorage`.
 - Production server cookies are transmitted only over HTTPS.

@@ -15,10 +15,12 @@ export class CampApiService {
   private readonly baseUrl = inject(API_BASE_URL);
 
   list() {
-    return this.http.get<CampSummary[]>(`${this.baseUrl}/api/camps`);
+    return this.http.get<CampSummary[]>(`${this.baseUrl}/api/camps`, { withCredentials: true });
   }
 
   startOfflineTransfer(campId: string) {
-    return this.http.post(`${this.baseUrl}/api/camps/${campId}/offline-package`, null, { responseType: 'blob' });
+    return this.http.post(`${this.baseUrl}/api/camps/${campId}/offline-package`, null, {
+      responseType: 'blob', withCredentials: true
+    });
   }
 }

@@ -18,10 +18,10 @@ export class SetupApiService {
   private readonly baseUrl = inject(API_BASE_URL);
 
   status() {
-    return this.http.get<SetupStatus>(`${this.baseUrl}/api/setup/status`);
+    return this.http.get<SetupStatus>(`${this.baseUrl}/api/setup/status`, { withCredentials: true });
   }
 
   complete(request: InitialSetupRequest) {
-    return this.http.post(`${this.baseUrl}/api/setup`, request);
+    return this.http.post(`${this.baseUrl}/api/setup`, request, { withCredentials: true });
   }
 }

@@ -13,6 +13,7 @@ public sealed class PlatformDbContext(DbContextOptions<PlatformDbContext> option
     public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
     public DbSet<TenantRoleAssignment> TenantRoleAssignments => Set<TenantRoleAssignment>();
     public DbSet<PasswordCredential> PasswordCredentials => Set<PasswordCredential>();
+    public DbSet<AuthenticationSession> AuthenticationSessions => Set<AuthenticationSession>();
     public DbSet<AuditEventRecord> AuditEvents => Set<AuditEventRecord>();
     public DbSet<AuditJournalHead> AuditJournalHeads => Set<AuditJournalHead>();
     public DbSet<AuditSegmentRecord> AuditSegments => Set<AuditSegmentRecord>();
@@ -63,6 +64,14 @@ public sealed class PlatformDbContext(DbContextOptions<PlatformDbContext> option
             entity.HasKey(x => x.UserId);
             entity.Property(x => x.Verifier).HasMaxLength(512);
             entity.HasOne<UserAccount>().WithOne().HasForeignKey<PasswordCredential>(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<AuthenticationSession>(entity =>
+        {
+            entity.ToTable("AuthenticationSessions");
+            entity.HasKey(x => x.Id);
+            entity.HasOne<UserAccount>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => x.UserId);
+            entity.HasIndex(x => x.AbsoluteExpiresAtUtc);
         });
         modelBuilder.Entity<AuditEventRecord>(entity =>
         {

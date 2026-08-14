@@ -25,4 +25,14 @@ public sealed class PasswordCredential
     public long SecurityVersion { get; private set; }
 
     public DateTimeOffset ChangedAtUtc { get; private set; }
+
+    public void ReplaceVerifier(string verifier, DateTimeOffset changedAtUtc)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(verifier);
+        if (verifier.Length > 512) throw new ArgumentException("Verifier is too long.", nameof(verifier));
+        if (changedAtUtc.Offset != TimeSpan.Zero)
+            throw new ArgumentException("Password change time must use UTC.", nameof(changedAtUtc));
+        Verifier = verifier;
+        ChangedAtUtc = changedAtUtc;
+    }
 }
