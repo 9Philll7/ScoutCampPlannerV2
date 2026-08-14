@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ScoutCampPlanner.Platform.Application.Auditing;
 using ScoutCampPlanner.Platform.Infrastructure;
 using ScoutCampPlanner.Platform.Infrastructure.Auditing;
+using ScoutCampPlanner.Platform.Domain;
 using Xunit;
 
 namespace ScoutCampPlanner.PlatformTests;
@@ -92,6 +93,83 @@ public sealed class AuditJournalAppenderTests
             SqliteConnection.ClearAllPools();
             if (File.Exists(path)) File.Delete(path);
         }
+    }
+
+    [Fact]
+    public async Task AuditedOperationCommitsBusinessStateEventAndHeadTogether()
+    {
+        SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_winsqlite3());
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await using var database = CreateDatabase(connection);
+        await database.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
+        var keys = new FixedKeyProvider();
+        await new AuditJournalInitializer(database, keys).InitializeAsync(
+            InstanceId, SegmentId, DateTimeOffset.UnixEpoch, TestContext.Current.CancellationToken);
+        Guid tenantId = Guid.NewGuid();
+
+        AuditAppendReceipt receipt = await new AuditedOperationExecutor(database, keys).ExecuteAsync(
+            Draft(1),
+            _ => { database.Tenants.Add(new Tenant(tenantId, "Audited tenant")); return Task.CompletedTask; },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, receipt.Sequence);
+        Assert.True(await database.Tenants.AnyAsync(value => value.Id == tenantId, TestContext.Current.CancellationToken));
+        Assert.Single(await database.AuditEvents.ToArrayAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(1, (await database.AuditJournalHeads.SingleAsync(TestContext.Current.CancellationToken)).Sequence);
+    }
+
+    [Fact]
+    public async Task BusinessFailureRollsBackSavedStateAndLeavesAuditHeadUnchanged()
+    {
+        SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_winsqlite3());
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await using var database = CreateDatabase(connection);
+        await database.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
+        var keys = new FixedKeyProvider();
+        await new AuditJournalInitializer(database, keys).InitializeAsync(
+            InstanceId, SegmentId, DateTimeOffset.UnixEpoch, TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new AuditedOperationExecutor(database, keys).ExecuteAsync(
+            Draft(1),
+            async cancellationToken =>
+            {
+                database.Tenants.Add(new Tenant(Guid.NewGuid(), "Must roll back"));
+                await database.SaveChangesAsync(cancellationToken);
+                throw new InvalidOperationException("Synthetic business failure.");
+            },
+            TestContext.Current.CancellationToken));
+
+        Assert.Empty(await database.Tenants.AsNoTracking().ToArrayAsync(TestContext.Current.CancellationToken));
+        Assert.Empty(await database.AuditEvents.AsNoTracking().ToArrayAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(0, (await database.AuditJournalHeads.AsNoTracking().SingleAsync(TestContext.Current.CancellationToken)).Sequence);
+    }
+
+    [Fact]
+    public async Task AuditConstraintFailureRollsBackBusinessState()
+    {
+        SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_winsqlite3());
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await using var database = CreateDatabase(connection);
+        await database.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
+        var keys = new FixedKeyProvider();
+        await new AuditJournalInitializer(database, keys).InitializeAsync(
+            InstanceId, SegmentId, DateTimeOffset.UnixEpoch, TestContext.Current.CancellationToken);
+        AuditEventDraft duplicate = Draft(1);
+        var executor = new AuditedOperationExecutor(database, keys);
+        await executor.ExecuteAsync(duplicate, _ => Task.CompletedTask, TestContext.Current.CancellationToken);
+        Guid tenantId = Guid.NewGuid();
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => executor.ExecuteAsync(
+            duplicate,
+            _ => { database.Tenants.Add(new Tenant(tenantId, "Must roll back")); return Task.CompletedTask; },
+            TestContext.Current.CancellationToken));
+
+        Assert.False(await database.Tenants.AsNoTracking().AnyAsync(value => value.Id == tenantId, TestContext.Current.CancellationToken));
+        Assert.Single(await database.AuditEvents.AsNoTracking().ToArrayAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(1, (await database.AuditJournalHeads.AsNoTracking().SingleAsync(TestContext.Current.CancellationToken)).Sequence);
     }
 
     private static PlatformDbContext CreateDatabase(SqliteConnection connection) =>

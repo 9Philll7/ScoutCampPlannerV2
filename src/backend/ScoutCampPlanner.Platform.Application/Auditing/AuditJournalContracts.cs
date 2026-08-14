@@ -30,3 +30,11 @@ public interface IAuditJournalAppender
         AuditEventDraft auditEvent,
         CancellationToken cancellationToken = default);
 }
+
+public interface IAuditedOperationExecutor
+{
+    Task<AuditAppendReceipt> ExecuteAsync(
+        AuditEventDraft auditEvent,
+        Func<CancellationToken, Task> operation,
+        CancellationToken cancellationToken = default);
+}

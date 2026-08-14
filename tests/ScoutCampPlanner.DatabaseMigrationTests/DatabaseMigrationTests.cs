@@ -192,6 +192,45 @@ public sealed class DatabaseMigrationTests
         Assert.Equal(Enumerable.Range(1, 12).Select(value => (long)value), sequences);
         Assert.Equal(12, (await initializedDatabase.AuditJournalHeads.SingleAsync(
             value => value.InstanceId == instanceId)).Sequence);
+
+        Guid committedTenantId = Guid.NewGuid();
+        await using (var database = new PlatformDbContext(
+            new DbContextOptionsBuilder<PlatformDbContext>().UseNpgsql(connectionString).Options))
+        {
+            var draft = new AuditEventDraft(
+                Guid.NewGuid(), DateTimeOffset.UnixEpoch.AddMinutes(1), "tenant.created", "success",
+                null, null, null, "tenant", committedTenantId, "test", instanceId, Guid.NewGuid(), null, null,
+                new Dictionary<string, string>());
+            await new AuditedOperationExecutor(database, keys).ExecuteAsync(draft, async cancellationToken =>
+            {
+                database.Tenants.Add(new Tenant(committedTenantId, "Committed Tenant"));
+                await database.SaveChangesAsync(cancellationToken);
+            });
+        }
+
+        Guid rolledBackTenantId = Guid.NewGuid();
+        await using (var database = new PlatformDbContext(
+            new DbContextOptionsBuilder<PlatformDbContext>().UseNpgsql(connectionString).Options))
+        {
+            var draft = new AuditEventDraft(
+                Guid.NewGuid(), DateTimeOffset.UnixEpoch.AddMinutes(2), "tenant.created", "failure",
+                null, null, null, "tenant", rolledBackTenantId, "test", instanceId, Guid.NewGuid(), null, null,
+                new Dictionary<string, string>());
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                new AuditedOperationExecutor(database, keys).ExecuteAsync(draft, async cancellationToken =>
+                {
+                    database.Tenants.Add(new Tenant(rolledBackTenantId, "Rolled Back Tenant"));
+                    await database.SaveChangesAsync(cancellationToken);
+                    throw new InvalidOperationException("Simulated business failure.");
+                }));
+        }
+
+        initializedDatabase.ChangeTracker.Clear();
+        Assert.True(await initializedDatabase.Tenants.AnyAsync(value => value.Id == committedTenantId));
+        Assert.False(await initializedDatabase.Tenants.AnyAsync(value => value.Id == rolledBackTenantId));
+        Assert.Equal(13, await initializedDatabase.AuditEvents.CountAsync(value => value.InstanceId == instanceId));
+        Assert.Equal(13, (await initializedDatabase.AuditJournalHeads.SingleAsync(
+            value => value.InstanceId == instanceId)).Sequence);
     }
 
     private static async Task<T> ScalarAsync<T>(DbConnection connection, string sql)
