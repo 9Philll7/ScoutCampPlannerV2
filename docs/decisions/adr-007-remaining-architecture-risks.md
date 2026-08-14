@@ -72,17 +72,17 @@ Without an explicit migration pipeline, a later package version could make exist
 ### Current state
 
 - Package payloads are protected by a SHA-256 checksum.
-- Packages are not encrypted or signed.
-- Authentication behavior, operating-mode Argon2id profiles, and Unicode-scalar password-length counting are defined by ADR-009, the denylist policy, format, and bounded generator by `docs/architecture/password-denylist.md`, identity and tenant isolation by ADR-010, roles and permissions by ADR-011, and security audit events, persistence, integrity model, technical retention defaults, access, and transfer direction by ADR-012. The initial Argon2id and password-strength libraries are accepted by `docs/spike/security-library-validation.md`; the Windows 10 compatibility benchmark, real denylist snapshot acquisition and release packaging, audit/package-security spike validation, legal retention review, privacy retention, archival, and anonymisation remain open. A restrictive Tauri Content Security Policy is required before sensitive data is supported.
+- Package version 1 is not encrypted or signed. The transfer-scoped encryption and signature candidate for version 2 is validated but not productively serialized or integrated.
+- Authentication behavior, operating-mode Argon2id profiles, and Unicode-scalar password-length counting are defined by ADR-009, the denylist policy, format, and bounded generator by `docs/architecture/password-denylist.md`, identity and tenant isolation by ADR-010, roles and permissions by ADR-011, and security audit events, persistence, integrity model, technical retention defaults, access, recovery, and transfer binding by ADR-012. The focused password and audit security spikes are accepted; the Windows 10 compatibility benchmark, real denylist snapshot acquisition and release packaging, productive audit/package implementation, legal retention review, privacy retention, archival, and anonymisation remain open. A restrictive Tauri Content Security Policy is required before sensitive data is supported.
 - The domain documentation identifies health data and a privacy lifecycle, but the complete workflow is not defined.
 
 ### To clarify
 
 - encryption at rest and in transit, including key ownership, rotation, recovery, and offline use
-- package authenticity and integrity through signing or authenticated encryption
+- productive package-version-2 serialization, migration, transfer-key persistence, and compatibility fixtures for the validated authenticated-encryption and signature model
 - tenant-, camp-, role-, and possibly module-specific permissions
 - authorization for export, import, access to health data, and administrative operations
-- audit events, audit retention, and protection of audit data
+- productive audit persistence, use-case integration, access enforcement, and organisational/legal retention confirmation
 - retention periods, archival rules, deletion, and anonymisation
 - data minimisation for packages and local installations
 - secure cleanup of temporary files, local databases, exports, backups, and logs

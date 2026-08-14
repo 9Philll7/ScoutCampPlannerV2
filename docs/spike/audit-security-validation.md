@@ -2,7 +2,7 @@
 
 ## Status
 
-Phase 1 and phase 2 completed on 2026-08-12. The key-rotation model portion of phase 3 and the blocked-mode policy are also validated. Canonical event encoding, the in-memory HMAC-chain model, database transaction atomicity, crash reconciliation, concurrent append allocation, bidirectional segment transitions, rotation-state recovery, and fail-closed behavior after verification failure are technically validated. The complete ADR-012 security spike is not yet complete.
+Completed on 2026-08-14. Canonical encoding, HMAC chaining, provider transaction behavior, checkpoint recovery, key storage and rotation, blocked mode, backup and restore, retention segments, provider-backed performance, and package-version-2 transfer binding are technically validated. This accepts the focused ADR-012 security spike; it is not a productive audit or package-version-2 release.
 
 ## Scope of phase 1
 
@@ -197,10 +197,20 @@ The database-loading probe persists 100,000 canonical chain entries, then measur
 
 The automated acceptance limits are deliberately generous at 5 seconds for the startup window and 20 seconds for the full journal to reduce hardware-dependent test instability. Both measured providers remain far below those limits. The result validates the existing startup policy; it is not a general capacity promise for larger journals, concurrent production load, remote cloud latency, or slower storage.
 
-## Remaining ADR-012 validation
+## Package-version-2 binding
 
-Before productive audit implementation, the spike still must validate:
+The transfer-security probe provisions one ECDSA P-256 key pair for one cloud-recorded transfer context. Only the public key remains in the cloud transfer record; the private key is delivered in the encrypted outbound package and is not an audit-journal key.
 
-- package-version-2 binding and transfer separately before audit transfer is implemented
+- Argon2id and AES-256-GCM protect the complete package in both directions with separate purpose values.
+- The signed return proof binds format version, transfer, tenant, camp, baseline, source instance, audit range and heads, domain-payload hash, and audit-section hash.
+- The audit-section hash covers every length-delimited canonical event representation and stored HMAC in order.
+- Empty, truncated, discontinuous, cross-instance, or context-mismatching sections are rejected.
+- A wrong public key, transfer password, direction, baseline, domain payload, or audit section fails verification.
+- Event ID, source instance, and sequence identify duplicates. Only byte-identical canonical content and HMAC are idempotent; differing content is a conflict.
+- Local audit HMAC keys remain local. Full local verification precedes signing, while cloud verification uses the public transfer key bound at offline preparation.
 
-The completed phases validate the encoding, chain, transaction, concurrency, checkpoint-recovery, and key-rotation model candidates. They do not authorize productive role-changing endpoints.
+The tests validate key provisioning, encrypted private-key transport, complete bidirectional package envelopes, context and payload binding, mandatory continuity, wrong-key and wrong-password rejection, and duplicate classification. Productive version-2 serialization, migration from version 1, compatibility fixtures, persistent transfer records, independent audit-ingestion transactions, and domain-replacement orchestration remain implementation tasks.
+
+## Conclusion
+
+All focused technical validation items required by ADR-012 are complete. The results support productive implementation but do not authorize role-changing endpoints, health-data processing, or replacing Platform-owned state through camp packages.
