@@ -37,7 +37,7 @@ public sealed class DatabaseMigrationTests
         await MigrateToCurrentAsync(databases);
         await AssertBaselineDataAsync(databases, identities);
 
-        Assert.Equal(3, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_platform"));
+        Assert.Equal(4, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_platform"));
         Assert.Equal(2, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_camp"));
         Assert.Equal(2, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_catering"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_Camps_TenantId_Name'"));
@@ -45,6 +45,8 @@ public sealed class DatabaseMigrationTests
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_UserAccounts_NormalizedEmail'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_TenantMemberships_UserId_TenantId'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_TenantRoleAssignments_MembershipId'"));
+        Assert.Equal(3, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('AuditEvents', 'AuditJournalHeads', 'AuditSegments')"));
+        Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_AuditEvents_InstanceId_EventId'"));
 
         await MigrateToCurrentAsync(databases);
         Assert.Empty(await databases.Platform.Database.GetPendingMigrationsAsync());
@@ -70,7 +72,7 @@ public sealed class DatabaseMigrationTests
         await MigrateToCurrentAsync(databases);
         await AssertBaselineDataAsync(databases, identities);
 
-        Assert.Equal(3, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM platform.\"__EFMigrationsHistory\""));
+        Assert.Equal(4, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM platform.\"__EFMigrationsHistory\""));
         Assert.Equal(2, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM camp.\"__EFMigrationsHistory\""));
         Assert.Equal(2, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM catering.\"__EFMigrationsHistory\""));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'camp' AND indexname = 'IX_Camps_TenantId_Name'"));
@@ -78,6 +80,8 @@ public sealed class DatabaseMigrationTests
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'platform' AND indexname = 'IX_UserAccounts_NormalizedEmail'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'platform' AND indexname = 'IX_TenantMemberships_UserId_TenantId'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'platform' AND indexname = 'IX_TenantRoleAssignments_MembershipId'"));
+        Assert.Equal(3, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'platform' AND table_name IN ('AuditEvents', 'AuditJournalHeads', 'AuditSegments')"));
+        Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'platform' AND indexname = 'IX_AuditEvents_InstanceId_EventId'"));
     }
 
     private static ModuleDatabases CreateSqliteDatabases(SqliteConnection connection) => new(

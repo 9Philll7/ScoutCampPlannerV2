@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ScoutCampPlanner.Platform.Contracts;
 using ScoutCampPlanner.Platform.Domain;
 using ScoutCampPlanner.Platform.Infrastructure.Authentication;
+using ScoutCampPlanner.Platform.Infrastructure.Auditing;
 
 namespace ScoutCampPlanner.Platform.Infrastructure;
 
@@ -12,6 +13,9 @@ public sealed class PlatformDbContext(DbContextOptions<PlatformDbContext> option
     public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
     public DbSet<TenantRoleAssignment> TenantRoleAssignments => Set<TenantRoleAssignment>();
     public DbSet<PasswordCredential> PasswordCredentials => Set<PasswordCredential>();
+    public DbSet<AuditEventRecord> AuditEvents => Set<AuditEventRecord>();
+    public DbSet<AuditJournalHead> AuditJournalHeads => Set<AuditJournalHead>();
+    public DbSet<AuditSegmentRecord> AuditSegments => Set<AuditSegmentRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -59,6 +63,44 @@ public sealed class PlatformDbContext(DbContextOptions<PlatformDbContext> option
             entity.HasKey(x => x.UserId);
             entity.Property(x => x.Verifier).HasMaxLength(512);
             entity.HasOne<UserAccount>().WithOne().HasForeignKey<PasswordCredential>(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<AuditEventRecord>(entity =>
+        {
+            entity.ToTable("AuditEvents");
+            entity.HasKey(x => new { x.InstanceId, x.Sequence });
+            entity.HasIndex(x => new { x.InstanceId, x.EventId }).IsUnique();
+            entity.HasIndex(x => new { x.InstanceId, x.SegmentId, x.Sequence });
+            entity.HasIndex(x => x.TimestampUtc);
+            entity.Property(x => x.Action).HasMaxLength(128);
+            entity.Property(x => x.Result).HasMaxLength(64);
+            entity.Property(x => x.TargetType).HasMaxLength(128);
+            entity.Property(x => x.Origin).HasMaxLength(64);
+            entity.Property(x => x.MetadataJson);
+            entity.Property(x => x.PreviousHash).HasMaxLength(32);
+            entity.Property(x => x.Hmac).HasMaxLength(32);
+            entity.Property(x => x.KeyId).HasMaxLength(100);
+            entity.HasOne<AuditSegmentRecord>().WithMany()
+                .HasForeignKey(x => new { x.InstanceId, x.SegmentId })
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<AuditJournalHead>(entity =>
+        {
+            entity.ToTable("AuditJournalHeads");
+            entity.HasKey(x => x.InstanceId);
+            entity.Property(x => x.Head).HasMaxLength(32);
+            entity.Property(x => x.KeyId).HasMaxLength(100);
+            entity.HasOne<AuditSegmentRecord>().WithMany()
+                .HasForeignKey(x => new { x.InstanceId, x.ActiveSegmentId })
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<AuditSegmentRecord>(entity =>
+        {
+            entity.ToTable("AuditSegments");
+            entity.HasKey(x => new { x.InstanceId, x.SegmentId });
+            entity.HasIndex(x => new { x.InstanceId, x.FirstSequence }).IsUnique();
+            entity.Property(x => x.KeyId).HasMaxLength(100);
+            entity.Property(x => x.FirstPredecessorHash).HasMaxLength(32);
+            entity.Property(x => x.ClosingHash).HasMaxLength(32);
         });
     }
 

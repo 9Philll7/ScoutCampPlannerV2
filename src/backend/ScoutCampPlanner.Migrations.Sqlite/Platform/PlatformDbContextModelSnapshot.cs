@@ -106,6 +106,179 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Platform
                     b.ToTable("UserAccounts", (string)null);
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Infrastructure.Auditing.AuditEventRecord", b =>
+                {
+                    b.Property<Guid>("InstanceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Sequence")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("CampId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CorrelationId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("FormatVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<byte[]>("Hmac")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("BLOB");
+
+                    b.Property<string>("KeyId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MetadataJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("PreviousHash")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("BLOB");
+
+                    b.Property<string>("Result")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("RoleDefinitionVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("SecurityVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("SegmentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("TargetId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TargetType")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("TimestampUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("InstanceId", "Sequence");
+
+                    b.HasIndex("TimestampUtc");
+
+                    b.HasIndex("InstanceId", "EventId")
+                        .IsUnique();
+
+                    b.HasIndex("InstanceId", "SegmentId", "Sequence");
+
+                    b.ToTable("AuditEvents", (string)null);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Infrastructure.Auditing.AuditJournalHead", b =>
+                {
+                    b.Property<Guid>("InstanceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ActiveSegmentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("FormatVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<byte[]>("Head")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("BLOB");
+
+                    b.Property<string>("KeyId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Sequence")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("InstanceId");
+
+                    b.HasIndex("InstanceId", "ActiveSegmentId");
+
+                    b.ToTable("AuditJournalHeads", (string)null);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Infrastructure.Auditing.AuditSegmentRecord", b =>
+                {
+                    b.Property<Guid>("InstanceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SegmentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("ClosedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("ClosingHash")
+                        .HasMaxLength(32)
+                        .HasColumnType("BLOB");
+
+                    b.Property<DateTimeOffset?>("EventsDeletedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("FirstPredecessorHash")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("BLOB");
+
+                    b.Property<long>("FirstSequence")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("FormatVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("KeyId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("LastSequence")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("OpenedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("VerifiedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("InstanceId", "SegmentId");
+
+                    b.HasIndex("InstanceId", "FirstSequence")
+                        .IsUnique();
+
+                    b.ToTable("AuditSegments", (string)null);
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Platform.Infrastructure.Authentication.PasswordCredential", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -148,6 +321,24 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Platform
                         .WithMany()
                         .HasForeignKey("MembershipId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Infrastructure.Auditing.AuditEventRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Platform.Infrastructure.Auditing.AuditSegmentRecord", null)
+                        .WithMany()
+                        .HasForeignKey("InstanceId", "SegmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Infrastructure.Auditing.AuditJournalHead", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Platform.Infrastructure.Auditing.AuditSegmentRecord", null)
+                        .WithMany()
+                        .HasForeignKey("InstanceId", "ActiveSegmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

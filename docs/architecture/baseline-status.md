@@ -40,6 +40,7 @@ The following decisions are required before the affected areas are production-re
 - operational backup-restore validation on a packaged clean-machine installation; migrations and automatic SQLite pre-upgrade backups are defined by ADR-008
 - a package migration registry, historic compatibility fixtures, and a supported compatibility window
 - productive package-version-2 serialization, version migration, and integration of the validated encryption and transfer-signature candidate; package version 1 remains checksum-only
+- productive cryptographic audit append, verification, checkpoint advancement, and use-case integration; the Platform-owned Application contract, EF persistence model, and PostgreSQL/SQLite migrations are present
 - Windows 10 compatibility benchmarking of the defined single-device Argon2id profile, real denylist snapshot acquisition and release packaging, legal retention review, and privacy lifecycle; authentication, identity, authorization, password security, audit integrity, recovery, retention mechanics, and package-version-2 security binding are defined and technically validated by ADR-009 through ADR-012 and the focused security validations
 - retention, archival, deletion, and anonymisation rules for personal and health data
 - a stable API Problem Details contract
