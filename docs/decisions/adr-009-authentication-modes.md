@@ -10,7 +10,7 @@ ScoutCampPlanner supports cloud/server operation, a local Docker-based camp inst
 
 The single-device instance has a different risk and usability profile: it is operated by one person on one Windows device and must remain usable without mandatory technical setup. ADR-013 defines Windows 11 x64 as the supported desktop reference and security-maintained Windows 10 22H2 x64 as a tolerated transitional compatibility tier.
 
-This ADR decides the authentication modes, the relationship between online and offline passwords, the session models, the user-facing password policy, Argon2id hashing, strength-check behavior, cloud password reset, and single-device password recovery. The focused validation documented in [`security-library-validation.md`](../spike/security-library-validation.md) accepts the initial Argon2id and password-strength libraries. The versioned denylist format, dataset policy, and bounded generator are defined in [`password-denylist.md`](../architecture/password-denylist.md). Calibrated production Argon2id parameters and the real denylist asset packaging remain open. Identity and tenant membership are defined by ADR-010, roles and permissions by ADR-011, and the security audit model by ADR-012.
+This ADR decides the authentication modes, the relationship between online and offline passwords, the session models, the user-facing password policy, Argon2id hashing, strength-check behavior, cloud password reset, and single-device password recovery. The focused validation documented in [`security-library-validation.md`](../spike/security-library-validation.md) accepts the initial Argon2id and password-strength libraries. ADR-014 supersedes this ADR's original separate-denylist requirement and requires the strength check for every password length. Identity and tenant membership are defined by ADR-010, roles and permissions by ADR-011, and the security audit model by ADR-012.
 
 ## Decision
 
@@ -18,32 +18,31 @@ This ADR decides the authentication modes, the relationship between online and o
 
 Cloud and local server authentication use a normal user password as the primary authenticator.
 
-Passwords are never stored in plaintext. Password verifiers use Argon2id as defined below. The initial Argon2id and strength-check libraries are accepted by the focused security-library validation. Calibrated production parameters and real denylist asset acquisition and packaging remain open.
+Passwords are never stored in plaintext. Password verifiers use Argon2id as defined below. The initial Argon2id and strength-check libraries are accepted by the focused security-library validation. ADR-014 removes the separate denylist and makes the strength estimator authoritative for all accepted lengths.
 
 ### Password policy
 
 The same policy applies to cloud passwords and optional single-device passwords:
 
 - The hard minimum length is 8 characters.
-- Passwords from 8 through 14 characters are accepted only when a server-side strength check rates them as sufficiently resistant to guessing.
-- Passwords with 15 or more characters have no composition requirement.
+- Passwords from 8 through 128 characters are accepted only when a server-side strength check rates them as sufficiently resistant to guessing.
+- There is no composition requirement.
 - The maximum accepted length is 128 characters.
 - Spaces, Unicode, and all printable characters are allowed.
 - Minimum, strength-policy, and maximum length boundaries count Unicode scalar values. In .NET this means enumerating `System.Text.Rune` values rather than using UTF-16 `string.Length`.
 - Combining sequences are not normalized and are not collapsed into user-perceived grapheme clusters. Each Unicode scalar value counts separately. This preserves the rule that passwords are processed exactly as entered and avoids Unicode-version-dependent grapheme segmentation in the authentication contract.
 - Passwords are never silently truncated or normalized into a different value.
 - Paste and password-manager use must be supported.
-- Known common and compromised passwords are rejected regardless of length.
 - The UI recommends a long passphrase even though the hard minimum is 8 characters.
 - Periodic password changes are not required. A change is required after suspected or confirmed compromise and remains available at the user's request.
 - A normal password change requires the current password. Recovery uses the separately controlled reset process.
 - The system does not maintain an arbitrary password-history rule such as prohibiting the last five passwords.
 
-The strength check and compromised-password check are enforced by the backend. Frontend feedback may assist the user but is not the security boundary.
+The strength check is enforced by the backend. Frontend feedback may assist the user but is not the security boundary.
 
 ### Password strength checks
 
-Passwords from 8 through 14 characters require a score of at least 3 on a zxcvbn-compatible 0-to-4 strength scale.
+Passwords from 8 through 128 characters require a score of at least 3 on a zxcvbn-compatible 0-to-4 strength scale.
 
 The server-side evaluation must consider at least:
 
@@ -53,17 +52,13 @@ The server-side evaluation must consider at least:
 - user-specific inputs such as name and email-address components
 - predictable combinations and substitutions
 
-All password lengths are checked against a local, versioned denylist of common and known compromised passwords. A denylisted password is rejected even when the strength estimator otherwise accepts it.
-
-The denylist contains the 100,000 most frequently observed entries from a dated HIBP Pwned Passwords snapshot plus a small reviewed set of product-specific complete values. It uses the versioned binary format, exact whole-password comparison, release cadence, and attribution rules defined in `docs/architecture/password-denylist.md`. Runtime password checks never contact HIBP or another external service.
-
 `zxcvbn-core` 7.0.92 is the initially accepted backend estimator. It is isolated behind an Infrastructure adapter because the package is not actively maintained and its result object contains the evaluated plaintext password. The result object must never escape the adapter; only an application-owned score and neutral reason identifiers may be returned. Golden score fixtures make a future replacement observable.
 
 - Cleartext passwords and complete unsalted password hashes are never sent to an external breach-checking service.
 - The required checks work without internet connectivity, including on a single-device instance.
 - The backend remains authoritative. Angular may run an equivalent estimator only to provide immediate feedback.
-- The estimator implementation and denylist version are recorded so that policy changes remain testable.
-- Updating the estimator or denylist does not invalidate an existing password automatically. A password change is required when a concrete compromise or unacceptable risk is identified.
+- The estimator implementation is recorded so that policy changes remain testable.
+- Updating the estimator does not invalidate an existing password automatically. A password change is required when a concrete compromise or unacceptable risk is identified.
 
 The selected .NET implementation must support deterministic tests and must be reviewed for maintenance status, licensing, package size, and consistent behavior on server and Windows single-device targets.
 
@@ -140,7 +135,7 @@ A user who has forgotten the cloud password can request a reset link for the con
 - The public response is identical whether or not an account exists for the submitted address.
 - The reset token is cryptographically random, single-use, and valid for 30 minutes.
 - No usable plaintext reset token is stored in the database.
-- The replacement password must satisfy the current password policy, strength check, and denylist.
+- The replacement password must satisfy the current password policy and strength check.
 - A successful reset does not sign the user in automatically.
 - A successful reset invalidates all cloud sessions for the account.
 - Previously prepared local offline verifiers become invalid at the next successful cloud contact and must be prepared again with the new password.
@@ -217,7 +212,7 @@ Before sensitive personal or health data is implemented, Tauri must use a restri
 ## Consequences
 
 - Offline capability does not require distributing central password hashes.
-- The 8-character hard minimum is a usability compromise. A strength score of at least 3 is mandatory for passwords shorter than 15 characters, and the local denylist applies to every password length.
+- The 8-character hard minimum is a usability compromise. ADR-014 requires a strength score of at least 3 for every password length.
 - Argon2id adds a justified security dependency and requires benchmark, compatibility, resource-exhaustion, outdated-parameter, and rehash tests.
 - Every user who needs offline access must prepare it before the local instance disconnects.
 - Loss of connectivity creates an unavoidable delay for cloud-side revocation. This risk must be reflected in authorization scope, audit events, and offline-phase procedures.
@@ -228,4 +223,4 @@ Before sensitive personal or health data is implemented, Tauri must use a restri
 - Cloud password reset requires generic responses, single-use token tests, expiration tests, rate limiting, session invalidation, offline-verifier invalidation, and audit tests.
 - Single-device recovery requires one-time-display, invalid-code, brute-force protection, session invalidation, security-state rotation, no-bypass, and future encryption-key compatibility tests.
 - Package format version 1 and the rule that user data is not replaced during package return remain unchanged.
-- Implementation must follow ADR-010 through ADR-012 for identity storage, tenant isolation, roles, permissions, and security auditing. The Windows 10 compatibility benchmark, real denylist snapshot acquisition and release packaging, the required audit/package-security validation, and the privacy lifecycle remain prerequisites for their affected production releases.
+- Implementation must follow ADR-010 through ADR-012 and ADR-014 for identity storage, tenant isolation, roles, permissions, password strength, and security auditing. The Windows 10 compatibility benchmark, the required audit/package-security validation, and the privacy lifecycle remain prerequisites for their affected production releases.

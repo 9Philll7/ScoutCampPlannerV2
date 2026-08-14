@@ -1,4 +1,3 @@
-using ScoutCampPlanner.PasswordDenylist;
 using ScoutCampPlanner.Platform.Application.Authentication;
 using ScoutCampPlanner.Platform.Infrastructure.Authentication;
 using Xunit;
@@ -10,7 +9,7 @@ public sealed class ProductivePasswordServicesTests
     [Fact]
     public void Policy_usesUnicodeScalarLengthAndStrengthRule()
     {
-        var policy = new PasswordPolicy(new StubDenylist());
+        var policy = new PasswordPolicy();
 
         Assert.Equal(PasswordPolicyFailure.TooShort, policy.Evaluate("abcde😀f").Failure);
         Assert.Equal(PasswordPolicyFailure.TooWeak, policy.Evaluate("password1").Failure);
@@ -18,28 +17,11 @@ public sealed class ProductivePasswordServicesTests
     }
 
     [Fact]
-    public void Policy_rejectsDenylistedPasswordsRegardlessOfLength()
+    public void Policy_rejectsLongButPredictablePasswords()
     {
-        var policy = new PasswordPolicy(new StubDenylist("a very long compromised password"));
+        var policy = new PasswordPolicy();
 
-        Assert.Equal(
-            PasswordPolicyFailure.Denylisted,
-            policy.Evaluate("a very long compromised password").Failure);
-    }
-
-    [Fact]
-    public void BinaryDenylist_readsGeneratorFormat()
-    {
-        byte[] file = DenylistFile.Create(
-            [new DenylistSourceEntry("5BAA61E4C9B93F3F0682250B6CF8331B7EE68FD8", 10)],
-            "test",
-            new DateOnly(2026, 8, 10),
-            100);
-
-        var denylist = BinaryPasswordDenylist.Load(file);
-
-        Assert.True(denylist.Contains("password"));
-        Assert.False(denylist.Contains("not-listed"));
+        Assert.Equal(PasswordPolicyFailure.TooWeak, policy.Evaluate("passwordpassword").Failure);
     }
 
     [Fact]
@@ -85,10 +67,5 @@ public sealed class ProductivePasswordServicesTests
 
         Assert.False(result.IsValid);
         Assert.False(result.RequiresRehash);
-    }
-
-    private sealed class StubDenylist(params string[] passwords) : IPasswordDenylist
-    {
-        public bool Contains(string password) => passwords.Contains(password, StringComparer.Ordinal);
     }
 }

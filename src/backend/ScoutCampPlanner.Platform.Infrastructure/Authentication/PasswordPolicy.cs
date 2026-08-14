@@ -3,7 +3,7 @@ using Zxcvbn;
 
 namespace ScoutCampPlanner.Platform.Infrastructure.Authentication;
 
-public sealed class PasswordPolicy(IPasswordDenylist denylist) : IPasswordPolicy
+public sealed class PasswordPolicy : IPasswordPolicy
 {
     public PasswordPolicyResult Evaluate(string password, IReadOnlyCollection<string>? userInputs = null)
     {
@@ -17,16 +17,6 @@ public sealed class PasswordPolicy(IPasswordDenylist denylist) : IPasswordPolicy
         if (length > 128)
         {
             return PasswordPolicyResult.Rejected(PasswordPolicyFailure.TooLong);
-        }
-
-        if (denylist.Contains(password))
-        {
-            return PasswordPolicyResult.Rejected(PasswordPolicyFailure.Denylisted);
-        }
-
-        if (length >= 15)
-        {
-            return PasswordPolicyResult.Accepted();
         }
 
         var strength = Core.EvaluatePassword(password, userInputs?.ToArray() ?? []);

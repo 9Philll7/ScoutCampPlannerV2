@@ -1,5 +1,7 @@
 # Password Security Library Validation
 
+> Historical validation note: ADR-014 later removed the separate password-denylist requirement. Denylist results below document the completed spike but are no longer part of the current architecture baseline.
+
 ## Status
 
 Completed on 2026-08-10 for the initial Argon2id and password-strength library candidates.

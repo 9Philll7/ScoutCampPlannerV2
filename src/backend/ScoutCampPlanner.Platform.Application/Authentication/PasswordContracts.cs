@@ -4,7 +4,6 @@ public enum PasswordPolicyFailure
 {
     TooShort,
     TooLong,
-    Denylisted,
     TooWeak,
 }
 
@@ -35,9 +34,4 @@ public interface IPasswordVerifier
         string password,
         string storedVerifier,
         CancellationToken cancellationToken = default);
-}
-
-public interface IPasswordDenylist
-{
-    bool Contains(string password);
 }
