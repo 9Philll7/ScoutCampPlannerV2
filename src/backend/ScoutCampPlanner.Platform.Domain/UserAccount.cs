@@ -35,4 +35,12 @@ public sealed class UserAccount
     public string NormalizedEmail { get; private set; } = string.Empty;
 
     public UserAccountState State { get; private set; }
+
+    public void ActivateAfterInitialSetup()
+    {
+        if (State != UserAccountState.PendingConfirmation)
+            throw new InvalidOperationException("Only a pending account can be activated by initial setup.");
+
+        State = UserAccountState.Active;
+    }
 }

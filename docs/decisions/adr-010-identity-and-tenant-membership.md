@@ -27,6 +27,8 @@ User identities belong to the Platform module.
 
 Cloud users must prove control of their sign-in email address before normal password authentication is enabled. For an administrator-created invitation, successful redemption of the single-use invitation link confirms the email address at the same time. Preparing local-server offline access does not repeat email confirmation because it requires an already confirmed cloud account and a fresh cloud authentication. A standalone single-device security record is not a cloud account and requires neither an email address nor email confirmation.
 
+The empty-installation setup is the only initial exception to the normal confirmation flow. It is available only while no user account exists and atomically creates the first tenant, an active initial owner account, its password credential, active membership, and `TenantOwner` assignment. The setup endpoint is permanently unavailable as soon as any user account exists. This bootstraps a self-hosted or single-device installation without requiring a pre-existing administrator or mail provider; it is not public registration.
+
 The global cloud account has one of these lifecycle states:
 
 - `PendingConfirmation`: control of the sign-in email has not yet been confirmed and normal authentication is disabled.

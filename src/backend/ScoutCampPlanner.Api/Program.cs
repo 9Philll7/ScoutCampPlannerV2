@@ -7,7 +7,9 @@ using ScoutCampPlanner.Catering.Infrastructure;
 using ScoutCampPlanner.Migrations.PostgreSql;
 using ScoutCampPlanner.Migrations.Sqlite;
 using ScoutCampPlanner.Package;
+using ScoutCampPlanner.Platform.Application.Authentication;
 using ScoutCampPlanner.Platform.Infrastructure;
+using ScoutCampPlanner.Platform.Infrastructure.Authentication;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders();
@@ -40,6 +42,10 @@ builder.Services.AddDbContext<PlatformDbContext>((services, options) => Configur
 builder.Services.AddDbContext<CampDbContext>((services, options) => Configure(options, services.GetRequiredService<DbConnection>(), provider, "camp"));
 builder.Services.AddDbContext<CateringDbContext>((services, options) => Configure(options, services.GetRequiredService<DbConnection>(), provider, "catering"));
 builder.Services.AddScoped<CampPackageService>();
+builder.Services.AddSingleton<IPasswordPolicy, PasswordPolicy>();
+builder.Services.AddSingleton<IPasswordVerifier>(
+    _ => new Argon2idPasswordVerifier(Argon2idOperatingMode.Server));
+builder.Services.AddScoped<IInitialSetupService, InitialSetupService>();
 
 var app = builder.Build();
 app.MapOpenApi();
@@ -58,6 +64,33 @@ await using (var scope = app.Services.CreateAsyncScope())
 }
 
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", databaseProvider = provider }));
+app.MapGet("/api/setup/status", async (IInitialSetupService setup, CancellationToken cancellationToken) =>
+    Results.Ok(await setup.GetStatusAsync(cancellationToken)));
+app.MapPost("/api/setup", async (
+    InitialSetupRequest request,
+    IInitialSetupService setup,
+    CancellationToken cancellationToken) =>
+{
+    InitialSetupResult result = await setup.CompleteAsync(request, cancellationToken);
+    if (result.IsSuccessful)
+        return Results.Created("/api/session", new { result.UserId, result.TenantId });
+
+    return result.Failure == InitialSetupFailure.AlreadyCompleted
+        ? Results.Conflict(new { code = "setup_already_completed" })
+        : Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            [result.Failure is InitialSetupFailure.InvalidTenantName ? "tenantName" :
+                result.Failure is InitialSetupFailure.InvalidEmail ? "email" : "password"] =
+                [result.Failure switch
+                {
+                    InitialSetupFailure.InvalidTenantName => "Bitte gib einen Namen für die Organisation ein.",
+                    InitialSetupFailure.InvalidEmail => "Bitte gib eine gültige E-Mail-Adresse ein.",
+                    InitialSetupFailure.PasswordTooShort => "Das Passwort muss mindestens 8 Zeichen lang sein.",
+                    InitialSetupFailure.PasswordTooLong => "Das Passwort darf höchstens 128 Zeichen lang sein.",
+                    _ => "Das Passwort ist zu leicht zu erraten.",
+                }]
+        });
+});
 app.MapGet("/api/camps", async (CampDbContext db, CancellationToken cancellationToken) =>
     await db.Camps.Select(x => new { x.Id, x.TenantId, x.Name, x.IsFrozen }).ToListAsync(cancellationToken));
 app.MapPost("/api/camps/{campId:guid}/offline-package", async (Guid campId, CampPackageService packages, CancellationToken cancellationToken) =>
