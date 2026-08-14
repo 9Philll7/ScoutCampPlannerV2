@@ -4,6 +4,22 @@ public sealed class AuditSegmentRecord
 {
     private AuditSegmentRecord() { }
 
+    internal AuditSegmentRecord(
+        Guid instanceId,
+        Guid segmentId,
+        DateTimeOffset openedAtUtc,
+        string keyId,
+        int formatVersion)
+    {
+        InstanceId = instanceId;
+        SegmentId = segmentId;
+        FirstSequence = 1;
+        OpenedAtUtc = openedAtUtc;
+        KeyId = keyId;
+        FormatVersion = formatVersion;
+        FirstPredecessorHash = new byte[32];
+    }
+
     public Guid InstanceId { get; private set; }
     public Guid SegmentId { get; private set; }
     public long FirstSequence { get; private set; }

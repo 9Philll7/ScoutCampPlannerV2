@@ -1,8 +1,43 @@
+using ScoutCampPlanner.Platform.Application.Auditing;
+
 namespace ScoutCampPlanner.Platform.Infrastructure.Auditing;
 
 public sealed class AuditEventRecord
 {
     private AuditEventRecord() { }
+
+    internal AuditEventRecord(
+        AuditEventDraft source,
+        long sequence,
+        Guid segmentId,
+        string metadataJson,
+        byte[] previousHash,
+        byte[] hmac,
+        string keyId,
+        int formatVersion)
+    {
+        InstanceId = source.InstanceId;
+        Sequence = sequence;
+        EventId = source.EventId;
+        SegmentId = segmentId;
+        TimestampUtc = source.TimestampUtc;
+        Action = source.Action;
+        Result = source.Result;
+        ActorUserId = source.ActorUserId;
+        TenantId = source.TenantId;
+        CampId = source.CampId;
+        TargetType = source.TargetType;
+        TargetId = source.TargetId;
+        Origin = source.Origin;
+        CorrelationId = source.CorrelationId;
+        SecurityVersion = source.SecurityVersion;
+        RoleDefinitionVersion = source.RoleDefinitionVersion;
+        MetadataJson = metadataJson;
+        PreviousHash = previousHash.ToArray();
+        Hmac = hmac.ToArray();
+        KeyId = keyId;
+        FormatVersion = formatVersion;
+    }
 
     public Guid InstanceId { get; private set; }
     public long Sequence { get; private set; }

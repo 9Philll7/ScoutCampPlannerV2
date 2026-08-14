@@ -10,6 +10,8 @@ using ScoutCampPlanner.Migrations.PostgreSql;
 using ScoutCampPlanner.Migrations.Sqlite;
 using ScoutCampPlanner.Platform.Domain;
 using ScoutCampPlanner.Platform.Infrastructure;
+using ScoutCampPlanner.Platform.Application.Auditing;
+using ScoutCampPlanner.Platform.Infrastructure.Auditing;
 using Xunit;
 
 namespace ScoutCampPlanner.DatabaseMigrationTests;
@@ -82,6 +84,8 @@ public sealed class DatabaseMigrationTests
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'platform' AND indexname = 'IX_TenantRoleAssignments_MembershipId'"));
         Assert.Equal(3, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'platform' AND table_name IN ('AuditEvents', 'AuditJournalHeads', 'AuditSegments')"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'platform' AND indexname = 'IX_AuditEvents_InstanceId_EventId'"));
+
+        await AssertConcurrentProductivePostgreSqlAuditAppendsAsync(connectionString, databases.Platform);
     }
 
     private static ModuleDatabases CreateSqliteDatabases(SqliteConnection connection) => new(
@@ -162,6 +166,34 @@ public sealed class DatabaseMigrationTests
         await command.ExecuteNonQueryAsync();
     }
 
+    private static async Task AssertConcurrentProductivePostgreSqlAuditAppendsAsync(
+        string connectionString,
+        PlatformDbContext initializedDatabase)
+    {
+        Guid instanceId = Guid.NewGuid();
+        var keys = new FixedAuditKeyProvider();
+        await new AuditJournalInitializer(initializedDatabase, keys).InitializeAsync(
+            instanceId, Guid.NewGuid(), DateTimeOffset.UnixEpoch);
+
+        await Task.WhenAll(Enumerable.Range(1, 12).Select(async number =>
+        {
+            await using var database = new PlatformDbContext(
+                new DbContextOptionsBuilder<PlatformDbContext>().UseNpgsql(connectionString).Options);
+            var draft = new AuditEventDraft(
+                Guid.NewGuid(), DateTimeOffset.UnixEpoch.AddSeconds(number), "migration.audit", "success",
+                null, null, null, null, null, "test", instanceId, Guid.NewGuid(), null, null,
+                new Dictionary<string, string>());
+            await new AuditJournalAppender(database, keys).AppendAsync(draft);
+        }));
+
+        initializedDatabase.ChangeTracker.Clear();
+        long[] sequences = await initializedDatabase.AuditEvents.Where(value => value.InstanceId == instanceId)
+            .OrderBy(value => value.Sequence).Select(value => value.Sequence).ToArrayAsync();
+        Assert.Equal(Enumerable.Range(1, 12).Select(value => (long)value), sequences);
+        Assert.Equal(12, (await initializedDatabase.AuditJournalHeads.SingleAsync(
+            value => value.InstanceId == instanceId)).Sequence);
+    }
+
     private static async Task<T> ScalarAsync<T>(DbConnection connection, string sql)
     {
         await using var command = connection.CreateCommand();
@@ -184,5 +216,13 @@ public sealed class DatabaseMigrationTests
             await Camp.DisposeAsync();
             await Platform.DisposeAsync();
         }
+    }
+
+    private sealed class FixedAuditKeyProvider : IAuditSigningKeyProvider
+    {
+        private static readonly byte[] KeyMaterial = Enumerable.Range(1, 32).Select(value => (byte)value).ToArray();
+
+        public Task<AuditSigningKey> GetActiveAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AuditSigningKey("migration-key", KeyMaterial.ToArray()));
     }
 }

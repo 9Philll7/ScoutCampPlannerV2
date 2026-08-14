@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Runtime.Versioning;
 using ScoutCampPlanner.Platform.Application.Auditing;
 using ScoutCampPlanner.Platform.Infrastructure.Auditing;
+using System.Text.Json;
 using Xunit;
 
 namespace ScoutCampPlanner.PlatformTests;
@@ -88,6 +89,24 @@ public sealed class AuditProtectedStorageTests : IDisposable
         VerifyWindowsDpapi();
     }
 
+    [Fact]
+    public async Task ProductiveSigningKeyProviderLoadsExactlyOneActiveKey()
+    {
+        byte[] key = RandomNumberGenerator.GetBytes(32);
+        byte[] bundle = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            Version = 1,
+            Keys = new[] { new { Id = "active-key", State = "Active", Material = Convert.ToBase64String(key) } }
+        });
+        var provider = new ProtectedMaterialAuditSigningKeyProvider(
+            new FixedProtectedMaterialStore(new AuditProtectedMaterial(bundle, [1])));
+
+        AuditSigningKey loaded = await provider.GetActiveAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal("active-key", loaded.Id);
+        Assert.Equal(key, loaded.Material);
+    }
+
     [SupportedOSPlatform("windows")]
     private static void VerifyWindowsDpapi()
     {
@@ -106,4 +125,13 @@ public sealed class AuditProtectedStorageTests : IDisposable
     }
 
     private static AuditProtectedMaterial Material() => new([1, 2, 3, 4], [5, 6, 7, 8]);
+
+    private sealed class FixedProtectedMaterialStore(AuditProtectedMaterial material) : IAuditProtectedMaterialStore
+    {
+        public Task<AuditProtectedMaterialLoadResult> LoadAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AuditProtectedMaterialLoadResult(AuditProtectedMaterialStatus.Available, material));
+
+        public Task SaveAsync(AuditProtectedMaterial value, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
 }
