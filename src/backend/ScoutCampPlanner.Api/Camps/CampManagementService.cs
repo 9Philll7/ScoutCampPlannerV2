@@ -12,10 +12,12 @@ namespace ScoutCampPlanner.Api.Camps;
 public sealed record TenantOption(Guid Id, string Name);
 public sealed record CampAdministratorOption(Guid MembershipId, Guid UserId, string Email);
 public sealed record CampSummary(
-    Guid Id, Guid TenantId, string Name, DateOnly? StartDate, DateOnly? EndDate, bool IsFrozen);
+    Guid Id, Guid TenantId, string Name, DateOnly? StartDate, DateOnly? EndDate,
+    bool IsFrozen, bool CanEdit, bool CanExport);
 public sealed record CreateCampRequest(
     string Name, DateOnly StartDate, DateOnly EndDate,
     IReadOnlyCollection<Guid>? InitialAdministratorMembershipIds);
+public sealed record UpdateCampRequest(string Name, DateOnly StartDate, DateOnly EndDate);
 
 public enum CreateCampFailure
 {
@@ -31,6 +33,12 @@ public enum CreateCampFailure
 public sealed record CreateCampResult(CampSummary? Camp, CreateCampFailure Failure)
 {
     public bool IsSuccessful => Camp is not null && Failure == CreateCampFailure.None;
+}
+
+public enum UpdateCampFailure { None, NotFound, InvalidName, InvalidPeriod, DuplicateCamp, Frozen }
+public sealed record UpdateCampResult(CampSummary? Camp, UpdateCampFailure Failure)
+{
+    public bool IsSuccessful => Camp is not null && Failure == UpdateCampFailure.None;
 }
 
 public sealed class CampManagementService(
@@ -72,12 +80,21 @@ public sealed class CampManagementService(
     {
         Guid[] campIds = await GetAuthorizedCampIdsAsync(
             userId, tenantId, Permissions.Camp.View, cancellationToken);
+        HashSet<Guid> editableCampIds = (await GetAuthorizedCampIdsAsync(
+            userId, tenantId, Permissions.Camp.Edit, cancellationToken)).ToHashSet();
+        HashSet<Guid> exportableCampIds = (await GetAuthorizedCampIdsAsync(
+            userId, tenantId, Permissions.Camp.ExportPackage, cancellationToken)).ToHashSet();
 
-        return await camps.Camps.Where(camp => camp.TenantId == tenantId && campIds.Contains(camp.Id))
+        var visibleCamps = await camps.Camps.Where(camp => camp.TenantId == tenantId && campIds.Contains(camp.Id))
             .OrderBy(camp => camp.Name)
             .Select(camp => new CampSummary(
-                camp.Id, camp.TenantId, camp.Name, camp.StartDate, camp.EndDate, camp.IsFrozen))
+                camp.Id, camp.TenantId, camp.Name, camp.StartDate, camp.EndDate, camp.IsFrozen, false, false))
             .ToListAsync(cancellationToken);
+        return visibleCamps.Select(camp => camp with
+        {
+            CanEdit = editableCampIds.Contains(camp.Id),
+            CanExport = exportableCampIds.Contains(camp.Id),
+        }).ToList();
     }
 
     public async Task<bool> HasCampPermissionAsync(
@@ -166,8 +183,72 @@ public sealed class CampManagementService(
         }
 
         return new(new CampSummary(
-            camp.Id, camp.TenantId, camp.Name, camp.StartDate, camp.EndDate, camp.IsFrozen),
+            camp.Id, camp.TenantId, camp.Name, camp.StartDate, camp.EndDate, camp.IsFrozen, false, false),
             CreateCampFailure.None);
+    }
+
+    public async Task<UpdateCampResult> UpdateAsync(
+        Guid actorUserId, Guid campId, UpdateCampRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Trim().Length > 200)
+            return new(null, UpdateCampFailure.InvalidName);
+        if (request.StartDate == default || request.EndDate == default || request.EndDate < request.StartDate)
+            return new(null, UpdateCampFailure.InvalidPeriod);
+        if (!await HasCampPermissionAsync(actorUserId, campId, Permissions.Camp.Edit, cancellationToken))
+            return new(null, UpdateCampFailure.NotFound);
+
+        var camp = await camps.Camps.SingleOrDefaultAsync(value => value.Id == campId, cancellationToken);
+        if (camp is null) return new(null, UpdateCampFailure.NotFound);
+        if (camp.IsFrozen) return new(null, UpdateCampFailure.Frozen);
+        string normalizedName = request.Name.Trim().ToUpperInvariant();
+        if (await camps.Camps.AnyAsync(existing => existing.Id != campId &&
+            existing.TenantId == camp.TenantId && existing.NormalizedName == normalizedName &&
+            existing.StartDate == request.StartDate && existing.EndDate == request.EndDate, cancellationToken))
+            return new(null, UpdateCampFailure.DuplicateCamp);
+
+        var auditEvent = new AuditEventDraft(
+            Guid.NewGuid(), timeProvider.GetUtcNow(), "camp.updated", "success", actorUserId,
+            camp.TenantId, camp.Id, "camp", camp.Id, "server", auditRuntime.InstanceId,
+            Guid.NewGuid(), null, null, new Dictionary<string, string>());
+        try
+        {
+            await auditedOperation.ExecuteAsync(auditEvent, async operationCancellationToken =>
+            {
+                var transaction = platform.Database.CurrentTransaction
+                    ?? throw new InvalidOperationException("The Platform transaction is unavailable.");
+                await camps.Database.UseTransactionAsync(transaction.GetDbTransaction(), operationCancellationToken);
+                try
+                {
+                    camp.UpdateDetails(request.Name, request.StartDate, request.EndDate);
+                    await camps.SaveChangesAsync(operationCancellationToken);
+                }
+                finally
+                {
+                    await camps.Database.UseTransactionAsync(null, CancellationToken.None);
+                }
+            }, cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            camps.ChangeTracker.Clear();
+            if (await camps.Camps.AsNoTracking().AnyAsync(existing => existing.Id != campId &&
+                existing.TenantId == camp.TenantId && existing.NormalizedName == normalizedName &&
+                existing.StartDate == request.StartDate && existing.EndDate == request.EndDate, cancellationToken))
+                return new(null, UpdateCampFailure.DuplicateCamp);
+            throw;
+        }
+        catch
+        {
+            camps.ChangeTracker.Clear();
+            throw;
+        }
+
+        bool canExport = await HasCampPermissionAsync(
+            actorUserId, campId, Permissions.Camp.ExportPackage, cancellationToken);
+        return new(new CampSummary(
+            camp.Id, camp.TenantId, camp.Name, camp.StartDate, camp.EndDate, camp.IsFrozen, true, canExport),
+            UpdateCampFailure.None);
     }
 
     private async Task<bool> HasTenantPermissionAsync(

@@ -19,6 +19,7 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
     private CampManagementService service = null!;
     private Guid tenantId;
     private Guid ownerUserId;
+    private Guid otherUserId;
     private Guid otherMembershipId;
 
     [Fact]
@@ -86,6 +87,28 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task CampAdminCanUpdateCampButUnassignedOwnerCannot()
+    {
+        CreateCampResult created = await service.CreateAsync(ownerUserId, tenantId,
+            new CreateCampRequest("Alt", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14),
+                [otherMembershipId]), TestContext.Current.CancellationToken);
+
+        UpdateCampResult denied = await service.UpdateAsync(ownerUserId, created.Camp!.Id,
+            new UpdateCampRequest("Nicht erlaubt", new DateOnly(2028, 7, 1), new DateOnly(2028, 7, 14)),
+            TestContext.Current.CancellationToken);
+        UpdateCampResult updated = await service.UpdateAsync(otherUserId, created.Camp.Id,
+            new UpdateCampRequest("Neu", new DateOnly(2028, 7, 1), new DateOnly(2028, 7, 14)),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(UpdateCampFailure.NotFound, denied.Failure);
+        Assert.True(updated.IsSuccessful);
+        Assert.Equal("Neu", (await camps.Camps.SingleAsync(TestContext.Current.CancellationToken)).Name);
+        Assert.Equal(new[] { "camp.created", "camp.updated" },
+            await platform.AuditEvents.OrderBy(value => value.Sequence)
+                .Select(value => value.Action).ToArrayAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task FailedAdministratorPersistenceRollsBackCampAndAudit()
     {
         await ExecuteScriptAsync("""
@@ -122,7 +145,8 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
         ownerUserId = Guid.NewGuid();
         var owner = new UserAccount(ownerUserId, "owner@example.com");
         owner.ActivateAfterInitialSetup();
-        var other = new UserAccount(Guid.NewGuid(), "admin@example.com");
+        otherUserId = Guid.NewGuid();
+        var other = new UserAccount(otherUserId, "admin@example.com");
         other.ActivateAfterInitialSetup();
         var ownerMembership = new TenantMembership(Guid.NewGuid(), owner.Id, tenantId);
         var otherMembership = new TenantMembership(Guid.NewGuid(), other.Id, tenantId);

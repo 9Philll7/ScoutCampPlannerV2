@@ -17,6 +17,17 @@ public sealed class IdentityModelTests
     }
 
     [Fact]
+    public void FrozenCampRejectsDetailChanges()
+    {
+        var camp = new ScoutCampPlanner.Camp.Domain.Camp(
+            Guid.NewGuid(), Guid.NewGuid(), "Test", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14));
+        camp.Freeze(Guid.NewGuid());
+
+        Assert.Throws<InvalidOperationException>(() => camp.UpdateDetails(
+            "Neu", new DateOnly(2028, 7, 1), new DateOnly(2028, 7, 14)));
+    }
+
+    [Fact]
     public void UserAccount_retainsTrimmedDisplayEmailAndNormalizesLookupEmail()
     {
         var account = new UserAccount(Guid.NewGuid(), "  Max.Example@example.com  ");

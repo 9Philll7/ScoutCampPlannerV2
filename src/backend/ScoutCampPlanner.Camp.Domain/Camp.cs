@@ -34,6 +34,22 @@ public sealed class Camp
     public Guid? ActiveTransferId { get; private set; }
     public long BaselineVersion { get; private set; }
 
+    public void UpdateDetails(string name, DateOnly startDate, DateOnly endDate)
+    {
+        if (IsFrozen) throw new InvalidOperationException("A frozen camp cannot be changed.");
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("Camp name is required.", nameof(name));
+        string trimmedName = name.Trim();
+        if (trimmedName.Length > 200)
+            throw new ArgumentException("Camp name must not exceed 200 characters.", nameof(name));
+        if (endDate < startDate)
+            throw new ArgumentException("Camp end date must not precede its start date.", nameof(endDate));
+
+        Name = trimmedName;
+        NormalizedName = trimmedName.ToUpperInvariant();
+        StartDate = startDate;
+        EndDate = endDate;
+    }
+
     public void Freeze(Guid transferId)
     {
         if (IsFrozen) throw new InvalidOperationException("Camp is already frozen.");

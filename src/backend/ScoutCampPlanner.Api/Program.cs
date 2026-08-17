@@ -248,6 +248,27 @@ app.MapPost("/api/tenants/{tenantId:guid}/camps", async (
                 }]
         });
 }).RequireAuthorization();
+app.MapPut("/api/camps/{campId:guid}", async (
+    Guid campId, UpdateCampRequest request, ClaimsPrincipal principal,
+    CampManagementService management, CancellationToken cancellationToken) =>
+{
+    UpdateCampResult result = await management.UpdateAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId, request, cancellationToken);
+    if (result.IsSuccessful) return Results.Ok(result.Camp);
+    if (result.Failure == UpdateCampFailure.NotFound) return Results.NotFound();
+    if (result.Failure == UpdateCampFailure.Frozen)
+        return Results.Conflict(new { code = "camp_frozen" });
+    return Results.ValidationProblem(new Dictionary<string, string[]>
+    {
+        [result.Failure == UpdateCampFailure.InvalidName ? "name" : "period"] =
+            [result.Failure switch
+            {
+                UpdateCampFailure.InvalidName => "Bitte gib einen Lagernamen mit höchstens 200 Zeichen ein.",
+                UpdateCampFailure.InvalidPeriod => "Das Enddatum darf nicht vor dem Startdatum liegen.",
+                _ => "Ein Lager mit diesem Namen und Zeitraum existiert bereits.",
+            }]
+    });
+}).RequireAuthorization();
 app.MapGet("/api/camps", () => Results.BadRequest(new { code = "tenant_context_required" }))
     .RequireAuthorization();
 app.MapPost("/api/camps/{campId:guid}/offline-package", async (

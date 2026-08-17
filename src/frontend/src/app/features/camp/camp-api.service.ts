@@ -9,6 +9,8 @@ export interface CampSummary {
   startDate: string | null;
   endDate: string | null;
   isFrozen: boolean;
+  canEdit: boolean;
+  canExport: boolean;
 }
 
 export interface TenantOption { id: string; name: string; }
@@ -40,6 +42,11 @@ export class CampApiService {
 
   create(tenantId: string, request: CreateCampRequest) {
     return this.http.post<CampSummary>(`${this.baseUrl}/api/tenants/${tenantId}/camps`, request,
+      { withCredentials: true });
+  }
+
+  update(campId: string, request: Omit<CreateCampRequest, 'initialAdministratorMembershipIds'>) {
+    return this.http.put<CampSummary>(`${this.baseUrl}/api/camps/${campId}`, request,
       { withCredentials: true });
   }
 
