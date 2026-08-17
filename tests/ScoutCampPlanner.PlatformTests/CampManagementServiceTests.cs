@@ -109,6 +109,34 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task CampAdminCanCreateFreeTreeWithSiblingScopedNames()
+    {
+        CreateCampResult created = await service.CreateAsync(ownerUserId, tenantId,
+            new CreateCampRequest("Strukturlager", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14),
+                [otherMembershipId]), TestContext.Current.CancellationToken);
+        Guid campId = created.Camp!.Id;
+
+        CreateStructureNodeResult north = await service.CreateStructureNodeAsync(otherUserId, campId,
+            new CreateStructureNodeRequest(null, "Nord"), TestContext.Current.CancellationToken);
+        CreateStructureNodeResult duplicate = await service.CreateStructureNodeAsync(otherUserId, campId,
+            new CreateStructureNodeRequest(null, " NORD "), TestContext.Current.CancellationToken);
+        CreateStructureNodeResult south = await service.CreateStructureNodeAsync(otherUserId, campId,
+            new CreateStructureNodeRequest(null, "Süd"), TestContext.Current.CancellationToken);
+        CreateStructureNodeResult northGroup = await service.CreateStructureNodeAsync(otherUserId, campId,
+            new CreateStructureNodeRequest(north.Node!.Id, "Gruppe 1"), TestContext.Current.CancellationToken);
+        CreateStructureNodeResult southGroup = await service.CreateStructureNodeAsync(otherUserId, campId,
+            new CreateStructureNodeRequest(south.Node!.Id, "Gruppe 1"), TestContext.Current.CancellationToken);
+
+        Assert.Equal(CreateStructureNodeFailure.DuplicateName, duplicate.Failure);
+        Assert.True(northGroup.IsSuccessful);
+        Assert.True(southGroup.IsSuccessful);
+        Assert.Equal(4, (await service.ListStructureAsync(
+            otherUserId, campId, TestContext.Current.CancellationToken))!.Count);
+        Assert.Equal(4, await platform.AuditEvents.CountAsync(
+            value => value.Action == "camp.structure-node.created", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task FailedAdministratorPersistenceRollsBackCampAndAudit()
     {
         await ExecuteScriptAsync("""

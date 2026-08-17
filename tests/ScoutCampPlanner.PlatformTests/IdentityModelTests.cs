@@ -28,6 +28,13 @@ public sealed class IdentityModelTests
     }
 
     [Fact]
+    public void StructureNodeRejectsEmptyParentIdentifier()
+    {
+        Assert.Throws<ArgumentException>(() => new ScoutCampPlanner.Camp.Domain.StructureNode(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.Empty, "Test"));
+    }
+
+    [Fact]
     public void UserAccount_retainsTrimmedDisplayEmailAndNormalizesLookupEmail()
     {
         var account = new UserAccount(Guid.NewGuid(), "  Max.Example@example.com  ");

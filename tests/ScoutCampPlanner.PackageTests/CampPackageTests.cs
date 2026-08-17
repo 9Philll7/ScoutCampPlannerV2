@@ -52,12 +52,12 @@ public sealed class CampPackageTests
         await using var cloud = await DatabaseHarness.CreateAsync();
         var tenantId = Guid.NewGuid();
         var campId = Guid.NewGuid();
-        var cookingUnitId = Guid.NewGuid();
+        var structureNodeId = Guid.NewGuid();
         var mealId = Guid.NewGuid();
         cloud.Platform.Tenants.Add(new Tenant(tenantId, "Stamm Nord"));
         cloud.Camp.Camps.Add(new Camp.Domain.Camp(
             campId, tenantId, "Sommerlager", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14)));
-        cloud.Camp.CookingUnits.Add(new CookingUnit(cookingUnitId, campId, "Küche Nord"));
+        cloud.Camp.StructureNodes.Add(new StructureNode(structureNodeId, campId, null, "Nord"));
         cloud.Catering.MealPlans.Add(new MealPlan(mealId, campId, "Montag"));
         await cloud.SaveAsync();
 
@@ -74,10 +74,10 @@ public sealed class CampPackageTests
         var returnPackage = await local.Packages.CreateReturnPackageAsync(campId);
         await cloud.Packages.ImportReturnPackageAsync(returnPackage);
 
-        var importedUnit = await cloud.Camp.CookingUnits.SingleAsync();
+        var importedNode = await cloud.Camp.StructureNodes.SingleAsync();
         var importedMeal = await cloud.Catering.MealPlans.SingleAsync();
         var completedCamp = await cloud.Camp.Camps.SingleAsync();
-        Assert.Equal(cookingUnitId, importedUnit.Id);
+        Assert.Equal(structureNodeId, importedNode.Id);
         Assert.Equal(mealId, importedMeal.Id);
         Assert.Equal("Montag offline geändert", importedMeal.Name);
         Assert.Equal(new DateOnly(2027, 7, 1), completedCamp.StartDate);
@@ -115,7 +115,7 @@ public sealed class CampPackageTests
             new CampPackageManifest(1, tenantId, campId, Guid.NewGuid(), 1, CampPackageDirection.CloudToLocal,
                 ["Camp", "Catering"], DateTimeOffset.UtcNow),
             new TenantData(tenantId, "Tenant"), new CampData(
-                campId, tenantId, "Camp", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14)), [], []);
+                campId, tenantId, "Camp", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14), "Free"), [], []);
     }
 
     private sealed class DatabaseHarness : IAsyncDisposable

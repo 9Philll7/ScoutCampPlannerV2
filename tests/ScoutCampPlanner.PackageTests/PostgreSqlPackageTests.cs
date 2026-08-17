@@ -36,12 +36,12 @@ public sealed class PostgreSqlPackageTests
 
         var tenantId = Guid.NewGuid();
         var campId = Guid.NewGuid();
-        var unitId = Guid.NewGuid();
+        var structureNodeId = Guid.NewGuid();
         var mealId = Guid.NewGuid();
         platform.Tenants.Add(new Tenant(tenantId, "PostgreSQL Tenant"));
         camp.Camps.Add(new Camp.Domain.Camp(
             campId, tenantId, "PostgreSQL Camp", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14)));
-        camp.CookingUnits.Add(new CookingUnit(unitId, campId, "Unit"));
+        camp.StructureNodes.Add(new StructureNode(structureNodeId, campId, null, "Region"));
         catering.MealPlans.Add(new MealPlan(mealId, campId, "Original"));
         await platform.SaveChangesAsync();
         await camp.SaveChangesAsync();
@@ -83,7 +83,7 @@ public sealed class PostgreSqlPackageTests
         };
         await service.ImportReturnPackageAsync(CampPackageSerializer.Serialize(validReturn));
 
-        Assert.Equal(unitId, (await camp.CookingUnits.AsNoTracking().SingleAsync()).Id);
+        Assert.Equal(structureNodeId, (await camp.StructureNodes.AsNoTracking().SingleAsync()).Id);
         Assert.Equal("Changed offline", (await catering.MealPlans.AsNoTracking().SingleAsync()).Name);
         Assert.False((await camp.Camps.AsNoTracking().SingleAsync()).IsFrozen);
         Assert.Equal(["camp", "catering", "platform"], await ReadModuleSchemasAsync(connection));

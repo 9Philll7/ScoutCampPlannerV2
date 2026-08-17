@@ -61,8 +61,17 @@ public static class CampPackageSerializer
         if (package.Camp.StartDate == default || package.Camp.EndDate == default ||
             package.Camp.EndDate < package.Camp.StartDate)
             throw new CampPackageValidationException("Camp period is invalid or missing.");
-        if (package.CookingUnits.Any(x => x.CampId != package.Camp.Id) || package.MealPlans.Any(x => x.CampId != package.Camp.Id))
+        if (!Enum.TryParse<ScoutCampPlanner.Camp.Domain.CampStructureMode>(
+                package.Camp.StructureMode, ignoreCase: false, out _))
+            throw new CampPackageValidationException("Camp structure mode is invalid.");
+        if (package.StructureNodes.Any(x => x.CampId != package.Camp.Id) ||
+            package.MealPlans.Any(x => x.CampId != package.Camp.Id))
             throw new CampPackageValidationException("Package contains data for another camp.");
+        var nodeIds = package.StructureNodes.Select(node => node.Id).ToHashSet();
+        if (nodeIds.Count != package.StructureNodes.Count || package.StructureNodes.Any(node =>
+            node.Id == Guid.Empty || node.ParentId == node.Id ||
+            node.ParentId is Guid parentId && !nodeIds.Contains(parentId)))
+            throw new CampPackageValidationException("Camp structure identity or parent reference is invalid.");
         var expectedModules = new[] { "Camp", "Catering" };
         if (!expectedModules.All(package.Manifest.IncludedModules.Contains))
             throw new CampPackageValidationException("Required module data is missing.");

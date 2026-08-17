@@ -269,6 +269,32 @@ app.MapPut("/api/camps/{campId:guid}", async (
             }]
     });
 }).RequireAuthorization();
+app.MapGet("/api/camps/{campId:guid}/structure", async (
+    Guid campId, ClaimsPrincipal principal, CampManagementService management,
+    CancellationToken cancellationToken) =>
+{
+    IReadOnlyList<StructureNodeSummary>? nodes = await management.ListStructureAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId, cancellationToken);
+    return nodes is null ? Results.NotFound() : Results.Ok(nodes);
+}).RequireAuthorization();
+app.MapPost("/api/camps/{campId:guid}/structure", async (
+    Guid campId, CreateStructureNodeRequest request, ClaimsPrincipal principal,
+    CampManagementService management, CancellationToken cancellationToken) =>
+{
+    CreateStructureNodeResult result = await management.CreateStructureNodeAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId, request, cancellationToken);
+    if (result.IsSuccessful)
+        return Results.Created($"/api/camps/{campId}/structure/{result.Node!.Id}", result.Node);
+    if (result.Failure == CreateStructureNodeFailure.NotFound) return Results.NotFound();
+    if (result.Failure == CreateStructureNodeFailure.Frozen)
+        return Results.Conflict(new { code = "camp_frozen" });
+    return Results.ValidationProblem(new Dictionary<string, string[]>
+    {
+        ["name"] = [result.Failure == CreateStructureNodeFailure.DuplicateName
+            ? "Auf dieser Ebene existiert bereits ein Eintrag mit diesem Namen."
+            : "Bitte gib einen Namen mit höchstens 200 Zeichen ein."]
+    });
+}).RequireAuthorization();
 app.MapGet("/api/camps", () => Results.BadRequest(new { code = "tenant_context_required" }))
     .RequireAuthorization();
 app.MapPost("/api/camps/{campId:guid}/offline-package", async (

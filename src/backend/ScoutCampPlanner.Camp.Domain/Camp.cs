@@ -33,6 +33,7 @@ public sealed class Camp
     public bool IsFrozen { get; private set; }
     public Guid? ActiveTransferId { get; private set; }
     public long BaselineVersion { get; private set; }
+    public CampStructureMode StructureMode { get; private set; } = CampStructureMode.Free;
 
     public void UpdateDetails(string name, DateOnly startDate, DateOnly endDate)
     {
@@ -67,18 +68,4 @@ public sealed class Camp
         ActiveTransferId = null;
         BaselineVersion++;
     }
-}
-
-public sealed class CookingUnit
-{
-    private CookingUnit() { }
-    public CookingUnit(Guid id, Guid campId, string name)
-    {
-        Id = id == Guid.Empty ? throw new ArgumentException("Cooking unit ID is required.", nameof(id)) : id;
-        CampId = campId == Guid.Empty ? throw new ArgumentException("Camp ID is required.", nameof(campId)) : campId;
-        Name = string.IsNullOrWhiteSpace(name) ? throw new ArgumentException("Name is required.", nameof(name)) : name.Trim();
-    }
-    public Guid Id { get; private set; }
-    public Guid CampId { get; private set; }
-    public string Name { get; private set; } = string.Empty;
 }

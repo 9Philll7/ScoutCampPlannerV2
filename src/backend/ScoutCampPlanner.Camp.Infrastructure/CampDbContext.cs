@@ -7,7 +7,7 @@ namespace ScoutCampPlanner.Camp.Infrastructure;
 public sealed class CampDbContext(DbContextOptions<CampDbContext> options) : DbContext(options), ICampLookup
 {
     public DbSet<Camp.Domain.Camp> Camps => Set<Camp.Domain.Camp>();
-    public DbSet<CookingUnit> CookingUnits => Set<CookingUnit>();
+    public DbSet<StructureNode> StructureNodes => Set<StructureNode>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -22,12 +22,21 @@ public sealed class CampDbContext(DbContextOptions<CampDbContext> options) : DbC
             entity.HasIndex(x => new { x.TenantId, x.Name });
             entity.HasIndex(x => new { x.TenantId, x.NormalizedName, x.StartDate, x.EndDate }).IsUnique();
         });
-        modelBuilder.Entity<CookingUnit>(entity =>
+        modelBuilder.Entity<StructureNode>(entity =>
         {
-            entity.ToTable("CookingUnits");
+            entity.ToTable("StructureNodes");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(200);
+            entity.Property(x => x.NormalizedName).HasMaxLength(200);
             entity.HasIndex(x => x.CampId);
+            entity.HasIndex(x => new { x.CampId, x.NormalizedName }).IsUnique()
+                .HasFilter("\"ParentId\" IS NULL");
+            entity.HasIndex(x => new { x.CampId, x.ParentId, x.NormalizedName }).IsUnique()
+                .HasFilter("\"ParentId\" IS NOT NULL");
+            entity.HasOne<Camp.Domain.Camp>().WithMany().HasForeignKey(x => x.CampId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<StructureNode>().WithMany().HasForeignKey(x => x.ParentId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 

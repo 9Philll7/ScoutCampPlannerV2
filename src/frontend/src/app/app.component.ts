@@ -10,7 +10,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { AuthenticationApiService, AuthenticatedUser } from './features/authentication/authentication-api.service';
-import { CampAdministratorOption, CampApiService, CampSummary, TenantOption } from './features/camp/camp-api.service';
+import { CampAdministratorOption, CampApiService, CampSummary, StructureNodeSummary, TenantOption } from './features/camp/camp-api.service';
 import { SetupApiService } from './features/setup/setup-api.service';
 
 type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
@@ -137,6 +137,27 @@ type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
                 } @else {
                   <p>{{ camp.startDate && camp.endDate ? camp.startDate + ' bis ' + camp.endDate : 'Legacy-Lager ohne Zeitraum' }}</p>
                   <p>{{ camp.isFrozen ? 'Offlinephase aktiv' : 'Online bearbeitbar' }}</p>
+                  @if (structureCampId() === camp.id) {
+                    <h3>Freie Lagerstruktur</h3>
+                    @for (row of structureRows(); track row.node.id) {
+                      <p [style.margin-left.px]="row.depth * 24">{{ row.node.name }}</p>
+                    } @empty { <p>Noch keine Struktureinträge vorhanden.</p> }
+                    @if (camp.canEdit) {
+                      <form [id]="'create-structure-node-' + camp.id" (ngSubmit)="createStructureNode(camp)">
+                        <mat-form-field appearance="outline"><mat-label>Übergeordneter Eintrag</mat-label>
+                          <mat-select name="structureParent" [(ngModel)]="newStructureParentId">
+                            <mat-option value="">Oberste Ebene</mat-option>
+                            @for (row of structureRows(); track row.node.id) {
+                              <mat-option [value]="row.node.id">{{ row.node.name }}</mat-option>
+                            }
+                          </mat-select>
+                        </mat-form-field>
+                        <mat-form-field appearance="outline"><mat-label>Name</mat-label>
+                          <input matInput name="structureName" [(ngModel)]="newStructureNodeName" maxlength="200" required>
+                        </mat-form-field>
+                      </form>
+                    }
+                  }
                 }
               </mat-card-content>
               <mat-card-actions>
@@ -144,6 +165,13 @@ type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
                   <button matButton type="button" (click)="cancelCampEdit()">Abbrechen</button>
                   <button matButton="filled" type="submit" [attr.form]="'edit-camp-' + camp.id" [disabled]="submitting()">Speichern</button>
                 } @else {
+                  <button matButton (click)="toggleStructure(camp)">
+                    {{ structureCampId() === camp.id ? 'Struktur schließen' : 'Struktur' }}
+                  </button>
+                  @if (structureCampId() === camp.id && camp.canEdit) {
+                    <button matButton="filled" type="submit" [attr.form]="'create-structure-node-' + camp.id"
+                      [disabled]="submitting()">Eintrag anlegen</button>
+                  }
                   @if (camp.canEdit) { <button matButton (click)="editCamp(camp)" [disabled]="camp.isFrozen">Bearbeiten</button> }
                   @if (camp.canExport) {
                     <button matButton="filled" [disabled]="camp.isFrozen || !camp.startDate || !camp.endDate"
@@ -179,6 +207,8 @@ export class AppComponent {
   readonly administratorCandidates = signal<CampAdministratorOption[]>([]);
   readonly selectedAdministratorIds = signal<ReadonlySet<string>>(new Set());
   readonly editingCampId = signal<string | null>(null);
+  readonly structureCampId = signal<string | null>(null);
+  readonly structureNodes = signal<StructureNodeSummary[]>([]);
   tenantName = '';
   email = '';
   password = '';
@@ -188,6 +218,8 @@ export class AppComponent {
   editCampName = '';
   editCampStartDate = '';
   editCampEndDate = '';
+  newStructureParentId = '';
+  newStructureNodeName = '';
 
   constructor() { this.initialize(); }
 
@@ -312,6 +344,49 @@ export class AppComponent {
     });
   }
 
+  toggleStructure(camp: CampSummary) {
+    if (this.structureCampId() === camp.id) {
+      this.structureCampId.set(null); this.structureNodes.set([]); return;
+    }
+    this.structureCampId.set(camp.id); this.structureNodes.set([]);
+    this.newStructureParentId = ''; this.newStructureNodeName = '';
+    this.campApi.listStructure(camp.id).subscribe({
+      next: nodes => this.structureNodes.set(nodes),
+      error: () => this.error.set('Die Lagerstruktur konnte nicht geladen werden.')
+    });
+  }
+
+  structureRows(): { node: StructureNodeSummary; depth: number }[] {
+    const nodes = this.structureNodes();
+    const result: { node: StructureNodeSummary; depth: number }[] = [];
+    const append = (parentId: string | null, depth: number) => {
+      nodes.filter(node => node.parentId === parentId)
+        .sort((left, right) => left.name.localeCompare(right.name, 'de'))
+        .forEach(node => { result.push({ node, depth }); append(node.id, depth + 1); });
+    };
+    append(null, 0);
+    return result;
+  }
+
+  createStructureNode(camp: CampSummary) {
+    if (this.submitting()) return;
+    this.submitting.set(true); this.error.set(null); this.notice.set(null);
+    this.campApi.createStructureNode(
+      camp.id, this.newStructureParentId || null, this.newStructureNodeName).subscribe({
+      next: node => {
+        this.submitting.set(false); this.structureNodes.update(nodes => [...nodes, node]);
+        this.newStructureNodeName = ''; this.notice.set('Der Struktureintrag wurde angelegt.');
+      },
+      error: (response: HttpErrorResponse) => {
+        this.submitting.set(false);
+        const errors = response.error?.errors as Record<string, string[]> | undefined;
+        this.error.set(response.status === 409 ? 'Während der Offlinephase kann die Struktur nicht geändert werden.' :
+          response.status === 404 ? 'Du darfst diese Lagerstruktur nicht ändern.' :
+          errors ? Object.values(errors).flat()[0] ?? 'Die Eingabe ist ungültig.' : 'Der Struktureintrag konnte nicht angelegt werden.');
+      }
+    });
+  }
+
   selectTenant(tenantId: string) {
     const tenant = this.tenants().find(candidate => candidate.id === tenantId) ?? null;
     this.selectedTenant.set(tenant); this.camps.set([]); this.administratorCandidates.set([]);
@@ -361,6 +436,7 @@ export class AppComponent {
     this.user.set(null); this.camps.set([]); this.tenants.set([]); this.selectedTenant.set(null);
     this.administratorCandidates.set([]); this.selectedAdministratorIds.set(new Set());
     this.editingCampId.set(null);
+    this.structureCampId.set(null); this.structureNodes.set([]);
     this.error.set(null); this.notice.set(null); this.state.set('login');
   }
 

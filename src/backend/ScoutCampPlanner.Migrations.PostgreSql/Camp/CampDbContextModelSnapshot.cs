@@ -53,6 +53,9 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Camp
                     b.Property<DateOnly?>("StartDate")
                         .HasColumnType("date");
 
+                    b.Property<int>("StructureMode")
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
@@ -66,7 +69,7 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Camp
                     b.ToTable("Camps", "camp");
                 });
 
-            modelBuilder.Entity("ScoutCampPlanner.Camp.Domain.CookingUnit", b =>
+            modelBuilder.Entity("ScoutCampPlanner.Camp.Domain.StructureNode", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -80,11 +83,43 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Camp
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("ParentId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CampId");
 
-                    b.ToTable("CookingUnits", "camp");
+                    b.HasIndex("ParentId");
+
+                    b.HasIndex("CampId", "NormalizedName")
+                        .IsUnique()
+                        .HasFilter("\"ParentId\" IS NULL");
+
+                    b.HasIndex("CampId", "ParentId", "NormalizedName")
+                        .IsUnique()
+                        .HasFilter("\"ParentId\" IS NOT NULL");
+
+                    b.ToTable("StructureNodes", "camp");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Camp.Domain.StructureNode", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Camp.Domain.Camp", null)
+                        .WithMany()
+                        .HasForeignKey("CampId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Camp.Domain.StructureNode", null)
+                        .WithMany()
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 #pragma warning restore 612, 618
         }
