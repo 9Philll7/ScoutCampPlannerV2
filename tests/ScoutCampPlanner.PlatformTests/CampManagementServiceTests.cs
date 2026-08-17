@@ -137,6 +137,31 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task FixedStructureLimitsDepthButStillAllowsNodes()
+    {
+        CreateCampResult created = await service.CreateAsync(ownerUserId, tenantId,
+            new CreateCampRequest("Fixiert", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14),
+                [otherMembershipId]), TestContext.Current.CancellationToken);
+        Guid campId = created.Camp!.Id;
+        Assert.True(await service.UpdateStructureConfigurationAsync(otherUserId, campId,
+            new UpdateStructureConfigurationRequest(["Bereich", "Gruppe"]), TestContext.Current.CancellationToken));
+
+        var root = await service.CreateStructureNodeAsync(otherUserId, campId,
+            new CreateStructureNodeRequest(null, "Nord"), TestContext.Current.CancellationToken);
+        var child = await service.CreateStructureNodeAsync(otherUserId, campId,
+            new CreateStructureNodeRequest(root.Node!.Id, "Gruppe 1"), TestContext.Current.CancellationToken);
+        var tooDeep = await service.CreateStructureNodeAsync(otherUserId, campId,
+            new CreateStructureNodeRequest(child.Node!.Id, "Zu tief"), TestContext.Current.CancellationToken);
+
+        Assert.True(child.IsSuccessful);
+        Assert.Equal(CreateStructureNodeFailure.MaximumDepthReached, tooDeep.Failure);
+        Assert.False(await service.UpdateStructureConfigurationAsync(otherUserId, campId,
+            new UpdateStructureConfigurationRequest(["Bereich"]), TestContext.Current.CancellationToken));
+        Assert.Equal("Fixed", (await service.GetStructureConfigurationAsync(
+            otherUserId, campId, TestContext.Current.CancellationToken))!.Mode);
+    }
+
+    [Fact]
     public async Task FailedAdministratorPersistenceRollsBackCampAndAudit()
     {
         await ExecuteScriptAsync("""

@@ -106,6 +106,8 @@ public sealed class CampPackageService(
                 .Select(x => new StructureNode(x.Id, x.CampId, x.ParentId, x.Name)));
             catering.MealPlans.AddRange(package.MealPlans.Select(x => new MealPlan(x.Id, x.CampId, x.Name)));
             existing.CompleteTransfer(package.Manifest.TransferId, package.Manifest.BaselineVersion);
+            existing.ConfigureStructure(package.Camp.StructureMode == CampStructureMode.Fixed.ToString()
+                ? package.Camp.StructureLevelNames : []);
             await SaveAllAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
@@ -134,7 +136,7 @@ public sealed class CampPackageService(
                 entity.Id, entity.TenantId, entity.Name,
                 entity.StartDate ?? throw new InvalidOperationException("Legacy camps without a period cannot be exported."),
                 entity.EndDate ?? throw new InvalidOperationException("Legacy camps without a period cannot be exported."),
-                entity.StructureMode.ToString()), structureNodes, meals));
+                entity.StructureMode.ToString(), entity.GetStructureLevelNames()), structureNodes, meals));
     }
 
     private async Task EnlistAsync(IDbContextTransaction transaction, CancellationToken cancellationToken)

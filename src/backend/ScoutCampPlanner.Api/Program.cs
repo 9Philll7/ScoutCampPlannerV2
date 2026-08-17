@@ -277,6 +277,21 @@ app.MapGet("/api/camps/{campId:guid}/structure", async (
         Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId, cancellationToken);
     return nodes is null ? Results.NotFound() : Results.Ok(nodes);
 }).RequireAuthorization();
+app.MapGet("/api/camps/{campId:guid}/structure/configuration", async (
+    Guid campId, ClaimsPrincipal principal, CampManagementService management, CancellationToken cancellationToken) =>
+{
+    StructureConfiguration? configuration = await management.GetStructureConfigurationAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId, cancellationToken);
+    return configuration is null ? Results.NotFound() : Results.Ok(configuration);
+}).RequireAuthorization();
+app.MapPut("/api/camps/{campId:guid}/structure/configuration", async (
+    Guid campId, UpdateStructureConfigurationRequest request, ClaimsPrincipal principal,
+    CampManagementService management, CancellationToken cancellationToken) =>
+{
+    bool updated = await management.UpdateStructureConfigurationAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId, request, cancellationToken);
+    return updated ? Results.NoContent() : Results.Conflict(new { code = "invalid_structure_configuration" });
+}).RequireAuthorization();
 app.MapPost("/api/camps/{campId:guid}/structure", async (
     Guid campId, CreateStructureNodeRequest request, ClaimsPrincipal principal,
     CampManagementService management, CancellationToken cancellationToken) =>
@@ -288,6 +303,8 @@ app.MapPost("/api/camps/{campId:guid}/structure", async (
     if (result.Failure == CreateStructureNodeFailure.NotFound) return Results.NotFound();
     if (result.Failure == CreateStructureNodeFailure.Frozen)
         return Results.Conflict(new { code = "camp_frozen" });
+    if (result.Failure == CreateStructureNodeFailure.MaximumDepthReached)
+        return Results.Conflict(new { code = "maximum_structure_depth_reached" });
     return Results.ValidationProblem(new Dictionary<string, string[]>
     {
         ["name"] = [result.Failure == CreateStructureNodeFailure.DuplicateName

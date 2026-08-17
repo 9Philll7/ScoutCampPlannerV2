@@ -33,7 +33,8 @@ public sealed record CampPackagePayload(
 
 public sealed record TenantData(Guid Id, string Name);
 public sealed record CampData(
-    Guid Id, Guid TenantId, string Name, DateOnly StartDate, DateOnly EndDate, string StructureMode);
+    Guid Id, Guid TenantId, string Name, DateOnly StartDate, DateOnly EndDate, string StructureMode,
+    IReadOnlyList<string> StructureLevelNames);
 public sealed record StructureNodeData(Guid Id, Guid CampId, Guid? ParentId, string Name);
 public sealed record MealPlanData(Guid Id, Guid CampId, string Name);
 

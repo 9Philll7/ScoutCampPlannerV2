@@ -62,8 +62,14 @@ public static class CampPackageSerializer
             package.Camp.EndDate < package.Camp.StartDate)
             throw new CampPackageValidationException("Camp period is invalid or missing.");
         if (!Enum.TryParse<ScoutCampPlanner.Camp.Domain.CampStructureMode>(
-                package.Camp.StructureMode, ignoreCase: false, out _))
+                package.Camp.StructureMode, ignoreCase: false, out var structureMode))
             throw new CampPackageValidationException("Camp structure mode is invalid.");
+        if (package.Camp.StructureLevelNames is null ||
+            structureMode == ScoutCampPlanner.Camp.Domain.CampStructureMode.Free && package.Camp.StructureLevelNames.Count != 0 ||
+            structureMode == ScoutCampPlanner.Camp.Domain.CampStructureMode.Fixed && package.Camp.StructureLevelNames.Count == 0 ||
+            package.Camp.StructureLevelNames.Any(name => string.IsNullOrWhiteSpace(name) || name.Trim().Length > 100) ||
+            package.Camp.StructureLevelNames.Select(name => name.Trim().ToUpperInvariant()).Distinct().Count() != package.Camp.StructureLevelNames.Count)
+            throw new CampPackageValidationException("Camp structure levels are invalid.");
         if (package.StructureNodes.Any(x => x.CampId != package.Camp.Id) ||
             package.MealPlans.Any(x => x.CampId != package.Camp.Id))
             throw new CampPackageValidationException("Package contains data for another camp.");
@@ -72,6 +78,22 @@ public static class CampPackageSerializer
             node.Id == Guid.Empty || node.ParentId == node.Id ||
             node.ParentId is Guid parentId && !nodeIds.Contains(parentId)))
             throw new CampPackageValidationException("Camp structure identity or parent reference is invalid.");
+        if (structureMode == ScoutCampPlanner.Camp.Domain.CampStructureMode.Fixed)
+        {
+            var nodesById = package.StructureNodes.ToDictionary(node => node.Id);
+            foreach (var node in package.StructureNodes)
+            {
+                int depth = 1; Guid? parentId = node.ParentId; var visited = new HashSet<Guid> { node.Id };
+                while (parentId is Guid id)
+                {
+                    if (!visited.Add(id))
+                        throw new CampPackageValidationException("Camp structure contains a cycle.");
+                    depth++; parentId = nodesById[id].ParentId;
+                }
+                if (depth > package.Camp.StructureLevelNames.Count)
+                    throw new CampPackageValidationException("Camp structure exceeds its fixed depth.");
+            }
+        }
         var expectedModules = new[] { "Camp", "Catering" };
         if (!expectedModules.All(package.Manifest.IncludedModules.Contains))
             throw new CampPackageValidationException("Required module data is missing.");

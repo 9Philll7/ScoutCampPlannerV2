@@ -16,6 +16,7 @@ export interface CampSummary {
 export interface TenantOption { id: string; name: string; }
 export interface CampAdministratorOption { membershipId: string; userId: string; email: string; }
 export interface StructureNodeSummary { id: string; campId: string; parentId: string | null; name: string; }
+export interface StructureConfiguration { mode: 'Free' | 'Fixed'; levelNames: string[]; }
 export interface CreateCampRequest {
   name: string;
   startDate: string;
@@ -59,6 +60,16 @@ export class CampApiService {
   createStructureNode(campId: string, parentId: string | null, name: string) {
     return this.http.post<StructureNodeSummary>(`${this.baseUrl}/api/camps/${campId}/structure`,
       { parentId, name }, { withCredentials: true });
+  }
+
+  getStructureConfiguration(campId: string) {
+    return this.http.get<StructureConfiguration>(`${this.baseUrl}/api/camps/${campId}/structure/configuration`,
+      { withCredentials: true });
+  }
+
+  updateStructureConfiguration(campId: string, levelNames: string[]) {
+    return this.http.put<void>(`${this.baseUrl}/api/camps/${campId}/structure/configuration`,
+      { levelNames }, { withCredentials: true });
   }
 
   startOfflineTransfer(campId: string) {

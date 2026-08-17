@@ -20,6 +20,8 @@ public sealed record CreateCampRequest(
 public sealed record UpdateCampRequest(string Name, DateOnly StartDate, DateOnly EndDate);
 public sealed record StructureNodeSummary(Guid Id, Guid CampId, Guid? ParentId, string Name);
 public sealed record CreateStructureNodeRequest(Guid? ParentId, string Name);
+public sealed record StructureConfiguration(string Mode, IReadOnlyList<string> LevelNames);
+public sealed record UpdateStructureConfigurationRequest(IReadOnlyCollection<string>? LevelNames);
 
 public enum CreateCampFailure
 {
@@ -43,7 +45,7 @@ public sealed record UpdateCampResult(CampSummary? Camp, UpdateCampFailure Failu
     public bool IsSuccessful => Camp is not null && Failure == UpdateCampFailure.None;
 }
 
-public enum CreateStructureNodeFailure { None, NotFound, InvalidName, DuplicateName, Frozen }
+public enum CreateStructureNodeFailure { None, NotFound, InvalidName, DuplicateName, Frozen, MaximumDepthReached }
 public sealed record CreateStructureNodeResult(
     StructureNodeSummary? Node, CreateStructureNodeFailure Failure)
 {
@@ -126,6 +128,52 @@ public sealed class CampManagementService(
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<StructureConfiguration?> GetStructureConfigurationAsync(
+        Guid actorUserId, Guid campId, CancellationToken cancellationToken = default)
+    {
+        if (!await HasCampPermissionAsync(actorUserId, campId, Permissions.Camp.View, cancellationToken)) return null;
+        var camp = await camps.Camps.SingleAsync(value => value.Id == campId, cancellationToken);
+        return new(camp.StructureMode.ToString(), camp.GetStructureLevelNames());
+    }
+
+    public async Task<bool> UpdateStructureConfigurationAsync(
+        Guid actorUserId, Guid campId, UpdateStructureConfigurationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await HasCampPermissionAsync(actorUserId, campId, Permissions.Camp.Edit, cancellationToken)) return false;
+        var camp = await camps.Camps.SingleOrDefaultAsync(value => value.Id == campId, cancellationToken);
+        if (camp is null || camp.IsFrozen) return false;
+        string[] levels = request.LevelNames?.ToArray() ?? [];
+        int maximumExistingDepth = 0;
+        var nodes = await camps.StructureNodes.Where(node => node.CampId == campId).ToListAsync(cancellationToken);
+        var byId = nodes.ToDictionary(node => node.Id);
+        foreach (var node in nodes)
+        {
+            int depth = 1; Guid? parentId = node.ParentId;
+            while (parentId is Guid id && byId.TryGetValue(id, out var parent)) { depth++; parentId = parent.ParentId; }
+            maximumExistingDepth = Math.Max(maximumExistingDepth, depth);
+        }
+        if (levels.Length > 0 && levels.Length < maximumExistingDepth) return false;
+        try { camp.ConfigureStructure(levels); }
+        catch (ArgumentException) { return false; }
+        var auditEvent = new AuditEventDraft(
+            Guid.NewGuid(), timeProvider.GetUtcNow(), "camp.structure-configuration.updated", "success",
+            actorUserId, camp.TenantId, camp.Id, "camp", camp.Id, "server", auditRuntime.InstanceId,
+            Guid.NewGuid(), null, null, new Dictionary<string, string>
+            {
+                ["mode"] = camp.StructureMode.ToString(), ["levelCount"] = levels.Length.ToString(),
+            });
+        await auditedOperation.ExecuteAsync(auditEvent, async operationCancellationToken =>
+        {
+            var transaction = platform.Database.CurrentTransaction
+                ?? throw new InvalidOperationException("The Platform transaction is unavailable.");
+            await camps.Database.UseTransactionAsync(transaction.GetDbTransaction(), operationCancellationToken);
+            try { await camps.SaveChangesAsync(operationCancellationToken); }
+            finally { await camps.Database.UseTransactionAsync(null, CancellationToken.None); }
+        }, cancellationToken);
+        return true;
+    }
+
     public async Task<CreateStructureNodeResult> CreateStructureNodeAsync(
         Guid actorUserId, Guid campId, CreateStructureNodeRequest request,
         CancellationToken cancellationToken = default)
@@ -140,6 +188,19 @@ public sealed class CampManagementService(
         if (request.ParentId is Guid parentId && !await camps.StructureNodes.AnyAsync(
             node => node.Id == parentId && node.CampId == campId, cancellationToken))
             return new(null, CreateStructureNodeFailure.NotFound);
+
+        if (camp.StructureMode == ScoutCampPlanner.Camp.Domain.CampStructureMode.Fixed)
+        {
+            int depth = 1; Guid? current = request.ParentId;
+            while (current is Guid id)
+            {
+                var ancestor = await camps.StructureNodes.AsNoTracking().SingleAsync(
+                    node => node.Id == id && node.CampId == campId, cancellationToken);
+                depth++; current = ancestor.ParentId;
+            }
+            if (depth > camp.GetStructureLevelNames().Count)
+                return new(null, CreateStructureNodeFailure.MaximumDepthReached);
+        }
 
         string normalizedName = request.Name.Trim().ToUpperInvariant();
         if (await camps.StructureNodes.AnyAsync(node => node.CampId == campId &&

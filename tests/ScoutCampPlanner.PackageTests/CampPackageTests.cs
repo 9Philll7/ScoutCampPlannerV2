@@ -115,7 +115,7 @@ public sealed class CampPackageTests
             new CampPackageManifest(1, tenantId, campId, Guid.NewGuid(), 1, CampPackageDirection.CloudToLocal,
                 ["Camp", "Catering"], DateTimeOffset.UtcNow),
             new TenantData(tenantId, "Tenant"), new CampData(
-                campId, tenantId, "Camp", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14), "Free"), [], []);
+                campId, tenantId, "Camp", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14), "Free", []), [], []);
     }
 
     private sealed class DatabaseHarness : IAsyncDisposable

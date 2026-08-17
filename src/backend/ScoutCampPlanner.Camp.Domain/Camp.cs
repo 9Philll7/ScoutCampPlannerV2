@@ -34,6 +34,29 @@ public sealed class Camp
     public Guid? ActiveTransferId { get; private set; }
     public long BaselineVersion { get; private set; }
     public CampStructureMode StructureMode { get; private set; } = CampStructureMode.Free;
+    public string StructureLevelNamesJson { get; private set; } = "[]";
+
+    public IReadOnlyList<string> GetStructureLevelNames() =>
+        System.Text.Json.JsonSerializer.Deserialize<string[]>(StructureLevelNamesJson) ?? [];
+
+    public void ConfigureStructure(IReadOnlyCollection<string>? levelNames)
+    {
+        if (IsFrozen) throw new InvalidOperationException("A frozen camp cannot be changed.");
+        if (levelNames is null || levelNames.Count == 0)
+        {
+            StructureMode = CampStructureMode.Free;
+            StructureLevelNamesJson = "[]";
+            return;
+        }
+
+        string[] levels = levelNames.Select(name => name?.Trim() ?? string.Empty).ToArray();
+        if (levels.Any(name => name.Length == 0 || name.Length > 100))
+            throw new ArgumentException("Structure level names must contain 1 to 100 characters.", nameof(levelNames));
+        if (levels.Select(name => name.ToUpperInvariant()).Distinct().Count() != levels.Length)
+            throw new ArgumentException("Structure level names must be unique.", nameof(levelNames));
+        StructureMode = CampStructureMode.Fixed;
+        StructureLevelNamesJson = System.Text.Json.JsonSerializer.Serialize(levels);
+    }
 
     public void UpdateDetails(string name, DateOnly startDate, DateOnly endDate)
     {

@@ -10,7 +10,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { AuthenticationApiService, AuthenticatedUser } from './features/authentication/authentication-api.service';
-import { CampAdministratorOption, CampApiService, CampSummary, StructureNodeSummary, TenantOption } from './features/camp/camp-api.service';
+import { CampAdministratorOption, CampApiService, CampSummary, StructureConfiguration, StructureNodeSummary, TenantOption } from './features/camp/camp-api.service';
 import { SetupApiService } from './features/setup/setup-api.service';
 
 type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
@@ -138,7 +138,15 @@ type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
                   <p>{{ camp.startDate && camp.endDate ? camp.startDate + ' bis ' + camp.endDate : 'Legacy-Lager ohne Zeitraum' }}</p>
                   <p>{{ camp.isFrozen ? 'Offlinephase aktiv' : 'Online bearbeitbar' }}</p>
                   @if (structureCampId() === camp.id) {
-                    <h3>Freie Lagerstruktur</h3>
+                    <h3>{{ structureConfiguration()?.mode === 'Fixed' ? 'Fixierte Lagerstruktur' : 'Freie Lagerstruktur' }}</h3>
+                    @if (camp.canEdit) {
+                      <form [id]="'structure-configuration-' + camp.id" (ngSubmit)="saveStructureConfiguration(camp)">
+                        <mat-form-field appearance="outline"><mat-label>Ebenen (eine pro Zeile; leer = frei)</mat-label>
+                          <textarea matInput name="structureLevels" [(ngModel)]="structureLevelInput" rows="3"></textarea>
+                        </mat-form-field>
+                        <button matButton type="submit" [disabled]="submitting()">Tiefe übernehmen</button>
+                      </form>
+                    }
                     @for (row of structureRows(); track row.node.id) {
                       <p [style.margin-left.px]="row.depth * 24">{{ row.node.name }}</p>
                     } @empty { <p>Noch keine Struktureinträge vorhanden.</p> }
@@ -209,6 +217,7 @@ export class AppComponent {
   readonly editingCampId = signal<string | null>(null);
   readonly structureCampId = signal<string | null>(null);
   readonly structureNodes = signal<StructureNodeSummary[]>([]);
+  readonly structureConfiguration = signal<StructureConfiguration | null>(null);
   tenantName = '';
   email = '';
   password = '';
@@ -220,6 +229,7 @@ export class AppComponent {
   editCampEndDate = '';
   newStructureParentId = '';
   newStructureNodeName = '';
+  structureLevelInput = '';
 
   constructor() { this.initialize(); }
 
@@ -346,13 +356,25 @@ export class AppComponent {
 
   toggleStructure(camp: CampSummary) {
     if (this.structureCampId() === camp.id) {
-      this.structureCampId.set(null); this.structureNodes.set([]); return;
+      this.structureCampId.set(null); this.structureNodes.set([]); this.structureConfiguration.set(null); return;
     }
     this.structureCampId.set(camp.id); this.structureNodes.set([]);
     this.newStructureParentId = ''; this.newStructureNodeName = '';
     this.campApi.listStructure(camp.id).subscribe({
       next: nodes => this.structureNodes.set(nodes),
       error: () => this.error.set('Die Lagerstruktur konnte nicht geladen werden.')
+    });
+    this.campApi.getStructureConfiguration(camp.id).subscribe({ next: configuration => {
+      this.structureConfiguration.set(configuration); this.structureLevelInput = configuration.levelNames.join('\n');
+    }});
+  }
+
+  saveStructureConfiguration(camp: CampSummary) {
+    const levels = this.structureLevelInput.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+    this.submitting.set(true); this.error.set(null);
+    this.campApi.updateStructureConfiguration(camp.id, levels).subscribe({
+      next: () => { this.submitting.set(false); this.structureConfiguration.set({ mode: levels.length ? 'Fixed' : 'Free', levelNames: levels }); this.notice.set('Die Strukturtiefe wurde aktualisiert.'); },
+      error: () => { this.submitting.set(false); this.error.set('Die Strukturtiefe ist ungültig oder für den bestehenden Baum zu kurz.'); }
     });
   }
 

@@ -47,6 +47,11 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Camp
                     b.Property<DateOnly?>("StartDate")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("StructureLevelNamesJson")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("StructureMode")
                         .HasColumnType("INTEGER");
 
