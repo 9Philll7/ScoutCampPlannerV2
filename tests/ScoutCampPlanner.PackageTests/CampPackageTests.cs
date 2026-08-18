@@ -47,6 +47,24 @@ public sealed class CampPackageTests
     }
 
     [Fact]
+    public void Serializer_rejects_estimates_above_final_fixed_structure_level()
+    {
+        var package = CreatePayload();
+        var nodeId = Guid.NewGuid();
+        package = package with
+        {
+            Camp = package.Camp with { StructureMode = "Fixed", StructureLevelNames = ["Bereich", "Gruppe"] },
+            StructureNodes = [new StructureNodeData(nodeId, package.Camp.Id, null, "Nord")],
+            ParticipantEstimates = [new ParticipantEstimateData(Guid.NewGuid(), package.Camp.Id, nodeId,
+                package.CampStages.Single().Id, 10, 2)]
+        };
+
+        var bytes = CampPackageSerializer.Serialize(package);
+        var exception = Assert.Throws<CampPackageValidationException>(() => CampPackageSerializer.Deserialize(bytes));
+        Assert.Contains("final fixed structure level", exception.Message);
+    }
+
+    [Fact]
     public async Task Round_trip_preserves_ids_and_atomically_replaces_included_data()
     {
         await using var cloud = await DatabaseHarness.CreateAsync();

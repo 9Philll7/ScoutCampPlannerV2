@@ -39,4 +39,14 @@ public sealed class StructureNode
         if (parentId == Id) throw new ArgumentException("A structure node cannot be its own parent.", nameof(parentId));
         ParentId = parentId;
     }
+
+    public void Rename(string name)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        string trimmedName = name.Trim();
+        if (trimmedName.Length > 200)
+            throw new ArgumentException("Structure node name must not exceed 200 characters.", nameof(name));
+        Name = trimmedName;
+        NormalizedName = trimmedName.ToUpperInvariant();
+    }
 }

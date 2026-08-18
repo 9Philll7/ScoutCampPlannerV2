@@ -154,10 +154,20 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
             new CreateStructureNodeRequest(null, "Nord"), TestContext.Current.CancellationToken);
         var child = await service.CreateStructureNodeAsync(otherUserId, campId,
             new CreateStructureNodeRequest(root.Node!.Id, "Gruppe 1"), TestContext.Current.CancellationToken);
+        var shallowLeaf = await service.CreateStructureNodeAsync(otherUserId, campId,
+            new CreateStructureNodeRequest(null, "Süd"), TestContext.Current.CancellationToken);
         var tooDeep = await service.CreateStructureNodeAsync(otherUserId, campId,
             new CreateStructureNodeRequest(child.Node!.Id, "Zu tief"), TestContext.Current.CancellationToken);
+        var stages = await service.GetCampStagesAsync(otherUserId, campId, TestContext.Current.CancellationToken);
+        var emptyEstimates = stages!.Select(stage => new ParticipantEstimateInput(stage.Id, 0, 0)).ToArray();
 
         Assert.True(child.IsSuccessful);
+        Assert.Equal(UpdateParticipantEstimatesFailure.NotParticipantLevel,
+            await service.UpdateParticipantEstimatesAsync(otherUserId, campId, shallowLeaf.Node!.Id,
+                new UpdateParticipantEstimatesRequest(emptyEstimates), TestContext.Current.CancellationToken));
+        Assert.Equal(UpdateParticipantEstimatesFailure.None,
+            await service.UpdateParticipantEstimatesAsync(otherUserId, campId, child.Node.Id,
+                new UpdateParticipantEstimatesRequest(emptyEstimates), TestContext.Current.CancellationToken));
         Assert.Equal(CreateStructureNodeFailure.MaximumDepthReached, tooDeep.Failure);
         Assert.False(await service.UpdateStructureConfigurationAsync(otherUserId, campId,
             new UpdateStructureConfigurationRequest(["Bereich"]), TestContext.Current.CancellationToken));
@@ -185,6 +195,28 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
         Assert.Empty(await camps.StructureNodes.ToArrayAsync(TestContext.Current.CancellationToken));
         Assert.Equal(2, await platform.AuditEvents.CountAsync(value =>
             value.Action == "camp.structure-node.deleted", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CampAdminCanRenameStructureNodeButNotDuplicateSiblingName()
+    {
+        CreateCampResult created = await service.CreateAsync(ownerUserId, tenantId,
+            new CreateCampRequest("Umbenennen", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14),
+                [otherMembershipId]), TestContext.Current.CancellationToken);
+        Guid campId = created.Camp!.Id;
+        var north = await service.CreateStructureNodeAsync(otherUserId, campId,
+            new CreateStructureNodeRequest(null, "Nord"), TestContext.Current.CancellationToken);
+        await service.CreateStructureNodeAsync(otherUserId, campId,
+            new CreateStructureNodeRequest(null, "Süd"), TestContext.Current.CancellationToken);
+
+        Assert.Equal(RenameStructureNodeFailure.None, await service.RenameStructureNodeAsync(
+            otherUserId, campId, north.Node!.Id, new RenameStructureNodeRequest("West"),
+            TestContext.Current.CancellationToken));
+        Assert.Equal(RenameStructureNodeFailure.DuplicateName, await service.RenameStructureNodeAsync(
+            otherUserId, campId, north.Node.Id, new RenameStructureNodeRequest("Süd"),
+            TestContext.Current.CancellationToken));
+        Assert.Contains((await service.ListStructureAsync(otherUserId, campId,
+            TestContext.Current.CancellationToken))!, node => node.Name == "West");
     }
 
     [Fact]

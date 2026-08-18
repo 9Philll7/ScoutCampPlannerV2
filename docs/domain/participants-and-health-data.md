@@ -12,7 +12,7 @@ Each tenant maintains an ordered stage template. `TenantOwner` and `TenantAdmin`
 
 Creating a camp copies the current tenant template into a stable camp-specific stage list. Later tenant-template changes apply to future camps only. A `CampAdmin` may adjust the camp-specific copy without changing the tenant template. This stable copy is also the future attachment point for stage-specific planning factors; those factors are not part of the first estimate increment.
 
-For every leaf structure node, the camp stores non-negative whole-number estimates per camp stage in two categories:
+For every eligible leaf structure node, the camp stores non-negative whole-number estimates per camp stage in two categories. In a free structure every leaf is eligible; in a fixed structure only leaves on the final configured level are eligible.
 
 - children and youth (`KiJu`)
 - leaders (`Leiter`)

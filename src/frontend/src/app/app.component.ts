@@ -2,31 +2,41 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatCardModule } from '@angular/material/card';
 import { MatCheckboxModule } from '@angular/material/checkbox';
+import { MAT_DATE_LOCALE, provideNativeDateAdapter } from '@angular/material/core';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatToolbarModule } from '@angular/material/toolbar';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { concatMap, forkJoin } from 'rxjs';
 import { AuthenticationApiService, AuthenticatedUser } from './features/authentication/authentication-api.service';
 import { CampAdministratorOption, CampApiService, CampPlanningSummary, CampStageFoodFactor, CampSummary, ParticipantEstimate, StructureConfiguration, StructureNodeSummary, TenantOption, TenantStageFoodFactor, WeightedStageTotal } from './features/camp/camp-api.service';
 import { SetupApiService } from './features/setup/setup-api.service';
+import { ActionIconComponent } from './shared/action-icon.component';
 
 type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
+type ApplicationSection = 'camps' | 'organization';
+type CampSection = 'general' | 'structure' | 'catering';
 
 @Component({
   selector: 'scp-root',
   standalone: true,
-  imports: [FormsModule, MatButtonModule, MatCardModule, MatCheckboxModule, MatFormFieldModule, MatInputModule,
-    MatProgressSpinnerModule, MatSelectModule, MatToolbarModule],
+  imports: [FormsModule, MatButtonModule, MatButtonToggleModule, MatCardModule, MatCheckboxModule, MatFormFieldModule, MatInputModule,
+    MatProgressSpinnerModule, MatSelectModule, MatToolbarModule, MatTooltipModule, MatDatepickerModule,
+    ActionIconComponent],
+  providers: [provideNativeDateAdapter(), { provide: MAT_DATE_LOCALE, useValue: 'de-AT' }],
   template: `
-    <mat-toolbar color="primary">
-      <span>ScoutCampPlanner</span>
+    <mat-toolbar color="primary" class="app-toolbar">
+      <span class="brand"><span class="brand-mark">SCP</span><span>ScoutCampPlanner</span></span>
       <span class="toolbar-spacer"></span>
       @if (user(); as currentUser) {
         <span class="user-email">{{ currentUser.email }}</span>
-        <button matButton (click)="signOut()">Abmelden</button>
+        <button matButton (click)="signOut()"><scp-action-icon name="logout"/>Abmelden</button>
       }
     </mat-toolbar>
     <main>
@@ -55,7 +65,7 @@ type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
               </form>
               @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
             </mat-card-content>
-            <mat-card-actions align="end"><button matButton="filled" form="initial-setup" type="submit" [disabled]="submitting()">Einrichtung abschließen</button></mat-card-actions>
+            <mat-card-actions align="end"><button matButton="filled" form="initial-setup" type="submit" [disabled]="submitting()"><scp-action-icon name="save"/>Einrichtung abschließen</button></mat-card-actions>
           </mat-card>
         }
         @case ('login') {
@@ -72,45 +82,111 @@ type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
               </form>
               @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
             </mat-card-content>
-            <mat-card-actions align="end"><button matButton="filled" form="login" type="submit" [disabled]="submitting()">Anmelden</button></mat-card-actions>
+            <mat-card-actions align="end"><button matButton="filled" form="login" type="submit" [disabled]="submitting()"><scp-action-icon name="login"/>Anmelden</button></mat-card-actions>
           </mat-card>
         }
         @case ('application') {
-          <h1>Lager</h1>
-          @if (tenants().length > 1) {
-            <mat-form-field appearance="outline"><mat-label>Organisation</mat-label>
-              <mat-select [ngModel]="selectedTenant()?.id" (ngModelChange)="selectTenant($event)">
-                @for (tenant of tenants(); track tenant.id) { <mat-option [value]="tenant.id">{{ tenant.name }}</mat-option> }
-              </mat-select>
-            </mat-form-field>
-          }
-          @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
-          @if (notice()) { <p role="status">{{ notice() }}</p> }
+          <div class="application-shell">
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">{{ selectedTenant()?.name ?? 'ScoutCampPlanner' }}</p>
+              <h1>{{ applicationSection() === 'camps' ? 'Lager' : 'Organisation' }}</h1>
+              <p class="page-description">{{ applicationSection() === 'camps'
+                ? 'Lager anlegen, öffnen und für den Offlinebetrieb vorbereiten.'
+                : 'Mandantenweite Vorgaben für zukünftige Lager verwalten.' }}</p>
+            </div>
+            @if (tenants().length > 1) {
+              <mat-form-field appearance="outline" class="tenant-select"><mat-label>Organisation</mat-label>
+                <mat-select [ngModel]="selectedTenant()?.id" (ngModelChange)="selectTenant($event)">
+                  @for (tenant of tenants(); track tenant.id) { <mat-option [value]="tenant.id">{{ tenant.name }}</mat-option> }
+                </mat-select>
+              </mat-form-field>
+            }
+          </header>
+          <nav class="section-navigation" aria-label="Hauptnavigation">
+            <button matButton [class.active]="applicationSection() === 'camps'" (click)="showSection('camps')"><scp-action-icon name="camp"/>Lager</button>
+            <button matButton [class.active]="applicationSection() === 'organization'" (click)="showSection('organization')"><scp-action-icon name="organization"/>Organisation</button>
+          </nav>
+          @if (error()) { <p class="message error" role="alert">{{ error() }}</p> }
+          @if (notice()) { <p class="message notice" role="status">{{ notice() }}</p> }
+          @if (applicationSection() === 'organization') {
           @if (selectedTenant(); as tenant) {
-            <mat-card>
+            <mat-card class="content-card">
               <mat-card-header><mat-card-title>Stufenvorlage</mat-card-title>
                 <mat-card-subtitle>Für zukünftige Lager von {{ tenant.name }}</mat-card-subtitle>
               </mat-card-header>
               <mat-card-content>
-                <form id="stage-template" (ngSubmit)="saveStageTemplate(tenant.id)">
-                  <mat-form-field appearance="outline"><mat-label>Stufen (eine pro Zeile)</mat-label>
-                    <textarea matInput name="stageTemplate" [(ngModel)]="stageTemplateInput" rows="6" required></textarea>
-                  </mat-form-field>
-                  <h3>Verpflegungsfaktoren für KiJu</h3>
-                  <table><thead><tr><th>Stufe</th><th>Faktor</th></tr></thead><tbody>
-                    @for (entry of tenantStageFoodFactors; track entry.stageName) {
-                      <tr><td>{{ entry.stageName }}</td><td><input type="number" min="0.1" max="3" step="0.01"
-                        [(ngModel)]="entry.factor" [name]="'foodFactor-' + entry.stageName"></td></tr>
+                <form id="stage-template" (ngSubmit)="addTenantStage(tenant.id)">
+                  <p class="context-info">Der KiJu-Faktor wird für die Verpflegungsplanung verwendet. Leiter zählen immer mit Faktor 1,0.</p>
+                  <div class="stage-grid">
+                    @for (entry of tenantStageFoodFactors; track $index) {
+                      <section class="stage-card">
+                        <div class="stage-card-toolbar">
+                          <button matIconButton type="button" class="icon-only" aria-label="Stufe nach vorne verschieben"
+                            matTooltip="Nach vorne verschieben" (click)="moveTenantStage(tenant.id, $index, -1)"
+                            [disabled]="submitting() || $first"><scp-action-icon name="up"/></button>
+                          <button matIconButton type="button" class="icon-only" aria-label="Stufe nach hinten verschieben"
+                            matTooltip="Nach hinten verschieben" (click)="moveTenantStage(tenant.id, $index, 1)"
+                            [disabled]="submitting() || $last"><scp-action-icon name="down"/></button>
+                          @if (tenantStageEditing($index) && tenantStageChanged($index)) {
+                            <button matIconButton type="button" class="icon-only save-required" aria-label="Änderungen speichern"
+                              matTooltip="Änderungen speichern" (click)="saveTenantStage(tenant.id)"
+                              [disabled]="submitting()"><scp-action-icon name="save"/></button>
+                          } @else {
+                            <button matIconButton type="button" class="icon-only"
+                              [class.editing-active]="tenantStageEditing($index)"
+                              [attr.aria-label]="tenantStageEditing($index) ? 'Bearbeitung beenden' : 'Stufe bearbeiten'"
+                              [matTooltip]="tenantStageEditing($index) ? 'Bearbeitung beenden' : 'Stufe bearbeiten'"
+                              (click)="toggleTenantStageEditing($index)"
+                              [disabled]="submitting()"><scp-action-icon name="edit"/></button>
+                          }
+                          <button matIconButton type="button" class="remove-action icon-only" aria-label="Stufe entfernen"
+                            matTooltip="Stufe entfernen" (click)="removeTenantStage(tenant.id, $index)"
+                            [disabled]="submitting()"><scp-action-icon name="remove"/></button>
+                        </div>
+                        <mat-form-field appearance="outline"><mat-label>Stufenname</mat-label>
+                          <input matInput [(ngModel)]="entry.stageName" [name]="'stageName-' + $index"
+                            maxlength="100" required [disabled]="!tenantStageEditing($index) || submitting()">
+                        </mat-form-field>
+                        <mat-form-field appearance="outline"><mat-label>KiJu-Faktor</mat-label>
+                          <input matInput type="number" min="0.1" max="3" step="0.01"
+                            [(ngModel)]="entry.factor" [name]="'foodFactor-' + $index" required
+                            [disabled]="!tenantStageEditing($index) || submitting()">
+                        </mat-form-field>
+                      </section>
+                    } @empty {
+                      <p class="stage-empty">Noch keine Stufen konfiguriert.</p>
                     }
-                  </tbody></table>
+                  </div>
+                  <div class="add-stage-row">
+                    <mat-form-field appearance="outline"><mat-label>Neue Stufe</mat-label>
+                      <input matInput name="newStageName" [(ngModel)]="newStageName" maxlength="100">
+                    </mat-form-field>
+                    <button matButton type="submit"
+                      [disabled]="submitting() || !newStageName.trim()"><scp-action-icon name="add"/>Stufe hinzufügen</button>
+                  </div>
                 </form>
               </mat-card-content>
-              <mat-card-actions align="end"><button matButton="filled" form="stage-template" type="submit"
-                [disabled]="submitting()">Vorlage speichern</button>
-                <button matButton type="button" (click)="saveTenantStageFoodFactors(tenant.id)"
-                  [disabled]="submitting()">Faktoren speichern</button></mat-card-actions>
             </mat-card>
-            <mat-card>
+          }
+          } @else {
+          @if (openedCamp(); as opened) {
+            <div class="camp-detail-header">
+              <button matButton type="button" (click)="closeCamp()"><scp-action-icon name="back"/>Zur Lagerübersicht</button>
+              <div><p class="eyebrow">Geöffnetes Lager</p><h2>{{ opened.name }}</h2></div>
+            </div>
+            <nav class="section-navigation camp-navigation" aria-label="Lagernavigation">
+              <button matButton [class.active]="campSection() === 'general'" (click)="campSection.set('general')">
+                <scp-action-icon name="edit"/>Grundeinstellungen</button>
+              <button matButton [class.active]="campSection() === 'structure'" (click)="openCampStructure(opened)">
+                <scp-action-icon name="structure"/>Lagerstruktur</button>
+              <button matButton [class.active]="campSection() === 'catering'" (click)="openCampCatering(opened)">
+                <scp-action-icon name="planning"/>Verpflegung</button>
+            </nav>
+          }
+          @if (!openedCampId()) {
+          @if (selectedTenant(); as tenant) {
+            <mat-card class="content-card create-camp-card">
               <mat-card-header>
                 <mat-card-title>Neues Lager anlegen</mat-card-title>
                 <mat-card-subtitle>{{ tenant.name }}</mat-card-subtitle>
@@ -121,10 +197,14 @@ type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
                     <input matInput name="campName" [(ngModel)]="campName" maxlength="200" required>
                   </mat-form-field>
                   <mat-form-field appearance="outline"><mat-label>Startdatum</mat-label>
-                    <input matInput name="campStartDate" [(ngModel)]="campStartDate" type="date" required>
+                    <input matInput name="campStartDate" [(ngModel)]="campStartDate" [matDatepicker]="campStartPicker" required>
+                    <mat-datepicker-toggle matIconSuffix [for]="campStartPicker"/>
+                    <mat-datepicker #campStartPicker/>
                   </mat-form-field>
                   <mat-form-field appearance="outline"><mat-label>Enddatum</mat-label>
-                    <input matInput name="campEndDate" [(ngModel)]="campEndDate" type="date" required>
+                    <input matInput name="campEndDate" [(ngModel)]="campEndDate" [matDatepicker]="campEndPicker" required>
+                    <mat-datepicker-toggle matIconSuffix [for]="campEndPicker"/>
+                    <mat-datepicker #campEndPicker/>
                   </mat-form-field>
                   <p>Mindestens einen Camp-Administrator auswählen:</p>
                   @for (candidate of administratorCandidates(); track candidate.membershipId) {
@@ -138,58 +218,163 @@ type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
                 </form>
               </mat-card-content>
               <mat-card-actions align="end">
-                <button matButton="filled" form="create-camp" type="submit" [disabled]="submitting()">Lager anlegen</button>
+                <button matButton="filled" form="create-camp" type="submit" [disabled]="submitting()"><scp-action-icon name="add"/>Lager anlegen</button>
               </mat-card-actions>
             </mat-card>
           }
-          @for (camp of camps(); track camp.id) {
-            <mat-card><mat-card-header><mat-card-title>{{ camp.name }}</mat-card-title></mat-card-header>
+          }
+          @for (camp of visibleCamps(); track camp.id) {
+            <mat-card class="content-card camp-card">
+              @if (!openedCampId()) {
+                <mat-card-header><mat-card-title>{{ camp.name }}</mat-card-title></mat-card-header>
+              }
               <mat-card-content>
+                @if (!openedCampId()) {
+                  <p>{{ camp.startDate && camp.endDate ? camp.startDate + ' bis ' + camp.endDate : 'Legacy-Lager ohne Zeitraum' }}</p>
+                  <p>{{ camp.isFrozen ? 'Offlinephase aktiv' : 'Online bearbeitbar' }}</p>
+                } @else {
+                @if (campSection() === 'general') {
+                <section class="settings-section">
+                  <div class="section-heading">
+                    <div><p class="eyebrow">Allgemein</p><h3>Lagerdaten</h3></div>
+                    <div class="section-actions">
+                      @if (editingCampId() === camp.id) {
+                        <button matButton type="button" (click)="cancelCampEdit()"><scp-action-icon name="back"/>Abbrechen</button>
+                        <button matIconButton type="submit" class="icon-only" aria-label="Lager speichern"
+                          matTooltip="Lager speichern" [attr.form]="'edit-camp-' + camp.id" [disabled]="submitting()">
+                          <scp-action-icon name="save"/></button>
+                      } @else {
+                        @if (camp.canEdit) {
+                          <button matIconButton class="icon-only" aria-label="Lager bearbeiten" matTooltip="Lager bearbeiten"
+                            (click)="editCamp(camp)" [disabled]="camp.isFrozen"><scp-action-icon name="edit"/></button>
+                        }
+                      }
+                    </div>
+                  </div>
                 @if (editingCampId() === camp.id) {
                   <form [id]="'edit-camp-' + camp.id" (ngSubmit)="saveCamp(camp)">
                     <mat-form-field appearance="outline"><mat-label>Name des Lagers</mat-label>
                       <input matInput name="editCampName" [(ngModel)]="editCampName" maxlength="200" required>
                     </mat-form-field>
                     <mat-form-field appearance="outline"><mat-label>Startdatum</mat-label>
-                      <input matInput name="editCampStartDate" [(ngModel)]="editCampStartDate" type="date" required>
+                      <input matInput name="editCampStartDate" [(ngModel)]="editCampStartDate" [matDatepicker]="editCampStartPicker" required>
+                      <mat-datepicker-toggle matIconSuffix [for]="editCampStartPicker"/>
+                      <mat-datepicker #editCampStartPicker/>
                     </mat-form-field>
                     <mat-form-field appearance="outline"><mat-label>Enddatum</mat-label>
-                      <input matInput name="editCampEndDate" [(ngModel)]="editCampEndDate" type="date" required>
+                      <input matInput name="editCampEndDate" [(ngModel)]="editCampEndDate" [matDatepicker]="editCampEndPicker" required>
+                      <mat-datepicker-toggle matIconSuffix [for]="editCampEndPicker"/>
+                      <mat-datepicker #editCampEndPicker/>
                     </mat-form-field>
                   </form>
                 } @else {
                   <p>{{ camp.startDate && camp.endDate ? camp.startDate + ' bis ' + camp.endDate : 'Legacy-Lager ohne Zeitraum' }}</p>
                   <p>{{ camp.isFrozen ? 'Offlinephase aktiv' : 'Online bearbeitbar' }}</p>
-                  @if (structureCampId() === camp.id) {
-                    <h3>Lagerstufen</h3>
-                    @if (camp.canEdit) {
-                      <form [id]="'camp-stages-' + camp.id" (ngSubmit)="saveCampStages(camp)">
-                        <mat-form-field appearance="outline"><mat-label>Stufen dieses Lagers</mat-label>
-                          <textarea matInput name="campStages" [(ngModel)]="campStageInput" rows="4" required></textarea>
+                }
+                </section>
+                <section class="settings-section">
+                  <div class="section-heading"><div><p class="eyebrow">Planungsgrundlage</p><h3>Lagerstufen</h3></div></div>
+                  <p class="context-info">Diese Stufen gelten nur für dieses Lager. Der KiJu-Faktor wird für die Verpflegungsplanung verwendet; Leiter zählen immer mit Faktor 1,0.</p>
+                  @if (campStagesLoading()) {
+                    <div class="inline-loading"><mat-spinner diameter="28"/><span>Lagerstufen werden geladen …</span></div>
+                  }
+                  <div class="stage-grid">
+                    @for (entry of campStageFoodFactors(); track entry.campStageId) {
+                      <section class="stage-card">
+                        <div class="stage-card-toolbar">
+                          <button matIconButton type="button" class="icon-only" aria-label="Stufe nach vorne verschieben"
+                            matTooltip="Nach vorne verschieben" (click)="moveCampStage(camp, $index, -1)"
+                            [disabled]="submitting() || $first || camp.isFrozen"><scp-action-icon name="up"/></button>
+                          <button matIconButton type="button" class="icon-only" aria-label="Stufe nach hinten verschieben"
+                            matTooltip="Nach hinten verschieben" (click)="moveCampStage(camp, $index, 1)"
+                            [disabled]="submitting() || $last || camp.isFrozen"><scp-action-icon name="down"/></button>
+                          @if (campStageEditing($index) && campStageChanged($index)) {
+                            <button matIconButton type="button" class="icon-only save-required" aria-label="Änderungen speichern"
+                              matTooltip="Änderungen speichern" (click)="saveCampStage(camp)"
+                              [disabled]="submitting() || camp.isFrozen"><scp-action-icon name="save"/></button>
+                          } @else {
+                            <button matIconButton type="button" class="icon-only" [class.editing-active]="campStageEditing($index)"
+                              [attr.aria-label]="campStageEditing($index) ? 'Bearbeitung beenden' : 'Stufe bearbeiten'"
+                              [matTooltip]="campStageEditing($index) ? 'Bearbeitung beenden' : 'Stufe bearbeiten'"
+                              (click)="toggleCampStageEditing($index)" [disabled]="submitting() || camp.isFrozen">
+                              <scp-action-icon name="edit"/></button>
+                          }
+                          <button matIconButton type="button" class="remove-action icon-only" aria-label="Stufe entfernen"
+                            matTooltip="Stufe entfernen" (click)="removeCampStage(camp, $index)"
+                            [disabled]="submitting() || camp.isFrozen"><scp-action-icon name="remove"/></button>
+                        </div>
+                        <mat-form-field appearance="outline"><mat-label>Stufenname</mat-label>
+                          <input matInput [(ngModel)]="entry.stageName" [name]="'campStageName-' + entry.campStageId"
+                            maxlength="100" required [disabled]="!campStageEditing($index) || submitting()">
                         </mat-form-field>
-                        <button matButton type="submit" [disabled]="submitting()">Lagerstufen speichern</button>
-                      </form>
-                    } @else { <p>{{ campStageInput }}</p> }
-                    <h3>Verpflegungsfaktoren des Lagers</h3>
-                    <table><thead><tr><th>Stufe</th><th>KiJu-Faktor</th></tr></thead><tbody>
-                      @for (entry of campStageFoodFactors; track entry.campStageId) {
-                        <tr><td>{{ entry.stageName }}</td><td><input type="number" min="0.1" max="3" step="0.01"
-                          [(ngModel)]="entry.factor" [name]="'campFoodFactor-' + entry.campStageId"></td></tr>
-                      }
-                    </tbody></table>
-                    @if (camp.canEdit) {
-                      <button matButton type="button" (click)="saveCampStageFoodFactors(camp)">Faktoren speichern</button>
+                        <mat-form-field appearance="outline"><mat-label>KiJu-Faktor</mat-label>
+                          <input matInput type="number" min="0.1" max="3" step="0.01"
+                            [(ngModel)]="entry.factor" [name]="'campFoodFactor-' + entry.campStageId" required
+                            [disabled]="!campStageEditing($index) || submitting()">
+                        </mat-form-field>
+                      </section>
                     }
-                    @if (weightedFoodTotals.length) {
-                      <h3>Gewichtete Verpflegungseinheiten</h3>
-                      <table><thead><tr><th>Stufe</th><th>KiJu</th><th>Leiter</th><th>Faktor</th><th>Einheiten</th></tr></thead><tbody>
-                        @for (total of weightedFoodTotals; track total.campStageId) {
-                          <tr><td>{{ total.stageName }}</td><td>{{ total.childYouthCount }}</td><td>{{ total.leaderCount }}</td>
-                            <td>{{ total.factor }}</td><td>{{ total.foodUnits }}</td></tr>
+                  </div>
+                  @if (camp.canEdit) {
+                    <form class="add-stage-row" (ngSubmit)="addCampStage(camp)">
+                      <mat-form-field appearance="outline"><mat-label>Neue Lagerstufe</mat-label>
+                        <input matInput name="newCampStageName" [(ngModel)]="newCampStageName" maxlength="100">
+                      </mat-form-field>
+                      <button matButton type="submit" [disabled]="submitting() || camp.isFrozen || !newCampStageName.trim()">
+                        <scp-action-icon name="add"/>Stufe hinzufügen</button>
+                    </form>
+                  }
+                </section>
+                }
+                @if (campSection() === 'structure' && structureCampId() === camp.id) {
+                    <section class="settings-section structure-settings">
+                      <div class="section-heading">
+                        <div><p class="eyebrow">Aufbau</p><h3>Strukturtiefe</h3></div>
+                        @if (camp.canEdit && structureConfigurationChanged()) {
+                          <button matIconButton type="button" class="icon-only save-required"
+                            aria-label="Strukturkonfiguration speichern" matTooltip="Strukturkonfiguration speichern"
+                            (click)="saveStructureConfiguration(camp)" [disabled]="submitting() || camp.isFrozen">
+                            <scp-action-icon name="save"/></button>
                         }
-                      </tbody></table>
-                    }
-                    <h3>{{ structureConfiguration()?.mode === 'Fixed' ? 'Fixierte Lagerstruktur' : 'Freie Lagerstruktur' }}</h3>
+                      </div>
+                      <mat-button-toggle-group aria-label="Strukturmodus" [ngModel]="structureMode()"
+                        (ngModelChange)="setStructureMode($event)" [disabled]="!camp.canEdit || camp.isFrozen">
+                        <mat-button-toggle value="Free">Freie Struktur</mat-button-toggle>
+                        <mat-button-toggle value="Fixed">Definierte Ebenen</mat-button-toggle>
+                      </mat-button-toggle-group>
+                      @if (structureMode() === 'Free') {
+                        <p class="context-info">Knoten können ohne vorgegebene maximale Tiefe angelegt werden.</p>
+                      } @else {
+                        <div class="level-list">
+                          @for (level of structureLevelNames(); track $index) {
+                            <div class="level-row">
+                              <span class="level-number">{{ $index + 1 }}</span>
+                              <mat-form-field appearance="outline"><mat-label>Bezeichnung der Ebene</mat-label>
+                                <input matInput [ngModel]="level" (ngModelChange)="renameStructureLevel($index, $event)"
+                                  [name]="'structureLevel-' + $index" maxlength="100" required
+                                  [disabled]="!camp.canEdit || camp.isFrozen">
+                              </mat-form-field>
+                              <div class="level-actions">
+                                <button matIconButton type="button" class="icon-only" aria-label="Ebene nach oben verschieben"
+                                  matTooltip="Nach oben verschieben" (click)="moveStructureLevel($index, -1)"
+                                  [disabled]="$first || !camp.canEdit || camp.isFrozen"><scp-action-icon name="up"/></button>
+                                <button matIconButton type="button" class="icon-only" aria-label="Ebene nach unten verschieben"
+                                  matTooltip="Nach unten verschieben" (click)="moveStructureLevel($index, 1)"
+                                  [disabled]="$last || !camp.canEdit || camp.isFrozen"><scp-action-icon name="down"/></button>
+                                <button matIconButton type="button" class="icon-only remove-action" aria-label="Ebene entfernen"
+                                  matTooltip="Ebene entfernen" (click)="removeStructureLevel($index)"
+                                  [disabled]="structureLevelNames().length === 1 || !camp.canEdit || camp.isFrozen">
+                                  <scp-action-icon name="remove"/></button>
+                              </div>
+                            </div>
+                          }
+                        </div>
+                        @if (camp.canEdit) {
+                          <button matButton type="button" class="add-level-button" (click)="addStructureLevel()"
+                            [disabled]="camp.isFrozen"><scp-action-icon name="add"/>Ebene hinzufügen</button>
+                        }
+                      }
+                    </section>
                     @if (planningSummary(); as summary) {
                       <h3>Planungsübersicht</h3>
                       <table><thead><tr><th>Stufe</th><th>KiJu</th><th>Leiter</th></tr></thead><tbody>
@@ -199,96 +384,148 @@ type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
                       </tbody></table>
                     }
                     @if (camp.canEdit) {
-                      <form [id]="'structure-configuration-' + camp.id" (ngSubmit)="saveStructureConfiguration(camp)">
-                        <mat-form-field appearance="outline"><mat-label>Ebenen (eine pro Zeile; leer = frei)</mat-label>
-                          <textarea matInput name="structureLevels" [(ngModel)]="structureLevelInput" rows="3"></textarea>
-                        </mat-form-field>
-                        <button matButton type="submit" [disabled]="submitting()">Tiefe übernehmen</button>
-                      </form>
-                    }
-                    @for (row of structureRows(); track row.node.id) {
-                      <p [style.margin-left.px]="row.depth * 24">
-                        {{ row.node.name }}
-                        @if (structureTotal(row.node.id); as total) {
-                          <span> – KiJu: {{ total.childYouthCount }}, Leiter: {{ total.leaderCount }}</span>
-                        }
-                        @if (camp.canEdit) {
-                          @if (isStructureLeaf(row.node)) {
-                            <button matButton type="button" (click)="openEstimates(camp, row.node)">Planung</button>
-                          }
-                          <mat-form-field appearance="outline">
-                            <mat-label>Verschieben nach</mat-label>
-                            <mat-select [name]="'moveTarget-' + row.node.id" [(ngModel)]="moveTargetParentIds[row.node.id]">
+                      <section class="settings-section create-node-section">
+                        <div class="section-heading"><div><p class="eyebrow">Struktur erweitern</p><h3>Neuen Knoten anlegen</h3></div></div>
+                        <form [id]="'create-structure-node-' + camp.id" class="create-node-form" (ngSubmit)="createStructureNode(camp)">
+                          <mat-form-field appearance="outline"><mat-label>Einfügen unter</mat-label>
+                            <mat-select name="structureParent" [(ngModel)]="newStructureParentId">
                               <mat-option value="">Oberste Ebene</mat-option>
-                              @for (target of moveTargets(row.node); track target.id) {
-                                <mat-option [value]="target.id">{{ target.name }}</mat-option>
+                              @for (row of structureRows(); track row.node.id) {
+                                <mat-option [value]="row.node.id">{{ structureNodePath(row.node) }}</mat-option>
                               }
                             </mat-select>
                           </mat-form-field>
-                          <button matButton type="button" (click)="moveStructureNode(camp, row.node)"
-                            [disabled]="submitting() || camp.isFrozen">Verschieben</button>
-                          <button matButton type="button" (click)="deleteStructureNode(camp, row.node)"
-                            [disabled]="submitting() || camp.isFrozen">Löschen</button>
+                          <mat-form-field appearance="outline"><mat-label>Name des neuen Knotens</mat-label>
+                            <input matInput name="structureName" [(ngModel)]="newStructureNodeName" maxlength="200" required>
+                          </mat-form-field>
+                          <button matButton="filled" type="submit" [disabled]="submitting() || camp.isFrozen || !newStructureNodeName.trim()">
+                            <scp-action-icon name="add"/>Knoten anlegen</button>
+                        </form>
+                      </section>
+                    }
+                    <section class="structure-tree" aria-label="Lagerstruktur">
+                    @for (row of structureRows(); track row.node.id) {
+                      <div class="structure-node-row" [style.--tree-depth]="row.depth">
+                        <div class="structure-node-main"><span class="structure-node-marker"></span><div>
+                          @if (structureLevelLabel(row.depth); as levelLabel) {
+                            <span class="structure-level-badge">{{ levelLabel }}</span>
+                          }
+                          <strong>{{ row.node.name }}</strong>
+                        @if (structureTotal(row.node.id); as total) {
+                          <small>KiJu: {{ total.childYouthCount }} · Leiter: {{ total.leaderCount }}</small>
                         }
-                      </p>
+                        </div></div>
+                        @if (camp.canEdit) {
+                          <div class="structure-node-actions">
+                          @if (canPlanOnStructureRow(row)) {
+                            <button matButton type="button" [class.editing-active]="estimateNodeId() === row.node.id"
+                              (click)="openEstimates(camp, row.node)"><scp-action-icon name="planning"/>Planung</button>
+                          }
+                          <button matIconButton type="button" class="icon-only"
+                            [class.editing-active]="editingStructureNodeId() === row.node.id"
+                            [attr.aria-label]="editingStructureNodeId() === row.node.id ? 'Umbenennen beenden' : 'Eintrag umbenennen'"
+                            [matTooltip]="editingStructureNodeId() === row.node.id ? 'Umbenennen beenden' : 'Eintrag umbenennen'"
+                            (click)="toggleRenameStructureNode(row.node)" [disabled]="submitting() || camp.isFrozen">
+                            <scp-action-icon name="edit"/></button>
+                          <button matIconButton type="button" class="icon-only"
+                            [class.editing-active]="movingStructureNodeId() === row.node.id"
+                            [attr.aria-label]="movingStructureNodeId() === row.node.id ? 'Verschieben beenden' : 'Eintrag verschieben'"
+                            [matTooltip]="movingStructureNodeId() === row.node.id ? 'Verschieben beenden' : 'Eintrag verschieben'"
+                            (click)="toggleMoveStructureNode(row.node)" [disabled]="submitting() || camp.isFrozen">
+                            <scp-action-icon name="move"/></button>
+                          <span class="icon-button-tooltip" [matTooltip]="structureDeleteTooltip(row.node, camp)">
+                            <button matIconButton type="button" class="icon-only remove-action" aria-label="Eintrag löschen"
+                              (click)="deleteStructureNode(camp, row.node)"
+                              [disabled]="submitting() || camp.isFrozen || !canDeleteStructureNode(row.node)">
+                              <scp-action-icon name="remove"/></button>
+                          </span>
+                          </div>
+                        }
+                        @if (movingStructureNodeId() === row.node.id) {
+                          <div class="structure-move-editor">
+                            <mat-form-field appearance="outline"><mat-label>Neuer übergeordneter Knoten</mat-label>
+                              <mat-select [name]="'moveTarget-' + row.node.id" [(ngModel)]="moveTargetParentIds[row.node.id]">
+                                <mat-option value="">Oberste Ebene</mat-option>
+                                @for (target of moveTargets(row.node); track target.id) {
+                                  <mat-option [value]="target.id">{{ structureNodePath(target) }}</mat-option>
+                                }
+                              </mat-select>
+                            </mat-form-field>
+                            <button matButton="filled" type="button" (click)="moveStructureNode(camp, row.node)"
+                              [disabled]="submitting() || camp.isFrozen"><scp-action-icon name="move"/>Verschieben bestätigen</button>
+                          </div>
+                        }
+                        @if (editingStructureNodeId() === row.node.id) {
+                          <form class="structure-rename-editor" (ngSubmit)="renameStructureNode(camp, row.node)">
+                            <mat-form-field appearance="outline"><mat-label>Neuer Name</mat-label>
+                              <input matInput name="structureRename" [(ngModel)]="editStructureNodeName"
+                                maxlength="200" required>
+                            </mat-form-field>
+                            <button matIconButton type="submit" class="icon-only save-required"
+                              aria-label="Neuen Namen speichern" matTooltip="Neuen Namen speichern"
+                              [disabled]="submitting() || !editStructureNodeName.trim() || editStructureNodeName.trim() === row.node.name">
+                              <scp-action-icon name="save"/></button>
+                          </form>
+                        }
+                        @if (estimateNodeId() === row.node.id) {
+                          <section class="structure-planning-editor">
+                            <div class="section-heading"><div><p class="eyebrow">Anonyme Planung</p><h3>Teilnehmerschätzung</h3></div>
+                              @if (camp.canEdit) {
+                                @if (hasPersistedParticipantEstimates()) {
+                                  <button matButton type="button" class="remove-action" (click)="deleteEstimates(camp)"
+                                    [disabled]="submitting() || camp.isFrozen"><scp-action-icon name="remove"/>Schätzung löschen</button>
+                                }
+                                <button matIconButton type="button" class="icon-only" aria-label="Schätzung speichern"
+                                  matTooltip="Schätzung speichern" (click)="saveEstimates(camp)"><scp-action-icon name="save"/></button>
+                              }
+                            </div>
+                            <table><thead><tr><th>Stufe</th><th>KiJu</th><th>Leiter</th></tr></thead><tbody>
+                              @for (estimate of participantEstimates(); track estimate.campStageId) {
+                                <tr><td>{{ estimate.stageName }}</td>
+                                  <td><input type="number" min="0" [(ngModel)]="estimate.childYouthCount"></td>
+                                  <td><input type="number" min="0" [(ngModel)]="estimate.leaderCount"></td></tr>
+                              }
+                            </tbody></table>
+                          </section>
+                        }
+                      </div>
                     } @empty { <p>Noch keine Struktureinträge vorhanden.</p> }
-                    @if (estimateNodeId()) {
-                      <h3>Teilnehmerschätzung</h3>
-                      <table><thead><tr><th>Stufe</th><th>KiJu</th><th>Leiter</th></tr></thead><tbody>
-                        @for (estimate of participantEstimates; track estimate.campStageId) {
-                          <tr><td>{{ estimate.stageName }}</td>
-                            <td><input type="number" min="0" [(ngModel)]="estimate.childYouthCount"></td>
-                            <td><input type="number" min="0" [(ngModel)]="estimate.leaderCount"></td></tr>
-                        }
-                      </tbody></table>
-                      @if (camp.canEdit) {
-                        <button matButton="filled" type="button" (click)="saveEstimates(camp)">Schätzung speichern</button>
-                      }
-                    }
-                    @if (camp.canEdit) {
-                      <form [id]="'create-structure-node-' + camp.id" (ngSubmit)="createStructureNode(camp)">
-                        <mat-form-field appearance="outline"><mat-label>Übergeordneter Eintrag</mat-label>
-                          <mat-select name="structureParent" [(ngModel)]="newStructureParentId">
-                            <mat-option value="">Oberste Ebene</mat-option>
-                            @for (row of structureRows(); track row.node.id) {
-                              <mat-option [value]="row.node.id">{{ row.node.name }}</mat-option>
-                            }
-                          </mat-select>
-                        </mat-form-field>
-                        <mat-form-field appearance="outline"><mat-label>Name</mat-label>
-                          <input matInput name="structureName" [(ngModel)]="newStructureNodeName" maxlength="200" required>
-                        </mat-form-field>
-                      </form>
-                    }
+                    </section>
+                  }
+                  @if (campSection() === 'catering') {
+                    <section class="settings-section">
+                      <div class="section-heading"><div><p class="eyebrow">Verpflegungsplanung</p><h3>Gewichtete Verpflegungseinheiten</h3></div></div>
+                      <p class="context-info">Die Einheiten ergeben sich aus den Schätzwerten der Lagerstruktur und den Faktoren der Lagerstufen.</p>
+                      @if (weightedFoodTotals().length) {
+                        <table><thead><tr><th>Stufe</th><th>KiJu</th><th>Leiter</th><th>Faktor</th><th>Einheiten</th></tr></thead><tbody>
+                          @for (total of weightedFoodTotals(); track total.campStageId) {
+                            <tr><td>{{ total.stageName }}</td><td>{{ total.childYouthCount }}</td><td>{{ total.leaderCount }}</td>
+                              <td>{{ total.factor }}</td><td><strong>{{ total.foodUnits }}</strong></td></tr>
+                          }
+                        </tbody></table>
+                      } @else { <p>Noch keine Verpflegungseinheiten vorhanden.</p> }
+                    </section>
                   }
                 }
               </mat-card-content>
               <mat-card-actions>
-                @if (editingCampId() === camp.id) {
-                  <button matButton type="button" (click)="cancelCampEdit()">Abbrechen</button>
-                  <button matButton="filled" type="submit" [attr.form]="'edit-camp-' + camp.id" [disabled]="submitting()">Speichern</button>
-                } @else {
-                  <button matButton (click)="toggleStructure(camp)">
-                    {{ structureCampId() === camp.id ? 'Struktur schließen' : 'Struktur' }}
-                  </button>
-                  @if (structureCampId() === camp.id && camp.canEdit) {
-                    <button matButton="filled" type="submit" [attr.form]="'create-structure-node-' + camp.id"
-                      [disabled]="submitting()">Eintrag anlegen</button>
-                  }
-                  @if (camp.canEdit) { <button matButton (click)="editCamp(camp)" [disabled]="camp.isFrozen">Bearbeiten</button> }
+                @if (!openedCampId()) {
+                  <button matButton="filled" type="button" (click)="openCamp(camp)"><scp-action-icon name="camp"/>Lager öffnen</button>
                   @if (camp.canExport) {
-                    <button matButton="filled" [disabled]="camp.isFrozen || !camp.startDate || !camp.endDate"
-                      (click)="exportCamp(camp)">Offlinepaket erstellen</button>
+                    <button matButton type="button" [disabled]="camp.isFrozen || !camp.startDate || !camp.endDate"
+                      (click)="exportCamp(camp)"><scp-action-icon name="download"/>Offlinepaket erstellen</button>
                   }
                 }
               </mat-card-actions>
             </mat-card>
-          } @empty { <p>Noch keine Lager vorhanden.</p> }
+          } @empty { <div class="empty-state"><h2>Noch keine Lager</h2><p>Lege das erste Lager für diese Organisation an.</p></div> }
+          }
+          </div>
         }
         @case ('unavailable') {
           <mat-card class="account-card"><mat-card-header><mat-card-title>Backend nicht erreichbar</mat-card-title></mat-card-header>
             <mat-card-content><p class="error">{{ error() }}</p></mat-card-content>
-            <mat-card-actions align="end"><button matButton="filled" (click)="initialize()">Erneut versuchen</button></mat-card-actions>
+            <mat-card-actions align="end"><button matButton="filled" (click)="initialize()"><scp-action-icon name="refresh"/>Erneut versuchen</button></mat-card-actions>
           </mat-card>
         }
       }
@@ -303,6 +540,7 @@ export class AppComponent {
   readonly submitting = signal(false);
   readonly error = signal<string | null>(null);
   readonly notice = signal<string | null>(null);
+  readonly applicationSection = signal<ApplicationSection>('camps');
   readonly user = signal<AuthenticatedUser | null>(null);
   readonly camps = signal<CampSummary[]>([]);
   readonly tenants = signal<TenantOption[]>([]);
@@ -310,30 +548,44 @@ export class AppComponent {
   readonly administratorCandidates = signal<CampAdministratorOption[]>([]);
   readonly selectedAdministratorIds = signal<ReadonlySet<string>>(new Set());
   readonly editingCampId = signal<string | null>(null);
+  readonly openedCampId = signal<string | null>(null);
+  readonly campSection = signal<CampSection>('general');
   readonly structureCampId = signal<string | null>(null);
   readonly structureNodes = signal<StructureNodeSummary[]>([]);
   readonly structureConfiguration = signal<StructureConfiguration | null>(null);
+  readonly structureMode = signal<'Free' | 'Fixed'>('Free');
+  readonly structureLevelNames = signal<string[]>([]);
+  private persistedStructureMode: 'Free' | 'Fixed' = 'Free';
+  private persistedStructureLevelNames: string[] = [];
   readonly estimateNodeId = signal<string | null>(null);
+  readonly movingStructureNodeId = signal<string | null>(null);
+  readonly editingStructureNodeId = signal<string | null>(null);
   readonly planningSummary = signal<CampPlanningSummary | null>(null);
   tenantName = '';
   email = '';
   password = '';
   campName = '';
-  campStartDate = '';
-  campEndDate = '';
+  campStartDate: Date | null = null;
+  campEndDate: Date | null = null;
   editCampName = '';
-  editCampStartDate = '';
-  editCampEndDate = '';
+  editCampStartDate: Date | null = null;
+  editCampEndDate: Date | null = null;
   newStructureParentId = '';
   newStructureNodeName = '';
-  structureLevelInput = '';
-  stageTemplateInput = '';
-  campStageInput = '';
+  editStructureNodeName = '';
+  newStageName = '';
+  newCampStageName = '';
   moveTargetParentIds: Record<string, string> = {};
-  participantEstimates: ParticipantEstimate[] = [];
+  readonly participantEstimates = signal<ParticipantEstimate[]>([]);
+  private persistedParticipantEstimates: ParticipantEstimate[] = [];
   tenantStageFoodFactors: TenantStageFoodFactor[] = [];
-  campStageFoodFactors: CampStageFoodFactor[] = [];
-  weightedFoodTotals: WeightedStageTotal[] = [];
+  private persistedTenantStageFoodFactors: TenantStageFoodFactor[] = [];
+  readonly editingTenantStageIndexes = signal<ReadonlySet<number>>(new Set());
+  readonly campStageFoodFactors = signal<CampStageFoodFactor[]>([]);
+  readonly campStagesLoading = signal(false);
+  private persistedCampStageFoodFactors: CampStageFoodFactor[] = [];
+  readonly editingCampStageIndexes = signal<ReadonlySet<number>>(new Set());
+  readonly weightedFoodTotals = signal<WeightedStageTotal[]>([]);
 
   constructor() { this.initialize(); }
 
@@ -403,12 +655,12 @@ export class AppComponent {
     const selectedAdministratorIds = [...this.selectedAdministratorIds()];
     this.campApi.create(tenant.id, {
       name: this.campName,
-      startDate: this.campStartDate,
-      endDate: this.campEndDate,
+      startDate: this.formatApiDate(this.campStartDate),
+      endDate: this.formatApiDate(this.campEndDate),
       initialAdministratorMembershipIds: selectedAdministratorIds
     }).subscribe({
       next: camp => {
-        this.submitting.set(false); this.campName = ''; this.campStartDate = ''; this.campEndDate = '';
+        this.submitting.set(false); this.campName = ''; this.campStartDate = null; this.campEndDate = null;
         this.selectedAdministratorIds.set(new Set());
         const currentUserIsAdmin = this.administratorCandidates().some(candidate =>
           candidate.userId === this.user()?.userId && selectedAdministratorIds.includes(candidate.membershipId));
@@ -428,20 +680,59 @@ export class AppComponent {
 
   editCamp(camp: CampSummary) {
     this.editingCampId.set(camp.id); this.editCampName = camp.name;
-    this.editCampStartDate = camp.startDate ?? ''; this.editCampEndDate = camp.endDate ?? '';
+    this.editCampStartDate = this.parseApiDate(camp.startDate); this.editCampEndDate = this.parseApiDate(camp.endDate);
     this.error.set(null); this.notice.set(null);
   }
 
   cancelCampEdit() {
     this.editingCampId.set(null); this.editCampName = '';
-    this.editCampStartDate = ''; this.editCampEndDate = '';
+    this.editCampStartDate = null; this.editCampEndDate = null;
+  }
+
+  openedCamp() {
+    return this.camps().find(camp => camp.id === this.openedCampId()) ?? null;
+  }
+
+  visibleCamps() {
+    const openedCampId = this.openedCampId();
+    return openedCampId ? this.camps().filter(camp => camp.id === openedCampId) : this.camps();
+  }
+
+  openCamp(camp: CampSummary) {
+    this.openedCampId.set(camp.id);
+    this.campSection.set('general');
+    this.loadCampStageFoodFactors(camp.id);
+    this.error.set(null);
+    this.notice.set(null);
+  }
+
+  openCampStructure(camp: CampSummary) {
+    this.campSection.set('structure');
+    if (this.structureCampId() !== camp.id) this.toggleStructure(camp);
+  }
+
+  openCampCatering(camp: CampSummary) {
+    this.campSection.set('catering');
+    this.loadWeightedFoodSummary(camp.id);
+  }
+
+  closeCamp() {
+    this.openedCampId.set(null);
+    this.campSection.set('general');
+    this.editingCampId.set(null);
+    this.movingStructureNodeId.set(null);
+    if (this.structureCampId()) this.structureCampId.set(null);
+    this.error.set(null);
+    this.notice.set(null);
   }
 
   saveCamp(camp: CampSummary) {
     if (this.submitting()) return;
     this.submitting.set(true); this.error.set(null); this.notice.set(null);
     this.campApi.update(camp.id, {
-      name: this.editCampName, startDate: this.editCampStartDate, endDate: this.editCampEndDate
+      name: this.editCampName,
+      startDate: this.formatApiDate(this.editCampStartDate),
+      endDate: this.formatApiDate(this.editCampEndDate)
     }).subscribe({
       next: updated => {
         this.submitting.set(false); this.cancelCampEdit();
@@ -461,43 +752,77 @@ export class AppComponent {
   toggleStructure(camp: CampSummary) {
     if (this.structureCampId() === camp.id) {
       this.structureCampId.set(null); this.structureNodes.set([]); this.structureConfiguration.set(null);
-      this.estimateNodeId.set(null); this.planningSummary.set(null); this.participantEstimates = [];
-      this.campStageFoodFactors = []; this.weightedFoodTotals = []; return;
+      this.estimateNodeId.set(null); this.movingStructureNodeId.set(null); this.planningSummary.set(null); this.participantEstimates.set([]);
+      this.weightedFoodTotals.set([]); return;
     }
     this.structureCampId.set(camp.id); this.structureNodes.set([]);
-    this.estimateNodeId.set(null); this.planningSummary.set(null); this.participantEstimates = [];
-    this.campStageFoodFactors = []; this.weightedFoodTotals = [];
+    this.estimateNodeId.set(null); this.movingStructureNodeId.set(null); this.planningSummary.set(null); this.participantEstimates.set([]);
+    this.weightedFoodTotals.set([]);
     this.newStructureParentId = ''; this.newStructureNodeName = '';
     this.campApi.listStructure(camp.id).subscribe({
       next: nodes => { this.structureNodes.set(nodes); this.moveTargetParentIds = Object.fromEntries(nodes.map(node => [node.id, node.parentId ?? ''])); },
       error: () => this.error.set('Die Lagerstruktur konnte nicht geladen werden.')
     });
     this.campApi.getStructureConfiguration(camp.id).subscribe({ next: configuration => {
-      this.structureConfiguration.set(configuration); this.structureLevelInput = configuration.levelNames.join('\n');
+      this.structureConfiguration.set(configuration);
+      this.structureMode.set(configuration.mode);
+      this.structureLevelNames.set([...configuration.levelNames]);
+      this.persistedStructureMode = configuration.mode;
+      this.persistedStructureLevelNames = [...configuration.levelNames];
     }});
-    this.campApi.getCampStages(camp.id).subscribe({ next: stages => this.campStageInput = stages.map(value => value.name).join('\n') });
     this.loadPlanningSummary(camp.id);
-    this.loadCampStageFoodFactors(camp.id);
     this.loadWeightedFoodSummary(camp.id);
   }
 
-  saveCampStages(camp: CampSummary) {
-    const names = this.campStageInput.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+  saveStructureConfiguration(camp: CampSummary) {
+    const levels = this.structureMode() === 'Fixed'
+      ? this.structureLevelNames().map(value => value.trim()).filter(Boolean)
+      : [];
     this.submitting.set(true); this.error.set(null);
-    this.campApi.updateCampStages(camp.id, names).subscribe({
-      next: () => { this.submitting.set(false); this.notice.set('Die Lagerstufen wurden gespeichert.');
-        this.loadCampStageFoodFactors(camp.id); this.loadWeightedFoodSummary(camp.id); },
-      error: () => { this.submitting.set(false); this.error.set('Die Lagerstufen konnten nicht gespeichert werden.'); }
+    this.campApi.updateStructureConfiguration(camp.id, levels).subscribe({
+      next: () => {
+        const mode = levels.length ? 'Fixed' : 'Free';
+        this.submitting.set(false); this.structureConfiguration.set({ mode, levelNames: levels });
+        this.structureMode.set(mode); this.structureLevelNames.set([...levels]);
+        this.persistedStructureMode = mode; this.persistedStructureLevelNames = [...levels];
+        this.notice.set('Die Strukturtiefe wurde aktualisiert.');
+      },
+      error: () => { this.submitting.set(false); this.error.set('Die Strukturtiefe ist ungültig oder für den bestehenden Baum zu kurz.'); }
     });
   }
 
-  saveStructureConfiguration(camp: CampSummary) {
-    const levels = this.structureLevelInput.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
-    this.submitting.set(true); this.error.set(null);
-    this.campApi.updateStructureConfiguration(camp.id, levels).subscribe({
-      next: () => { this.submitting.set(false); this.structureConfiguration.set({ mode: levels.length ? 'Fixed' : 'Free', levelNames: levels }); this.notice.set('Die Strukturtiefe wurde aktualisiert.'); },
-      error: () => { this.submitting.set(false); this.error.set('Die Strukturtiefe ist ungültig oder für den bestehenden Baum zu kurz.'); }
-    });
+  setStructureMode(mode: 'Free' | 'Fixed') {
+    this.structureMode.set(mode);
+    if (mode === 'Fixed' && this.structureLevelNames().length === 0) this.structureLevelNames.set(['Ebene 1']);
+  }
+
+  addStructureLevel() {
+    this.structureLevelNames.update(levels => [...levels, `Ebene ${levels.length + 1}`]);
+  }
+
+  renameStructureLevel(index: number, name: string) {
+    this.structureLevelNames.update(levels => levels.map((level, candidateIndex) => candidateIndex === index ? name : level));
+  }
+
+  removeStructureLevel(index: number) {
+    if (this.structureLevelNames().length <= 1) return;
+    this.structureLevelNames.update(levels => levels.filter((_, candidateIndex) => candidateIndex !== index));
+  }
+
+  moveStructureLevel(index: number, direction: -1 | 1) {
+    const levels = [...this.structureLevelNames()];
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= levels.length) return;
+    [levels[index], levels[targetIndex]] = [levels[targetIndex], levels[index]];
+    this.structureLevelNames.set(levels);
+  }
+
+  structureConfigurationChanged() {
+    if (this.structureMode() !== this.persistedStructureMode) return true;
+    if (this.structureMode() === 'Free') return false;
+    const current = this.structureLevelNames().map(value => value.trim());
+    return current.length !== this.persistedStructureLevelNames.length ||
+      current.some((value, index) => value !== this.persistedStructureLevelNames[index]);
   }
 
   structureRows(): { node: StructureNodeSummary; depth: number }[] {
@@ -512,14 +837,60 @@ export class AppComponent {
     return result;
   }
 
+  structureNodePath(node: StructureNodeSummary) {
+    const names = [node.name];
+    let parentId = node.parentId;
+    while (parentId) {
+      const parent = this.structureNodes().find(value => value.id === parentId);
+      if (!parent) break;
+      names.unshift(parent.name);
+      parentId = parent.parentId;
+    }
+    return names.join(' › ');
+  }
+
   isStructureLeaf(node: StructureNodeSummary) {
     return !this.structureNodes().some(value => value.parentId === node.id);
   }
 
+  canDeleteStructureNode(node: StructureNodeSummary) {
+    if (!this.planningSummary() || !this.isStructureLeaf(node)) return false;
+    if (this.estimateNodeId() === node.id && this.participantEstimates().some(
+      value => value.childYouthCount > 0 || value.leaderCount > 0)) return false;
+    const total = this.structureTotal(node.id);
+    return !total || total.childYouthCount === 0 && total.leaderCount === 0;
+  }
+
+  structureDeleteTooltip(node: StructureNodeSummary, camp: CampSummary) {
+    if (camp.isFrozen) return 'Während der Offlinephase nicht löschbar';
+    if (!this.planningSummary()) return 'Planungsdaten werden geladen';
+    if (!this.isStructureLeaf(node)) return 'Knoten mit Unterknoten können nicht gelöscht werden';
+    if (!this.canDeleteStructureNode(node)) return 'Knoten mit Teilnehmerschätzungen können nicht gelöscht werden';
+    return 'Eintrag löschen';
+  }
+
+  canPlanOnStructureRow(row: { node: StructureNodeSummary; depth: number }) {
+    if (!this.isStructureLeaf(row.node)) return false;
+    return this.structureMode() === 'Free' || row.depth + 1 === this.structureLevelNames().length;
+  }
+
+  structureLevelLabel(depth: number) {
+    return this.structureMode() === 'Fixed' ? this.structureLevelNames()[depth] ?? null : null;
+  }
+
   openEstimates(camp: CampSummary, node: StructureNodeSummary) {
-    this.estimateNodeId.set(node.id); this.participantEstimates = [];
+    if (this.estimateNodeId() === node.id) {
+      this.estimateNodeId.set(null); this.participantEstimates.set([]); this.persistedParticipantEstimates = []; return;
+    }
+    this.movingStructureNodeId.set(null);
+    this.editingStructureNodeId.set(null);
+    this.editStructureNodeName = '';
+    this.estimateNodeId.set(node.id); this.participantEstimates.set([]); this.persistedParticipantEstimates = [];
     this.campApi.getParticipantEstimates(camp.id, node.id).subscribe({
-      next: values => this.participantEstimates = values,
+      next: values => {
+        this.participantEstimates.set(values.map(value => ({ ...value })));
+        this.persistedParticipantEstimates = values.map(value => ({ ...value }));
+      },
       error: () => this.error.set('Die Teilnehmerschätzung konnte nicht geladen werden.')
     });
   }
@@ -527,9 +898,36 @@ export class AppComponent {
   saveEstimates(camp: CampSummary) {
     const nodeId = this.estimateNodeId(); if (!nodeId) return;
     this.submitting.set(true); this.error.set(null);
-    this.campApi.updateParticipantEstimates(camp.id, nodeId, this.participantEstimates).subscribe({
-      next: () => { this.submitting.set(false); this.notice.set('Die Teilnehmerschätzung wurde gespeichert.'); this.loadPlanningSummary(camp.id); this.loadWeightedFoodSummary(camp.id); },
+    this.campApi.updateParticipantEstimates(camp.id, nodeId, this.participantEstimates()).subscribe({
+      next: () => {
+        this.submitting.set(false);
+        this.persistedParticipantEstimates = this.participantEstimates().map(value => ({ ...value }));
+        this.notice.set('Die Teilnehmerschätzung wurde gespeichert.');
+        this.loadPlanningSummary(camp.id); this.loadWeightedFoodSummary(camp.id);
+      },
       error: () => { this.submitting.set(false); this.error.set('Die Teilnehmerschätzung konnte nicht gespeichert werden.'); }
+    });
+  }
+
+  hasPersistedParticipantEstimates() {
+    return this.persistedParticipantEstimates.some(value => value.childYouthCount > 0 || value.leaderCount > 0);
+  }
+
+  deleteEstimates(camp: CampSummary) {
+    const nodeId = this.estimateNodeId();
+    if (!nodeId || this.submitting()) return;
+    const empty = this.participantEstimates().map(value => ({ ...value, childYouthCount: 0, leaderCount: 0 }));
+    this.submitting.set(true); this.error.set(null); this.notice.set(null);
+    this.campApi.updateParticipantEstimates(camp.id, nodeId, empty).subscribe({
+      next: () => {
+        this.submitting.set(false); this.participantEstimates.set(empty);
+        this.persistedParticipantEstimates = empty.map(value => ({ ...value }));
+        this.notice.set('Die Teilnehmerschätzung wurde gelöscht.');
+        this.loadPlanningSummary(camp.id); this.loadWeightedFoodSummary(camp.id);
+      },
+      error: () => {
+        this.submitting.set(false); this.error.set('Die Teilnehmerschätzung konnte nicht gelöscht werden.');
+      }
     });
   }
 
@@ -545,23 +943,91 @@ export class AppComponent {
   }
 
   private loadCampStageFoodFactors(campId: string) {
+    this.campStagesLoading.set(true);
+    this.campStageFoodFactors.set([]);
+    this.persistedCampStageFoodFactors = [];
+    this.editingCampStageIndexes.set(new Set());
     this.campApi.getCampStageFoodFactors(campId).subscribe({
-      next: factors => this.campStageFoodFactors = factors,
-      error: () => this.error.set('Die Lager-Verpflegungsfaktoren konnten nicht geladen werden.')
+      next: factors => {
+        this.campStagesLoading.set(false);
+        this.editingCampStageIndexes.set(new Set());
+        this.campStageFoodFactors.set(factors.map(value => ({ ...value })));
+        this.persistedCampStageFoodFactors = factors.map(value => ({ ...value }));
+      },
+      error: () => {
+        this.campStagesLoading.set(false);
+        this.error.set('Die Lager-Verpflegungsfaktoren konnten nicht geladen werden.');
+      }
     });
   }
 
-  saveCampStageFoodFactors(camp: CampSummary) {
-    this.submitting.set(true); this.error.set(null);
-    this.campApi.updateCampStageFoodFactors(camp.id, this.campStageFoodFactors).subscribe({
-      next: () => { this.submitting.set(false); this.notice.set('Die Lager-Verpflegungsfaktoren wurden gespeichert.'); this.loadWeightedFoodSummary(camp.id); },
-      error: () => { this.submitting.set(false); this.error.set('Die Lager-Verpflegungsfaktoren sind ungültig.'); }
+  toggleCampStageEditing(index: number) {
+    const next = new Set(this.editingCampStageIndexes());
+    next.has(index) ? next.delete(index) : next.add(index);
+    this.editingCampStageIndexes.set(next);
+  }
+
+  campStageEditing(index: number) {
+    return this.editingCampStageIndexes().has(index);
+  }
+
+  campStageChanged(index: number) {
+    const current = this.campStageFoodFactors()[index];
+    const persisted = this.persistedCampStageFoodFactors[index];
+    return !persisted || current.stageName.trim() !== persisted.stageName || Number(current.factor) !== Number(persisted.factor);
+  }
+
+  addCampStage(camp: CampSummary) {
+    const stageName = this.newCampStageName.trim();
+    if (!stageName) return;
+    this.persistCampStages(camp, [...this.campStageFoodFactors(),
+      { campStageId: '', stageName, factor: 1 }], 'Die Lagerstufe wurde hinzugefügt.', () => this.newCampStageName = '');
+  }
+
+  removeCampStage(camp: CampSummary, index: number) {
+    const factors = this.campStageFoodFactors().filter((_, candidateIndex) => candidateIndex !== index);
+    if (factors.length === 0) {
+      this.error.set('Mindestens eine Lagerstufe muss erhalten bleiben.');
+      return;
+    }
+    this.persistCampStages(camp, factors, 'Die Lagerstufe wurde entfernt.');
+  }
+
+  moveCampStage(camp: CampSummary, index: number, direction: -1 | 1) {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= this.campStageFoodFactors().length) return;
+    const factors = this.campStageFoodFactors().map(value => ({ ...value }));
+    [factors[index], factors[targetIndex]] = [factors[targetIndex], factors[index]];
+    this.persistCampStages(camp, factors, 'Die Reihenfolge wurde gespeichert.');
+  }
+
+  saveCampStage(camp: CampSummary) {
+    this.persistCampStages(camp, this.campStageFoodFactors(), 'Die Änderungen wurden gespeichert.');
+  }
+
+  private persistCampStages(camp: CampSummary, values: CampStageFoodFactor[], successNotice: string,
+    afterSave?: () => void) {
+    const desired = values.map(value => ({ stageName: value.stageName.trim(), factor: value.factor }));
+    this.submitting.set(true); this.error.set(null); this.notice.set(null);
+    this.campApi.updateCampStages(camp.id, desired.map(value => value.stageName)).pipe(
+      concatMap(() => this.campApi.getCampStageFoodFactors(camp.id)),
+      concatMap(stored => this.campApi.updateCampStageFoodFactors(camp.id,
+        stored.map((value, index) => ({ ...value, factor: desired[index]?.factor ?? 1 }))))
+    ).subscribe({
+      next: () => {
+        this.submitting.set(false); this.notice.set(successNotice); afterSave?.();
+        this.loadCampStageFoodFactors(camp.id); this.loadWeightedFoodSummary(camp.id);
+      },
+      error: () => {
+        this.submitting.set(false);
+        this.error.set('Die Lagerstufen konnten nicht gespeichert werden. Prüfe Namen und Faktoren; bestehende Schätzwerte können Änderungen verhindern.');
+      }
     });
   }
 
   private loadWeightedFoodSummary(campId: string) {
     this.campApi.getWeightedFoodSummary(campId).subscribe({
-      next: totals => this.weightedFoodTotals = totals,
+      next: totals => this.weightedFoodTotals.set(totals),
       error: () => this.error.set('Die gewichtete Verpflegungsübersicht konnte nicht geladen werden.')
     });
   }
@@ -612,12 +1078,53 @@ export class AppComponent {
     return this.structureNodes().filter(value => !excluded.has(value.id));
   }
 
+  toggleMoveStructureNode(node: StructureNodeSummary) {
+    this.editingStructureNodeId.set(null);
+    this.editStructureNodeName = '';
+    this.movingStructureNodeId.update(current => current === node.id ? null : node.id);
+  }
+
+  toggleRenameStructureNode(node: StructureNodeSummary) {
+    this.movingStructureNodeId.set(null);
+    if (this.editingStructureNodeId() === node.id) {
+      this.editingStructureNodeId.set(null);
+      this.editStructureNodeName = '';
+      return;
+    }
+    this.editingStructureNodeId.set(node.id);
+    this.editStructureNodeName = node.name;
+  }
+
+  renameStructureNode(camp: CampSummary, node: StructureNodeSummary) {
+    const name = this.editStructureNodeName.trim();
+    if (!name || name === node.name || this.submitting()) return;
+    this.submitting.set(true); this.error.set(null); this.notice.set(null);
+    this.campApi.renameStructureNode(camp.id, node.id, name).subscribe({
+      next: () => {
+        this.submitting.set(false); this.editingStructureNodeId.set(null); this.editStructureNodeName = '';
+        this.structureNodes.update(nodes => nodes.map(value => value.id === node.id ? { ...value, name } : value));
+        this.notice.set('Der Strukturknoten wurde umbenannt.');
+      },
+      error: (response: HttpErrorResponse) => {
+        this.submitting.set(false);
+        this.error.set(response.error?.code === 'duplicate_structure_name'
+          ? 'Auf dieser Ebene existiert bereits ein Knoten mit diesem Namen.'
+          : response.status === 409 ? 'Während der Offlinephase kann der Knoten nicht umbenannt werden.'
+          : 'Der Strukturknoten konnte nicht umbenannt werden.');
+      }
+    });
+  }
+
   moveStructureNode(camp: CampSummary, node: StructureNodeSummary) {
     if (this.submitting()) return;
     const parentId = this.moveTargetParentIds[node.id] || null;
     this.submitting.set(true); this.error.set(null); this.notice.set(null);
     this.campApi.moveStructureNode(camp.id, node.id, parentId).subscribe({
-      next: () => { this.submitting.set(false); this.structureNodes.update(nodes => nodes.map(value => value.id === node.id ? { ...value, parentId } : value)); this.notice.set('Der Strukturzweig wurde verschoben.'); },
+      next: () => {
+        this.submitting.set(false); this.movingStructureNodeId.set(null);
+        this.structureNodes.update(nodes => nodes.map(value => value.id === node.id ? { ...value, parentId } : value));
+        this.notice.set('Der Strukturzweig wurde verschoben.');
+      },
       error: (response: HttpErrorResponse) => {
         this.submitting.set(false);
         const code = response.error?.code;
@@ -629,9 +1136,16 @@ export class AppComponent {
     });
   }
 
+  showSection(section: ApplicationSection) {
+    this.applicationSection.set(section);
+    this.error.set(null);
+    this.notice.set(null);
+  }
+
   selectTenant(tenantId: string) {
     const tenant = this.tenants().find(candidate => candidate.id === tenantId) ?? null;
     this.selectedTenant.set(tenant); this.camps.set([]); this.administratorCandidates.set([]);
+    this.openedCampId.set(null); this.campSection.set('general'); this.structureCampId.set(null);
     this.selectedAdministratorIds.set(new Set()); this.error.set(null); this.notice.set(null);
     if (!tenant) return;
     this.loadCamps(tenant.id);
@@ -677,35 +1191,85 @@ export class AppComponent {
   }
 
   private loadStageTemplate(tenantId: string) {
-    this.campApi.getStageTemplate(tenantId).subscribe({
-      next: entries => { this.stageTemplateInput = entries.map(value => value.name).join('\n'); this.loadTenantStageFoodFactors(tenantId); },
-      error: () => this.error.set('Die Stufenvorlage konnte nicht geladen werden.')
+    forkJoin({
+      entries: this.campApi.getStageTemplate(tenantId),
+      factors: this.campApi.getTenantStageFoodFactors(tenantId)
+    }).subscribe({
+      next: ({ entries, factors }) => {
+        this.editingTenantStageIndexes.set(new Set());
+        this.tenantStageFoodFactors = entries.map(entry => ({
+          stageName: entry.name,
+          factor: factors.find(value => value.stageName === entry.name)?.factor ?? 1
+        }));
+        this.persistedTenantStageFoodFactors = this.tenantStageFoodFactors.map(value => ({ ...value }));
+      },
+      error: () => this.error.set('Die Stufenvorlage und Verpflegungsfaktoren konnten nicht geladen werden.')
     });
   }
 
-  private loadTenantStageFoodFactors(tenantId: string) {
-    this.campApi.getTenantStageFoodFactors(tenantId).subscribe({
-      next: factors => this.tenantStageFoodFactors = factors,
-      error: () => this.error.set('Die Verpflegungsfaktoren konnten nicht geladen werden.')
-    });
+  addTenantStage(tenantId: string) {
+    const stageName = this.newStageName.trim();
+    if (!stageName) return;
+    const factors = [...this.tenantStageFoodFactors, { stageName, factor: 1 }];
+    this.persistTenantStages(tenantId, factors, 'Die Stufe wurde hinzugefügt.', () => this.newStageName = '');
   }
 
-  saveTenantStageFoodFactors(tenantId: string) {
+  removeTenantStage(tenantId: string, index: number) {
+    const factors = this.tenantStageFoodFactors.filter((_, candidateIndex) => candidateIndex !== index);
+    if (factors.length === 0) {
+      this.error.set('Mindestens eine Stufe muss erhalten bleiben.');
+      return;
+    }
+    this.persistTenantStages(tenantId, factors, 'Die Stufe wurde entfernt.');
+  }
+
+  moveTenantStage(tenantId: string, index: number, direction: -1 | 1) {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= this.tenantStageFoodFactors.length) return;
+    const factors = this.tenantStageFoodFactors.map(value => ({ ...value }));
+    [factors[index], factors[targetIndex]] = [factors[targetIndex], factors[index]];
+    this.persistTenantStages(tenantId, factors, 'Die Reihenfolge wurde gespeichert.');
+  }
+
+  saveTenantStage(tenantId: string) {
+    this.persistTenantStages(tenantId, this.tenantStageFoodFactors, 'Die Änderungen wurden gespeichert.');
+  }
+
+  toggleTenantStageEditing(index: number) {
+    const next = new Set(this.editingTenantStageIndexes());
+    next.has(index) ? next.delete(index) : next.add(index);
+    this.editingTenantStageIndexes.set(next);
+  }
+
+  tenantStageEditing(index: number) {
+    return this.editingTenantStageIndexes().has(index);
+  }
+
+  tenantStageChanged(index: number) {
+    const current = this.tenantStageFoodFactors[index];
+    const persisted = this.persistedTenantStageFoodFactors[index];
+    return !persisted || current.stageName.trim() !== persisted.stageName || Number(current.factor) !== Number(persisted.factor);
+  }
+
+  private persistTenantStages(tenantId: string, values: TenantStageFoodFactor[], successNotice: string,
+    afterSave?: () => void) {
+    const factors = values.map(value => ({
+      stageName: value.stageName.trim(), factor: value.factor
+    }));
+    const names = factors.map(value => value.stageName);
     this.submitting.set(true); this.error.set(null); this.notice.set(null);
-    this.campApi.updateTenantStageFoodFactors(tenantId, this.tenantStageFoodFactors).subscribe({
-      next: () => { this.submitting.set(false); this.notice.set('Die Verpflegungsfaktoren wurden gespeichert.'); },
-      error: () => { this.submitting.set(false); this.error.set('Die Verpflegungsfaktoren sind unvollständig oder ungültig.'); }
-    });
-  }
-
-  saveStageTemplate(tenantId: string) {
-    const names = this.stageTemplateInput.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
-    this.submitting.set(true); this.error.set(null); this.notice.set(null);
-    this.campApi.updateStageTemplate(tenantId, names).subscribe({
-      next: () => { this.submitting.set(false); this.notice.set('Die Stufenvorlage wurde gespeichert.'); this.loadStageTemplate(tenantId); },
+    this.campApi.updateStageTemplate(tenantId, names).pipe(
+      concatMap(() => this.campApi.updateTenantStageFoodFactors(tenantId, factors))
+    ).subscribe({
+      next: () => {
+        this.submitting.set(false);
+        this.notice.set(successNotice);
+        afterSave?.();
+        this.loadStageTemplate(tenantId);
+      },
       error: (response: HttpErrorResponse) => { this.submitting.set(false); this.error.set(response.status === 403
         ? 'Du darfst die mandantenweite Stufenvorlage nicht ändern.'
-        : 'Die Stufenvorlage enthält ungültige oder doppelte Namen.'); }
+        : 'Die Stufen enthalten ungültige oder doppelte Namen oder Faktoren.'); }
     });
   }
 
@@ -713,11 +1277,26 @@ export class AppComponent {
     this.user.set(null); this.camps.set([]); this.tenants.set([]); this.selectedTenant.set(null);
     this.administratorCandidates.set([]); this.selectedAdministratorIds.set(new Set());
     this.editingCampId.set(null);
+    this.openedCampId.set(null); this.campSection.set('general');
     this.structureCampId.set(null); this.structureNodes.set([]);
     this.error.set(null); this.notice.set(null); this.state.set('login');
   }
 
   private showUnavailable() {
     this.error.set('Das ScoutCampPlanner-Backend ist nicht erreichbar.'); this.state.set('unavailable');
+  }
+
+  private formatApiDate(value: Date | null) {
+    if (!value) return '';
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  private parseApiDate(value: string | null) {
+    if (!value) return null;
+    const [year, month, day] = value.split('-').map(Number);
+    return new Date(year, month - 1, day);
   }
 }

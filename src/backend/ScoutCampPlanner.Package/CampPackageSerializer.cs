@@ -108,6 +108,7 @@ public static class CampPackageSerializer
         if (structureMode == ScoutCampPlanner.Camp.Domain.CampStructureMode.Fixed)
         {
             var nodesById = package.StructureNodes.ToDictionary(node => node.Id);
+            var depthsById = new Dictionary<Guid, int>();
             foreach (var node in package.StructureNodes)
             {
                 int depth = 1; Guid? parentId = node.ParentId; var visited = new HashSet<Guid> { node.Id };
@@ -119,7 +120,11 @@ public static class CampPackageSerializer
                 }
                 if (depth > package.Camp.StructureLevelNames.Count)
                     throw new CampPackageValidationException("Camp structure exceeds its fixed depth.");
+                depthsById[node.Id] = depth;
             }
+            if (package.ParticipantEstimates.Any(estimate =>
+                depthsById[estimate.StructureNodeId] != package.Camp.StructureLevelNames.Count))
+                throw new CampPackageValidationException("Participant estimates must belong to the final fixed structure level.");
         }
         var expectedModules = new[] { "Camp", "Catering" };
         if (!expectedModules.All(package.Manifest.IncludedModules.Contains))

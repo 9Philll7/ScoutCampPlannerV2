@@ -434,6 +434,21 @@ app.MapPost("/api/camps/{campId:guid}/structure", async (
             : "Bitte gib einen Namen mit höchstens 200 Zeichen ein."]
     });
 }).RequireAuthorization();
+app.MapPut("/api/camps/{campId:guid}/structure/{nodeId:guid}", async (
+    Guid campId, Guid nodeId, RenameStructureNodeRequest request, ClaimsPrincipal principal,
+    CampManagementService management, CancellationToken cancellationToken) =>
+{
+    var failure = await management.RenameStructureNodeAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId, nodeId, request, cancellationToken);
+    return failure switch
+    {
+        RenameStructureNodeFailure.None => Results.NoContent(),
+        RenameStructureNodeFailure.NotFound => Results.NotFound(),
+        RenameStructureNodeFailure.Frozen => Results.Conflict(new { code = "camp_frozen" }),
+        RenameStructureNodeFailure.DuplicateName => Results.Conflict(new { code = "duplicate_structure_name" }),
+        _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["name"] = ["Bitte gib einen Namen mit höchstens 200 Zeichen ein."] }),
+    };
+}).RequireAuthorization();
 app.MapDelete("/api/camps/{campId:guid}/structure/{nodeId:guid}", async (
     Guid campId, Guid nodeId, ClaimsPrincipal principal, CampManagementService management,
     CancellationToken cancellationToken) =>
@@ -469,6 +484,7 @@ app.MapPut("/api/camps/{campId:guid}/structure/{nodeId:guid}/participant-estimat
         UpdateParticipantEstimatesFailure.NotFound => Results.NotFound(),
         UpdateParticipantEstimatesFailure.Frozen => Results.Conflict(new { code = "camp_frozen" }),
         UpdateParticipantEstimatesFailure.NotLeaf => Results.Conflict(new { code = "structure_node_not_leaf" }),
+        UpdateParticipantEstimatesFailure.NotParticipantLevel => Results.Conflict(new { code = "structure_node_not_participant_level" }),
         _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["estimates"] = ["Ungültige Schätzwerte."] }),
     };
 }).RequireAuthorization();
