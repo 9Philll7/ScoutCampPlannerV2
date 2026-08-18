@@ -348,6 +348,8 @@ app.MapPost("/api/camps/{campId:guid}/structure", async (
         return Results.Conflict(new { code = "camp_frozen" });
     if (result.Failure == CreateStructureNodeFailure.MaximumDepthReached)
         return Results.Conflict(new { code = "maximum_structure_depth_reached" });
+    if (result.Failure == CreateStructureNodeFailure.HasEstimates)
+        return Results.Conflict(new { code = "structure_node_has_estimates" });
     return Results.ValidationProblem(new Dictionary<string, string[]>
     {
         ["name"] = [result.Failure == CreateStructureNodeFailure.DuplicateName
@@ -366,7 +368,31 @@ app.MapDelete("/api/camps/{campId:guid}/structure/{nodeId:guid}", async (
         DeleteStructureNodeFailure.None => Results.NoContent(),
         DeleteStructureNodeFailure.NotFound => Results.NotFound(),
         DeleteStructureNodeFailure.Frozen => Results.Conflict(new { code = "camp_frozen" }),
-        _ => Results.Conflict(new { code = "structure_node_has_children" }),
+        DeleteStructureNodeFailure.HasChildren => Results.Conflict(new { code = "structure_node_has_children" }),
+        _ => Results.Conflict(new { code = "structure_node_has_estimates" }),
+    };
+}).RequireAuthorization();
+app.MapGet("/api/camps/{campId:guid}/structure/{nodeId:guid}/participant-estimates", async (
+    Guid campId, Guid nodeId, ClaimsPrincipal principal, CampManagementService management,
+    CancellationToken cancellationToken) =>
+{
+    var estimates = await management.GetParticipantEstimatesAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId, nodeId, cancellationToken);
+    return estimates is null ? Results.NotFound() : Results.Ok(estimates);
+}).RequireAuthorization();
+app.MapPut("/api/camps/{campId:guid}/structure/{nodeId:guid}/participant-estimates", async (
+    Guid campId, Guid nodeId, UpdateParticipantEstimatesRequest request, ClaimsPrincipal principal,
+    CampManagementService management, CancellationToken cancellationToken) =>
+{
+    var failure = await management.UpdateParticipantEstimatesAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId, nodeId, request, cancellationToken);
+    return failure switch
+    {
+        UpdateParticipantEstimatesFailure.None => Results.NoContent(),
+        UpdateParticipantEstimatesFailure.NotFound => Results.NotFound(),
+        UpdateParticipantEstimatesFailure.Frozen => Results.Conflict(new { code = "camp_frozen" }),
+        UpdateParticipantEstimatesFailure.NotLeaf => Results.Conflict(new { code = "structure_node_not_leaf" }),
+        _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["estimates"] = ["Ungültige Schätzwerte."] }),
     };
 }).RequireAuthorization();
 app.MapPut("/api/camps/{campId:guid}/structure/{nodeId:guid}/parent", async (

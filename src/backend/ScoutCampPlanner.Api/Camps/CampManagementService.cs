@@ -26,6 +26,10 @@ public sealed record MoveStructureNodeRequest(Guid? ParentId);
 public sealed record StageTemplateEntrySummary(Guid Id, string Name, int SortOrder);
 public sealed record UpdateStageTemplateRequest(IReadOnlyList<string>? StageNames);
 public enum UpdateStageTemplateFailure { None, Forbidden, InvalidStages }
+public sealed record ParticipantEstimateSummary(Guid CampStageId, string StageName, int ChildYouthCount, int LeaderCount);
+public sealed record ParticipantEstimateInput(Guid CampStageId, int ChildYouthCount, int LeaderCount);
+public sealed record UpdateParticipantEstimatesRequest(IReadOnlyList<ParticipantEstimateInput>? Estimates);
+public enum UpdateParticipantEstimatesFailure { None, NotFound, Frozen, NotLeaf, InvalidEstimates }
 
 public enum CreateCampFailure
 {
@@ -49,13 +53,13 @@ public sealed record UpdateCampResult(CampSummary? Camp, UpdateCampFailure Failu
     public bool IsSuccessful => Camp is not null && Failure == UpdateCampFailure.None;
 }
 
-public enum CreateStructureNodeFailure { None, NotFound, InvalidName, DuplicateName, Frozen, MaximumDepthReached }
+public enum CreateStructureNodeFailure { None, NotFound, InvalidName, DuplicateName, Frozen, MaximumDepthReached, HasEstimates }
 public sealed record CreateStructureNodeResult(
     StructureNodeSummary? Node, CreateStructureNodeFailure Failure)
 {
     public bool IsSuccessful => Node is not null && Failure == CreateStructureNodeFailure.None;
 }
-public enum DeleteStructureNodeFailure { None, NotFound, Frozen, HasChildren }
+public enum DeleteStructureNodeFailure { None, NotFound, Frozen, HasChildren, HasEstimates }
 public enum MoveStructureNodeFailure { None, NotFound, Frozen, Cycle, DuplicateName, MaximumDepthReached }
 
 public sealed class CampManagementService(
@@ -162,6 +166,8 @@ public sealed class CampManagementService(
             return UpdateStageTemplateFailure.Forbidden;
         var camp = await camps.Camps.SingleOrDefaultAsync(value => value.Id == campId, cancellationToken);
         if (camp is null || camp.IsFrozen) return UpdateStageTemplateFailure.Forbidden;
+        if (await camps.ParticipantEstimates.AnyAsync(value => value.CampId == campId, cancellationToken))
+            return UpdateStageTemplateFailure.InvalidStages;
         string[] names = request.StageNames?.Select(value => value?.Trim() ?? string.Empty).ToArray() ?? [];
         if (names.Length == 0 || names.Length > 50 || names.Any(value => value.Length is 0 or > 100) ||
             names.Select(value => value.ToUpperInvariant()).Distinct().Count() != names.Length)
@@ -287,6 +293,9 @@ public sealed class CampManagementService(
         if (request.ParentId is Guid parentId && !await camps.StructureNodes.AnyAsync(
             node => node.Id == parentId && node.CampId == campId, cancellationToken))
             return new(null, CreateStructureNodeFailure.NotFound);
+        if (request.ParentId is Guid estimatedParent && await camps.ParticipantEstimates.AnyAsync(
+            value => value.StructureNodeId == estimatedParent, cancellationToken))
+            return new(null, CreateStructureNodeFailure.HasEstimates);
 
         if (camp.StructureMode == ScoutCampPlanner.Camp.Domain.CampStructureMode.Fixed)
         {
@@ -364,6 +373,8 @@ public sealed class CampManagementService(
         if (camp.IsFrozen) return DeleteStructureNodeFailure.Frozen;
         if (await camps.StructureNodes.AnyAsync(value => value.ParentId == nodeId, cancellationToken))
             return DeleteStructureNodeFailure.HasChildren;
+        if (await camps.ParticipantEstimates.AnyAsync(value => value.StructureNodeId == nodeId, cancellationToken))
+            return DeleteStructureNodeFailure.HasEstimates;
 
         var auditEvent = new AuditEventDraft(
             Guid.NewGuid(), timeProvider.GetUtcNow(), "camp.structure-node.deleted", "success",
@@ -392,6 +403,63 @@ public sealed class CampManagementService(
             throw;
         }
         return DeleteStructureNodeFailure.None;
+    }
+
+    public async Task<IReadOnlyList<ParticipantEstimateSummary>?> GetParticipantEstimatesAsync(
+        Guid actorUserId, Guid campId, Guid nodeId, CancellationToken cancellationToken = default)
+    {
+        if (!await HasCampPermissionAsync(actorUserId, campId, Permissions.Camp.View, cancellationToken) ||
+            !await camps.StructureNodes.AnyAsync(value => value.Id == nodeId && value.CampId == campId, cancellationToken))
+            return null;
+        var stages = await camps.CampStages.Where(stage => stage.CampId == campId).OrderBy(stage => stage.SortOrder)
+            .Select(stage => new { stage.Id, stage.Name }).ToListAsync(cancellationToken);
+        var estimates = await camps.ParticipantEstimates.Where(value => value.StructureNodeId == nodeId)
+            .ToDictionaryAsync(value => value.CampStageId, cancellationToken);
+        return stages.Select(stage => estimates.TryGetValue(stage.Id, out var estimate)
+            ? new ParticipantEstimateSummary(stage.Id, stage.Name, estimate.ChildYouthCount, estimate.LeaderCount)
+            : new ParticipantEstimateSummary(stage.Id, stage.Name, 0, 0)).ToList();
+    }
+
+    public async Task<UpdateParticipantEstimatesFailure> UpdateParticipantEstimatesAsync(
+        Guid actorUserId, Guid campId, Guid nodeId, UpdateParticipantEstimatesRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await HasCampPermissionAsync(actorUserId, campId, Permissions.Camp.Edit, cancellationToken))
+            return UpdateParticipantEstimatesFailure.NotFound;
+        var camp = await camps.Camps.SingleOrDefaultAsync(value => value.Id == campId, cancellationToken);
+        if (camp is null || !await camps.StructureNodes.AnyAsync(value => value.Id == nodeId && value.CampId == campId, cancellationToken))
+            return UpdateParticipantEstimatesFailure.NotFound;
+        if (camp.IsFrozen) return UpdateParticipantEstimatesFailure.Frozen;
+        if (await camps.StructureNodes.AnyAsync(value => value.ParentId == nodeId, cancellationToken))
+            return UpdateParticipantEstimatesFailure.NotLeaf;
+        var inputs = request.Estimates?.ToArray() ?? [];
+        Guid[] stageIds = await camps.CampStages.Where(value => value.CampId == campId)
+            .Select(value => value.Id).ToArrayAsync(cancellationToken);
+        if (inputs.Length != stageIds.Length || inputs.Select(value => value.CampStageId).Distinct().Count() != inputs.Length ||
+            inputs.Any(value => value.ChildYouthCount < 0 || value.LeaderCount < 0) ||
+            inputs.Any(value => !stageIds.Contains(value.CampStageId)))
+            return UpdateParticipantEstimatesFailure.InvalidEstimates;
+        var estimates = inputs.Where(value => value.ChildYouthCount > 0 || value.LeaderCount > 0)
+            .Select(value => new ScoutCampPlanner.Camp.Domain.ParticipantEstimate(Guid.NewGuid(), campId, nodeId,
+                value.CampStageId, value.ChildYouthCount, value.LeaderCount)).ToArray();
+        var auditEvent = new AuditEventDraft(Guid.NewGuid(), timeProvider.GetUtcNow(),
+            "camp.participant-estimates.updated", "success", actorUserId, camp.TenantId, camp.Id,
+            "participant-estimates", nodeId, "server", auditRuntime.InstanceId, Guid.NewGuid(), null, null,
+            new Dictionary<string, string> { ["childYouthTotal"] = inputs.Sum(x => x.ChildYouthCount).ToString(),
+                ["leaderTotal"] = inputs.Sum(x => x.LeaderCount).ToString() });
+        await auditedOperation.ExecuteAsync(auditEvent, async operationCancellationToken =>
+        {
+            var transaction = platform.Database.CurrentTransaction!;
+            await camps.Database.UseTransactionAsync(transaction.GetDbTransaction(), operationCancellationToken);
+            try
+            {
+                await camps.ParticipantEstimates.Where(value => value.StructureNodeId == nodeId)
+                    .ExecuteDeleteAsync(operationCancellationToken);
+                camps.ParticipantEstimates.AddRange(estimates); await camps.SaveChangesAsync(operationCancellationToken);
+            }
+            finally { await camps.Database.UseTransactionAsync(null, CancellationToken.None); }
+        }, cancellationToken);
+        return UpdateParticipantEstimatesFailure.None;
     }
 
     public async Task<MoveStructureNodeFailure> MoveStructureNodeAsync(

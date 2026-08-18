@@ -101,6 +101,39 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Camp
                     b.ToTable("CampStages", (string)null);
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Camp.Domain.ParticipantEstimate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CampId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CampStageId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ChildYouthCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("LeaderCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("StructureNodeId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampId");
+
+                    b.HasIndex("CampStageId");
+
+                    b.HasIndex("StructureNodeId", "CampStageId")
+                        .IsUnique();
+
+                    b.ToTable("ParticipantEstimates", (string)null);
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Camp.Domain.StructureNode", b =>
                 {
                     b.Property<Guid>("Id")
@@ -179,6 +212,27 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Camp
                         .WithMany()
                         .HasForeignKey("CampId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Camp.Domain.ParticipantEstimate", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Camp.Domain.Camp", null)
+                        .WithMany()
+                        .HasForeignKey("CampId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Camp.Domain.CampStage", null)
+                        .WithMany()
+                        .HasForeignKey("CampStageId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Camp.Domain.StructureNode", null)
+                        .WithMany()
+                        .HasForeignKey("StructureNodeId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

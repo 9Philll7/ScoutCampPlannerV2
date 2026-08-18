@@ -10,6 +10,7 @@ public sealed class CampDbContext(DbContextOptions<CampDbContext> options) : DbC
     public DbSet<StructureNode> StructureNodes => Set<StructureNode>();
     public DbSet<TenantStageTemplateEntry> TenantStageTemplateEntries => Set<TenantStageTemplateEntry>();
     public DbSet<CampStage> CampStages => Set<CampStage>();
+    public DbSet<ParticipantEstimate> ParticipantEstimates => Set<ParticipantEstimate>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -57,6 +58,15 @@ public sealed class CampDbContext(DbContextOptions<CampDbContext> options) : DbC
             entity.HasIndex(x => new { x.CampId, x.NormalizedName }).IsUnique();
             entity.HasIndex(x => new { x.CampId, x.SortOrder }).IsUnique();
             entity.HasOne<Camp.Domain.Camp>().WithMany().HasForeignKey(x => x.CampId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<ParticipantEstimate>(entity =>
+        {
+            entity.ToTable("ParticipantEstimates"); entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.StructureNodeId, x.CampStageId }).IsUnique();
+            entity.HasIndex(x => x.CampId);
+            entity.HasOne<Camp.Domain.Camp>().WithMany().HasForeignKey(x => x.CampId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<StructureNode>().WithMany().HasForeignKey(x => x.StructureNodeId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<CampStage>().WithMany().HasForeignKey(x => x.CampStageId).OnDelete(DeleteBehavior.Restrict);
         });
     }
 

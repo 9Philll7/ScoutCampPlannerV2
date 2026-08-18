@@ -53,12 +53,15 @@ public sealed class CampPackageTests
         var tenantId = Guid.NewGuid();
         var campId = Guid.NewGuid();
         var structureNodeId = Guid.NewGuid();
+        var stageId = Guid.NewGuid();
+        var estimateId = Guid.NewGuid();
         var mealId = Guid.NewGuid();
         cloud.Platform.Tenants.Add(new Tenant(tenantId, "Stamm Nord"));
         cloud.Camp.Camps.Add(new Camp.Domain.Camp(
             campId, tenantId, "Sommerlager", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14)));
-        cloud.Camp.CampStages.Add(new CampStage(Guid.NewGuid(), campId, "GuSp", 0));
+        cloud.Camp.CampStages.Add(new CampStage(stageId, campId, "GuSp", 0));
         cloud.Camp.StructureNodes.Add(new StructureNode(structureNodeId, campId, null, "Nord"));
+        cloud.Camp.ParticipantEstimates.Add(new ParticipantEstimate(estimateId, campId, structureNodeId, stageId, 18, 4));
         cloud.Catering.MealPlans.Add(new MealPlan(mealId, campId, "Montag"));
         await cloud.SaveAsync();
 
@@ -79,6 +82,9 @@ public sealed class CampPackageTests
         var importedMeal = await cloud.Catering.MealPlans.SingleAsync();
         var completedCamp = await cloud.Camp.Camps.SingleAsync();
         Assert.Equal(structureNodeId, importedNode.Id);
+        var importedEstimate = await cloud.Camp.ParticipantEstimates.SingleAsync();
+        Assert.Equal(estimateId, importedEstimate.Id);
+        Assert.Equal(18, importedEstimate.ChildYouthCount);
         Assert.Equal(mealId, importedMeal.Id);
         Assert.Equal("Montag offline geändert", importedMeal.Name);
         Assert.Equal(new DateOnly(2027, 7, 1), completedCamp.StartDate);
@@ -118,7 +124,7 @@ public sealed class CampPackageTests
                 ["Camp", "Catering"], DateTimeOffset.UtcNow),
             new TenantData(tenantId, "Tenant"), new CampData(
                 campId, tenantId, "Camp", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14), "Free", []),
-            [new CampStageData(Guid.NewGuid(), campId, "GuSp", 0)], [], []);
+            [new CampStageData(Guid.NewGuid(), campId, "GuSp", 0)], [], [], []);
     }
 
     private sealed class DatabaseHarness : IAsyncDisposable

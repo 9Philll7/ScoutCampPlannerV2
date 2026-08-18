@@ -52,7 +52,7 @@ public static class CampPackageSerializer
 
     private static void Validate(CampPackagePayload package)
     {
-        if (package.CampStages is null)
+        if (package.CampStages is null || package.ParticipantEstimates is null)
             throw new CampPackageValidationException("Camp stages are missing.");
         if (package.Manifest.FormatVersion != CampPackageVersions.Current)
             throw new CampPackageValidationException($"Unsupported package version {package.Manifest.FormatVersion}.");
@@ -73,6 +73,7 @@ public static class CampPackageSerializer
             package.Camp.StructureLevelNames.Select(name => name.Trim().ToUpperInvariant()).Distinct().Count() != package.Camp.StructureLevelNames.Count)
             throw new CampPackageValidationException("Camp structure levels are invalid.");
         if (package.CampStages.Any(x => x.CampId != package.Camp.Id) ||
+            package.ParticipantEstimates.Any(x => x.CampId != package.Camp.Id) ||
             package.StructureNodes.Any(x => x.CampId != package.Camp.Id) ||
             package.MealPlans.Any(x => x.CampId != package.Camp.Id))
             throw new CampPackageValidationException("Package contains data for another camp.");
@@ -81,11 +82,22 @@ public static class CampPackageSerializer
             package.CampStages.Any(x => x.Id == Guid.Empty || string.IsNullOrWhiteSpace(x.Name) || x.Name.Trim().Length > 100 || x.SortOrder < 0) ||
             package.CampStages.Select(x => x.SortOrder).Order().Where((value, index) => value != index).Any())
             throw new CampPackageValidationException("Camp stages are invalid.");
+        var stageIds = package.CampStages.Select(x => x.Id).ToHashSet();
+        var structureIds = package.StructureNodes.Select(x => x.Id).ToHashSet();
+        if (package.ParticipantEstimates.Select(x => x.Id).Distinct().Count() != package.ParticipantEstimates.Count ||
+            package.ParticipantEstimates.Select(x => new { x.StructureNodeId, x.CampStageId }).Distinct().Count() != package.ParticipantEstimates.Count ||
+            package.ParticipantEstimates.Any(x => x.Id == Guid.Empty || !stageIds.Contains(x.CampStageId) ||
+                !structureIds.Contains(x.StructureNodeId) || x.ChildYouthCount < 0 || x.LeaderCount < 0 ||
+                x.ChildYouthCount == 0 && x.LeaderCount == 0))
+            throw new CampPackageValidationException("Participant estimates are invalid.");
         var nodeIds = package.StructureNodes.Select(node => node.Id).ToHashSet();
         if (nodeIds.Count != package.StructureNodes.Count || package.StructureNodes.Any(node =>
             node.Id == Guid.Empty || node.ParentId == node.Id ||
             node.ParentId is Guid parentId && !nodeIds.Contains(parentId)))
             throw new CampPackageValidationException("Camp structure identity or parent reference is invalid.");
+        if (package.ParticipantEstimates.Any(estimate =>
+            package.StructureNodes.Any(node => node.ParentId == estimate.StructureNodeId)))
+            throw new CampPackageValidationException("Participant estimates must belong to leaf nodes.");
         if (structureMode == ScoutCampPlanner.Camp.Domain.CampStructureMode.Fixed)
         {
             var nodesById = package.StructureNodes.ToDictionary(node => node.Id);

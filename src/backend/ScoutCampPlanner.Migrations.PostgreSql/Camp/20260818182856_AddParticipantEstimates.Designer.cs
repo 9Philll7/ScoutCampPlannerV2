@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ScoutCampPlanner.Camp.Infrastructure;
@@ -11,9 +12,11 @@ using ScoutCampPlanner.Camp.Infrastructure;
 namespace ScoutCampPlanner.Migrations.PostgreSql.Camp
 {
     [DbContext(typeof(CampDbContext))]
-    partial class CampDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260818182856_AddParticipantEstimates")]
+    partial class AddParticipantEstimates
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

@@ -10,7 +10,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { AuthenticationApiService, AuthenticatedUser } from './features/authentication/authentication-api.service';
-import { CampAdministratorOption, CampApiService, CampSummary, StructureConfiguration, StructureNodeSummary, TenantOption } from './features/camp/camp-api.service';
+import { CampAdministratorOption, CampApiService, CampSummary, ParticipantEstimate, StructureConfiguration, StructureNodeSummary, TenantOption } from './features/camp/camp-api.service';
 import { SetupApiService } from './features/setup/setup-api.service';
 
 type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
@@ -174,6 +174,9 @@ type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
                       <p [style.margin-left.px]="row.depth * 24">
                         {{ row.node.name }}
                         @if (camp.canEdit) {
+                          @if (isStructureLeaf(row.node)) {
+                            <button matButton type="button" (click)="openEstimates(camp, row.node)">Planung</button>
+                          }
                           <mat-form-field appearance="outline">
                             <mat-label>Verschieben nach</mat-label>
                             <mat-select [name]="'moveTarget-' + row.node.id" [(ngModel)]="moveTargetParentIds[row.node.id]">
@@ -190,6 +193,19 @@ type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
                         }
                       </p>
                     } @empty { <p>Noch keine Struktureinträge vorhanden.</p> }
+                    @if (estimateNodeId()) {
+                      <h3>Teilnehmerschätzung</h3>
+                      <table><thead><tr><th>Stufe</th><th>KiJu</th><th>Leiter</th></tr></thead><tbody>
+                        @for (estimate of participantEstimates; track estimate.campStageId) {
+                          <tr><td>{{ estimate.stageName }}</td>
+                            <td><input type="number" min="0" [(ngModel)]="estimate.childYouthCount"></td>
+                            <td><input type="number" min="0" [(ngModel)]="estimate.leaderCount"></td></tr>
+                        }
+                      </tbody></table>
+                      @if (camp.canEdit) {
+                        <button matButton="filled" type="button" (click)="saveEstimates(camp)">Schätzung speichern</button>
+                      }
+                    }
                     @if (camp.canEdit) {
                       <form [id]="'create-structure-node-' + camp.id" (ngSubmit)="createStructureNode(camp)">
                         <mat-form-field appearance="outline"><mat-label>Übergeordneter Eintrag</mat-label>
@@ -258,6 +274,7 @@ export class AppComponent {
   readonly structureCampId = signal<string | null>(null);
   readonly structureNodes = signal<StructureNodeSummary[]>([]);
   readonly structureConfiguration = signal<StructureConfiguration | null>(null);
+  readonly estimateNodeId = signal<string | null>(null);
   tenantName = '';
   email = '';
   password = '';
@@ -273,6 +290,7 @@ export class AppComponent {
   stageTemplateInput = '';
   campStageInput = '';
   moveTargetParentIds: Record<string, string> = {};
+  participantEstimates: ParticipantEstimate[] = [];
 
   constructor() { this.initialize(); }
 
@@ -399,9 +417,11 @@ export class AppComponent {
 
   toggleStructure(camp: CampSummary) {
     if (this.structureCampId() === camp.id) {
-      this.structureCampId.set(null); this.structureNodes.set([]); this.structureConfiguration.set(null); return;
+      this.structureCampId.set(null); this.structureNodes.set([]); this.structureConfiguration.set(null);
+      this.estimateNodeId.set(null); this.participantEstimates = []; return;
     }
     this.structureCampId.set(camp.id); this.structureNodes.set([]);
+    this.estimateNodeId.set(null); this.participantEstimates = [];
     this.newStructureParentId = ''; this.newStructureNodeName = '';
     this.campApi.listStructure(camp.id).subscribe({
       next: nodes => { this.structureNodes.set(nodes); this.moveTargetParentIds = Object.fromEntries(nodes.map(node => [node.id, node.parentId ?? ''])); },
@@ -443,6 +463,27 @@ export class AppComponent {
     return result;
   }
 
+  isStructureLeaf(node: StructureNodeSummary) {
+    return !this.structureNodes().some(value => value.parentId === node.id);
+  }
+
+  openEstimates(camp: CampSummary, node: StructureNodeSummary) {
+    this.estimateNodeId.set(node.id); this.participantEstimates = [];
+    this.campApi.getParticipantEstimates(camp.id, node.id).subscribe({
+      next: values => this.participantEstimates = values,
+      error: () => this.error.set('Die Teilnehmerschätzung konnte nicht geladen werden.')
+    });
+  }
+
+  saveEstimates(camp: CampSummary) {
+    const nodeId = this.estimateNodeId(); if (!nodeId) return;
+    this.submitting.set(true); this.error.set(null);
+    this.campApi.updateParticipantEstimates(camp.id, nodeId, this.participantEstimates).subscribe({
+      next: () => { this.submitting.set(false); this.notice.set('Die Teilnehmerschätzung wurde gespeichert.'); },
+      error: () => { this.submitting.set(false); this.error.set('Die Teilnehmerschätzung konnte nicht gespeichert werden.'); }
+    });
+  }
+
   createStructureNode(camp: CampSummary) {
     if (this.submitting()) return;
     this.submitting.set(true); this.error.set(null); this.notice.set(null);
@@ -455,7 +496,9 @@ export class AppComponent {
       error: (response: HttpErrorResponse) => {
         this.submitting.set(false);
         const errors = response.error?.errors as Record<string, string[]> | undefined;
-        this.error.set(response.status === 409 ? 'Während der Offlinephase kann die Struktur nicht geändert werden.' :
+        this.error.set(response.error?.code === 'structure_node_has_estimates'
+          ? 'Unter einem Knoten mit Schätzwerten kann kein Untereintrag angelegt werden.' :
+          response.status === 409 ? 'Während der Offlinephase kann die Struktur nicht geändert werden.' :
           response.status === 404 ? 'Du darfst diese Lagerstruktur nicht ändern.' :
           errors ? Object.values(errors).flat()[0] ?? 'Die Eingabe ist ungültig.' : 'Der Struktureintrag konnte nicht angelegt werden.');
       }
@@ -471,6 +514,8 @@ export class AppComponent {
         this.submitting.set(false);
         this.error.set(response.status === 409 && response.error?.code === 'structure_node_has_children'
           ? 'Ein Struktureintrag mit Untereinträgen kann nicht gelöscht werden.'
+          : response.status === 409 && response.error?.code === 'structure_node_has_estimates'
+          ? 'Ein Struktureintrag mit Schätzwerten kann nicht gelöscht werden.'
           : response.status === 409 ? 'Während der Offlinephase kann die Struktur nicht geändert werden.'
           : 'Der Struktureintrag konnte nicht gelöscht werden.');
       }

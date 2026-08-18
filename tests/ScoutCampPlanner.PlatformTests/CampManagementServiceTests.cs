@@ -252,6 +252,32 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AnonymousEstimatesAreStoredOnlyOnLeafAndBlockChildrenAndDeletion()
+    {
+        CreateCampResult created = await service.CreateAsync(ownerUserId, tenantId,
+            new CreateCampRequest("Schätzung", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14),
+                [otherMembershipId]), TestContext.Current.CancellationToken);
+        var leaf = await service.CreateStructureNodeAsync(otherUserId, created.Camp!.Id,
+            new CreateStructureNodeRequest(null, "Gruppe"), TestContext.Current.CancellationToken);
+        var stages = await service.GetCampStagesAsync(otherUserId, created.Camp.Id, TestContext.Current.CancellationToken);
+        var inputs = stages!.Select((stage, index) => new ParticipantEstimateInput(stage.Id,
+            index == 0 ? 12 : 0, index == 0 ? 3 : 0)).ToArray();
+
+        Assert.Equal(UpdateParticipantEstimatesFailure.None, await service.UpdateParticipantEstimatesAsync(
+            otherUserId, created.Camp.Id, leaf.Node!.Id, new UpdateParticipantEstimatesRequest(inputs),
+            TestContext.Current.CancellationToken));
+        Assert.Equal(CreateStructureNodeFailure.HasEstimates, (await service.CreateStructureNodeAsync(
+            otherUserId, created.Camp.Id, new CreateStructureNodeRequest(leaf.Node.Id, "Darunter"),
+            TestContext.Current.CancellationToken)).Failure);
+        Assert.Equal(DeleteStructureNodeFailure.HasEstimates, await service.DeleteStructureNodeAsync(
+            otherUserId, created.Camp.Id, leaf.Node.Id, TestContext.Current.CancellationToken));
+        var result = await service.GetParticipantEstimatesAsync(otherUserId, created.Camp.Id, leaf.Node.Id,
+            TestContext.Current.CancellationToken);
+        Assert.Equal(12, result!.First().ChildYouthCount);
+        Assert.Equal(3, result!.First().LeaderCount);
+    }
+
+    [Fact]
     public async Task FailedAdministratorPersistenceRollsBackCampAndAudit()
     {
         await ExecuteScriptAsync("""
