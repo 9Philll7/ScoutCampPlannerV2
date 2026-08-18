@@ -17,6 +17,7 @@ export interface TenantOption { id: string; name: string; }
 export interface CampAdministratorOption { membershipId: string; userId: string; email: string; }
 export interface StructureNodeSummary { id: string; campId: string; parentId: string | null; name: string; }
 export interface StructureConfiguration { mode: 'Free' | 'Fixed'; levelNames: string[]; }
+export interface StageTemplateEntry { id: string; name: string; sortOrder: number; }
 export interface CreateCampRequest {
   name: string;
   startDate: string;
@@ -40,6 +41,16 @@ export class CampApiService {
   listAdministratorCandidates(tenantId: string) {
     return this.http.get<CampAdministratorOption[]>(
       `${this.baseUrl}/api/tenants/${tenantId}/camp-administrator-candidates`, { withCredentials: true });
+  }
+
+  getStageTemplate(tenantId: string) {
+    return this.http.get<StageTemplateEntry[]>(`${this.baseUrl}/api/tenants/${tenantId}/stage-template`,
+      { withCredentials: true });
+  }
+
+  updateStageTemplate(tenantId: string, stageNames: string[]) {
+    return this.http.put<void>(`${this.baseUrl}/api/tenants/${tenantId}/stage-template`,
+      { stageNames }, { withCredentials: true });
   }
 
   create(tenantId: string, request: CreateCampRequest) {

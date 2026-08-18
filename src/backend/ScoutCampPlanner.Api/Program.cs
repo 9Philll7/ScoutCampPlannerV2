@@ -248,6 +248,29 @@ app.MapPost("/api/tenants/{tenantId:guid}/camps", async (
                 }]
         });
 }).RequireAuthorization();
+app.MapGet("/api/tenants/{tenantId:guid}/stage-template", async (
+    Guid tenantId, ClaimsPrincipal principal, CampManagementService management, CancellationToken cancellationToken) =>
+{
+    var entries = await management.GetStageTemplateAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), tenantId, cancellationToken);
+    return entries is null ? Results.NotFound() : Results.Ok(entries);
+}).RequireAuthorization();
+app.MapPut("/api/tenants/{tenantId:guid}/stage-template", async (
+    Guid tenantId, UpdateStageTemplateRequest request, ClaimsPrincipal principal,
+    CampManagementService management, CancellationToken cancellationToken) =>
+{
+    var failure = await management.UpdateStageTemplateAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), tenantId, request, cancellationToken);
+    return failure switch
+    {
+        UpdateStageTemplateFailure.None => Results.NoContent(),
+        UpdateStageTemplateFailure.Forbidden => Results.Forbid(),
+        _ => Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["stageNames"] = ["Es werden 1 bis 50 eindeutige Stufennamen mit höchstens 100 Zeichen benötigt."],
+        }),
+    };
+}).RequireAuthorization();
 app.MapPut("/api/camps/{campId:guid}", async (
     Guid campId, UpdateCampRequest request, ClaimsPrincipal principal,
     CampManagementService management, CancellationToken cancellationToken) =>

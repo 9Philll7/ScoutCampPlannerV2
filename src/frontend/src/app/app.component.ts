@@ -88,6 +88,20 @@ type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
           @if (notice()) { <p role="status">{{ notice() }}</p> }
           @if (selectedTenant(); as tenant) {
             <mat-card>
+              <mat-card-header><mat-card-title>Stufenvorlage</mat-card-title>
+                <mat-card-subtitle>Für zukünftige Lager von {{ tenant.name }}</mat-card-subtitle>
+              </mat-card-header>
+              <mat-card-content>
+                <form id="stage-template" (ngSubmit)="saveStageTemplate(tenant.id)">
+                  <mat-form-field appearance="outline"><mat-label>Stufen (eine pro Zeile)</mat-label>
+                    <textarea matInput name="stageTemplate" [(ngModel)]="stageTemplateInput" rows="6" required></textarea>
+                  </mat-form-field>
+                </form>
+              </mat-card-content>
+              <mat-card-actions align="end"><button matButton="filled" form="stage-template" type="submit"
+                [disabled]="submitting()">Vorlage speichern</button></mat-card-actions>
+            </mat-card>
+            <mat-card>
               <mat-card-header>
                 <mat-card-title>Neues Lager anlegen</mat-card-title>
                 <mat-card-subtitle>{{ tenant.name }}</mat-card-subtitle>
@@ -247,6 +261,7 @@ export class AppComponent {
   newStructureParentId = '';
   newStructureNodeName = '';
   structureLevelInput = '';
+  stageTemplateInput = '';
   moveTargetParentIds: Record<string, string> = {};
 
   constructor() { this.initialize(); }
@@ -473,6 +488,7 @@ export class AppComponent {
     this.selectedAdministratorIds.set(new Set()); this.error.set(null); this.notice.set(null);
     if (!tenant) return;
     this.loadCamps(tenant.id);
+    this.loadStageTemplate(tenant.id);
     this.campApi.listAdministratorCandidates(tenant.id).subscribe({
       next: candidates => this.administratorCandidates.set(candidates),
       error: () => this.administratorCandidates.set([])
@@ -496,6 +512,7 @@ export class AppComponent {
         this.selectedTenant.set(tenant);
         if (!tenant) { this.error.set('Für dieses Konto ist kein aktiver Mandant verfügbar.'); return; }
         this.loadCamps(tenant.id);
+        this.loadStageTemplate(tenant.id);
         this.campApi.listAdministratorCandidates(tenant.id).subscribe({
           next: candidates => this.administratorCandidates.set(candidates),
           error: () => this.administratorCandidates.set([])
@@ -509,6 +526,24 @@ export class AppComponent {
     this.campApi.list(tenantId).subscribe({
       next: camps => this.camps.set(camps),
       error: () => this.error.set('Die Lager konnten nicht geladen werden.')
+    });
+  }
+
+  private loadStageTemplate(tenantId: string) {
+    this.campApi.getStageTemplate(tenantId).subscribe({
+      next: entries => this.stageTemplateInput = entries.map(value => value.name).join('\n'),
+      error: () => this.error.set('Die Stufenvorlage konnte nicht geladen werden.')
+    });
+  }
+
+  saveStageTemplate(tenantId: string) {
+    const names = this.stageTemplateInput.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+    this.submitting.set(true); this.error.set(null); this.notice.set(null);
+    this.campApi.updateStageTemplate(tenantId, names).subscribe({
+      next: () => { this.submitting.set(false); this.notice.set('Die Stufenvorlage wurde gespeichert.'); },
+      error: (response: HttpErrorResponse) => { this.submitting.set(false); this.error.set(response.status === 403
+        ? 'Du darfst die mandantenweite Stufenvorlage nicht ändern.'
+        : 'Die Stufenvorlage enthält ungültige oder doppelte Namen.'); }
     });
   }
 

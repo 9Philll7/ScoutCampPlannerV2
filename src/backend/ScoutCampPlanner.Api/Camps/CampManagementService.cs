@@ -23,6 +23,9 @@ public sealed record CreateStructureNodeRequest(Guid? ParentId, string Name);
 public sealed record StructureConfiguration(string Mode, IReadOnlyList<string> LevelNames);
 public sealed record UpdateStructureConfigurationRequest(IReadOnlyCollection<string>? LevelNames);
 public sealed record MoveStructureNodeRequest(Guid? ParentId);
+public sealed record StageTemplateEntrySummary(Guid Id, string Name, int SortOrder);
+public sealed record UpdateStageTemplateRequest(IReadOnlyList<string>? StageNames);
+public enum UpdateStageTemplateFailure { None, Forbidden, InvalidStages }
 
 public enum CreateCampFailure
 {
@@ -62,6 +65,8 @@ public sealed class CampManagementService(
     AuditRuntimeState auditRuntime,
     TimeProvider timeProvider)
 {
+    private static readonly string[] SuggestedStageNames = ["Biber", "WiWö", "GuSp", "CaEx", "RaRo", "Mitarbeiter"];
+
     public async Task<IReadOnlyList<TenantOption>> ListTenantsAsync(
         Guid userId, CancellationToken cancellationToken = default) =>
         await platform.TenantMemberships
@@ -87,6 +92,52 @@ public sealed class CampManagementService(
             .Select(candidate => new CampAdministratorOption(
                 candidate.MembershipId, candidate.User.Id, candidate.User.Email))
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<StageTemplateEntrySummary>?> GetStageTemplateAsync(
+        Guid actorUserId, Guid tenantId, CancellationToken cancellationToken = default)
+    {
+        if (!await HasTenantPermissionAsync(actorUserId, tenantId, Permissions.Tenant.View, cancellationToken))
+            return null;
+        var entries = await camps.TenantStageTemplateEntries.Where(value => value.TenantId == tenantId)
+            .OrderBy(value => value.SortOrder)
+            .Select(value => new StageTemplateEntrySummary(value.Id, value.Name, value.SortOrder))
+            .ToListAsync(cancellationToken);
+        return entries.Count > 0 ? entries : SuggestedStageNames.Select((name, index) =>
+            new StageTemplateEntrySummary(Guid.Empty, name, index)).ToList();
+    }
+
+    public async Task<UpdateStageTemplateFailure> UpdateStageTemplateAsync(
+        Guid actorUserId, Guid tenantId, UpdateStageTemplateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await HasTenantPermissionAsync(actorUserId, tenantId, Permissions.Tenant.ManageSettings, cancellationToken))
+            return UpdateStageTemplateFailure.Forbidden;
+        string[] names = request.StageNames?.Select(value => value?.Trim() ?? string.Empty).ToArray() ?? [];
+        if (names.Length == 0 || names.Length > 50 || names.Any(value => value.Length is 0 or > 100) ||
+            names.Select(value => value.ToUpperInvariant()).Distinct().Count() != names.Length)
+            return UpdateStageTemplateFailure.InvalidStages;
+        var entries = names.Select((name, index) => new ScoutCampPlanner.Camp.Domain.TenantStageTemplateEntry(
+            Guid.NewGuid(), tenantId, name, index)).ToArray();
+        var auditEvent = new AuditEventDraft(Guid.NewGuid(), timeProvider.GetUtcNow(),
+            "tenant.stage-template.updated", "success", actorUserId, tenantId, null,
+            "tenant-stage-template", tenantId, "server", auditRuntime.InstanceId, Guid.NewGuid(), null, null,
+            new Dictionary<string, string> { ["stageCount"] = entries.Length.ToString() });
+        await auditedOperation.ExecuteAsync(auditEvent, async operationCancellationToken =>
+        {
+            var transaction = platform.Database.CurrentTransaction
+                ?? throw new InvalidOperationException("The Platform transaction is unavailable.");
+            await camps.Database.UseTransactionAsync(transaction.GetDbTransaction(), operationCancellationToken);
+            try
+            {
+                await camps.TenantStageTemplateEntries.Where(value => value.TenantId == tenantId)
+                    .ExecuteDeleteAsync(operationCancellationToken);
+                camps.TenantStageTemplateEntries.AddRange(entries);
+                await camps.SaveChangesAsync(operationCancellationToken);
+            }
+            finally { await camps.Database.UseTransactionAsync(null, CancellationToken.None); }
+        }, cancellationToken);
+        return UpdateStageTemplateFailure.None;
     }
 
     public async Task<IReadOnlyList<CampSummary>> ListCampsAsync(

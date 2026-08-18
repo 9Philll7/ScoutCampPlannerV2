@@ -212,6 +212,27 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task TenantAdministratorCanConfigureOrderedStageTemplate()
+    {
+        var suggested = await service.GetStageTemplateAsync(
+            ownerUserId, tenantId, TestContext.Current.CancellationToken);
+        Assert.Equal(new[] { "Biber", "WiWö", "GuSp", "CaEx", "RaRo", "Mitarbeiter" },
+            suggested!.Select(value => value.Name));
+
+        Assert.Equal(UpdateStageTemplateFailure.Forbidden, await service.UpdateStageTemplateAsync(
+            otherUserId, tenantId, new UpdateStageTemplateRequest(["Nicht erlaubt"]),
+            TestContext.Current.CancellationToken));
+        Assert.Equal(UpdateStageTemplateFailure.None, await service.UpdateStageTemplateAsync(
+            ownerUserId, tenantId, new UpdateStageTemplateRequest(["Jung", "Alt"]),
+            TestContext.Current.CancellationToken));
+
+        Assert.Equal(new[] { "Jung", "Alt" }, (await service.GetStageTemplateAsync(
+            ownerUserId, tenantId, TestContext.Current.CancellationToken))!.Select(value => value.Name));
+        Assert.Equal("tenant.stage-template.updated", (await platform.AuditEvents.SingleAsync(
+            TestContext.Current.CancellationToken)).Action);
+    }
+
+    [Fact]
     public async Task FailedAdministratorPersistenceRollsBackCampAndAudit()
     {
         await ExecuteScriptAsync("""

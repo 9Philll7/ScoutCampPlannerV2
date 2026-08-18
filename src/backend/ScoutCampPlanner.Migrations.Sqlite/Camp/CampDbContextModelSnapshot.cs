@@ -107,6 +107,39 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Camp
                     b.ToTable("StructureNodes", (string)null);
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Camp.Domain.TenantStageTemplateEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "NormalizedName")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("TenantStageTemplateEntries", (string)null);
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Camp.Domain.StructureNode", b =>
                 {
                     b.HasOne("ScoutCampPlanner.Camp.Domain.Camp", null)
