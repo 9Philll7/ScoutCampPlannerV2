@@ -140,6 +140,51 @@ public sealed class CampManagementService(
         return UpdateStageTemplateFailure.None;
     }
 
+    public async Task<IReadOnlyList<StageTemplateEntrySummary>?> GetCampStagesAsync(
+        Guid actorUserId, Guid campId, CancellationToken cancellationToken = default)
+    {
+        if (!await HasCampPermissionAsync(actorUserId, campId, Permissions.Camp.View, cancellationToken)) return null;
+        var camp = await camps.Camps.SingleAsync(value => value.Id == campId, cancellationToken);
+        var stages = await camps.CampStages.Where(value => value.CampId == campId).OrderBy(value => value.SortOrder)
+            .Select(value => new StageTemplateEntrySummary(value.Id, value.Name, value.SortOrder)).ToListAsync(cancellationToken);
+        if (stages.Count > 0) return stages;
+        var template = await camps.TenantStageTemplateEntries.Where(value => value.TenantId == camp.TenantId)
+            .OrderBy(value => value.SortOrder).Select(value => value.Name).ToListAsync(cancellationToken);
+        IEnumerable<string> effectiveStages = template.Count > 0 ? template : SuggestedStageNames;
+        return effectiveStages.Select((name, index) =>
+            new StageTemplateEntrySummary(Guid.Empty, name, index)).ToList();
+    }
+
+    public async Task<UpdateStageTemplateFailure> UpdateCampStagesAsync(
+        Guid actorUserId, Guid campId, UpdateStageTemplateRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!await HasCampPermissionAsync(actorUserId, campId, Permissions.Camp.Edit, cancellationToken))
+            return UpdateStageTemplateFailure.Forbidden;
+        var camp = await camps.Camps.SingleOrDefaultAsync(value => value.Id == campId, cancellationToken);
+        if (camp is null || camp.IsFrozen) return UpdateStageTemplateFailure.Forbidden;
+        string[] names = request.StageNames?.Select(value => value?.Trim() ?? string.Empty).ToArray() ?? [];
+        if (names.Length == 0 || names.Length > 50 || names.Any(value => value.Length is 0 or > 100) ||
+            names.Select(value => value.ToUpperInvariant()).Distinct().Count() != names.Length)
+            return UpdateStageTemplateFailure.InvalidStages;
+        var entries = names.Select((name, index) => new ScoutCampPlanner.Camp.Domain.CampStage(
+            Guid.NewGuid(), campId, name, index)).ToArray();
+        var auditEvent = new AuditEventDraft(Guid.NewGuid(), timeProvider.GetUtcNow(), "camp.stages.updated", "success",
+            actorUserId, camp.TenantId, camp.Id, "camp-stages", camp.Id, "server", auditRuntime.InstanceId,
+            Guid.NewGuid(), null, null, new Dictionary<string, string> { ["stageCount"] = entries.Length.ToString() });
+        await auditedOperation.ExecuteAsync(auditEvent, async operationCancellationToken =>
+        {
+            var transaction = platform.Database.CurrentTransaction!;
+            await camps.Database.UseTransactionAsync(transaction.GetDbTransaction(), operationCancellationToken);
+            try
+            {
+                await camps.CampStages.Where(value => value.CampId == campId).ExecuteDeleteAsync(operationCancellationToken);
+                camps.CampStages.AddRange(entries); await camps.SaveChangesAsync(operationCancellationToken);
+            }
+            finally { await camps.Database.UseTransactionAsync(null, CancellationToken.None); }
+        }, cancellationToken);
+        return UpdateStageTemplateFailure.None;
+    }
+
     public async Task<IReadOnlyList<CampSummary>> ListCampsAsync(
         Guid userId, Guid tenantId, CancellationToken cancellationToken = default)
     {
@@ -447,6 +492,9 @@ public sealed class CampManagementService(
 
         var camp = new Camp.Domain.Camp(
             Guid.NewGuid(), tenantId, request.Name, request.StartDate, request.EndDate);
+        var stageNames = await camps.TenantStageTemplateEntries.Where(value => value.TenantId == tenantId)
+            .OrderBy(value => value.SortOrder).Select(value => value.Name).ToListAsync(cancellationToken);
+        if (stageNames.Count == 0) stageNames.AddRange(SuggestedStageNames);
         var auditEvent = new AuditEventDraft(
             Guid.NewGuid(), timeProvider.GetUtcNow(), "camp.created", "success", actorUserId, tenantId, camp.Id,
             "camp", camp.Id, "server", auditRuntime.InstanceId, Guid.NewGuid(), null, null,
@@ -462,6 +510,8 @@ public sealed class CampManagementService(
                 try
                 {
                     camps.Camps.Add(camp);
+                    camps.CampStages.AddRange(stageNames.Select((name, index) =>
+                        new ScoutCampPlanner.Camp.Domain.CampStage(Guid.NewGuid(), camp.Id, name, index)));
                     foreach (TenantMembership administrator in administrators)
                     {
                         var membership = new CampMembership(Guid.NewGuid(), administrator.Id, camp.Id);

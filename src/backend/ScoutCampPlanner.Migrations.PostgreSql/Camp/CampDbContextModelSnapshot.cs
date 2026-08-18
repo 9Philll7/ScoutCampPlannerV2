@@ -74,6 +74,39 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Camp
                     b.ToTable("Camps", "camp");
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Camp.Domain.CampStage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CampId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampId", "NormalizedName")
+                        .IsUnique();
+
+                    b.HasIndex("CampId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("CampStages", "camp");
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Camp.Domain.StructureNode", b =>
                 {
                     b.Property<Guid>("Id")
@@ -144,6 +177,15 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Camp
                         .IsUnique();
 
                     b.ToTable("TenantStageTemplateEntries", "camp");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Camp.Domain.CampStage", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Camp.Domain.Camp", null)
+                        .WithMany()
+                        .HasForeignKey("CampId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Camp.Domain.StructureNode", b =>

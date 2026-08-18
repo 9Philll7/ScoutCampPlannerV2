@@ -53,6 +53,14 @@ export class CampApiService {
       { stageNames }, { withCredentials: true });
   }
 
+  getCampStages(campId: string) {
+    return this.http.get<StageTemplateEntry[]>(`${this.baseUrl}/api/camps/${campId}/stages`, { withCredentials: true });
+  }
+
+  updateCampStages(campId: string, stageNames: string[]) {
+    return this.http.put<void>(`${this.baseUrl}/api/camps/${campId}/stages`, { stageNames }, { withCredentials: true });
+  }
+
   create(tenantId: string, request: CreateCampRequest) {
     return this.http.post<CampSummary>(`${this.baseUrl}/api/tenants/${tenantId}/camps`, request,
       { withCredentials: true });

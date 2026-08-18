@@ -9,6 +9,7 @@ public sealed class CampDbContext(DbContextOptions<CampDbContext> options) : DbC
     public DbSet<Camp.Domain.Camp> Camps => Set<Camp.Domain.Camp>();
     public DbSet<StructureNode> StructureNodes => Set<StructureNode>();
     public DbSet<TenantStageTemplateEntry> TenantStageTemplateEntries => Set<TenantStageTemplateEntry>();
+    public DbSet<CampStage> CampStages => Set<CampStage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -48,6 +49,14 @@ public sealed class CampDbContext(DbContextOptions<CampDbContext> options) : DbC
             entity.Property(x => x.NormalizedName).HasMaxLength(100);
             entity.HasIndex(x => new { x.TenantId, x.NormalizedName }).IsUnique();
             entity.HasIndex(x => new { x.TenantId, x.SortOrder }).IsUnique();
+        });
+        modelBuilder.Entity<CampStage>(entity =>
+        {
+            entity.ToTable("CampStages"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(100); entity.Property(x => x.NormalizedName).HasMaxLength(100);
+            entity.HasIndex(x => new { x.CampId, x.NormalizedName }).IsUnique();
+            entity.HasIndex(x => new { x.CampId, x.SortOrder }).IsUnique();
+            entity.HasOne<Camp.Domain.Camp>().WithMany().HasForeignKey(x => x.CampId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 

@@ -233,6 +233,25 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task NewCampReceivesStableEditableStageCopy()
+    {
+        await service.UpdateStageTemplateAsync(ownerUserId, tenantId,
+            new UpdateStageTemplateRequest(["Jung", "Alt"]), TestContext.Current.CancellationToken);
+        CreateCampResult created = await service.CreateAsync(ownerUserId, tenantId,
+            new CreateCampRequest("Stufenlager", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14),
+                [otherMembershipId]), TestContext.Current.CancellationToken);
+        await service.UpdateStageTemplateAsync(ownerUserId, tenantId,
+            new UpdateStageTemplateRequest(["Später"]), TestContext.Current.CancellationToken);
+
+        Assert.Equal(new[] { "Jung", "Alt" }, (await service.GetCampStagesAsync(otherUserId,
+            created.Camp!.Id, TestContext.Current.CancellationToken))!.Select(value => value.Name));
+        Assert.Equal(UpdateStageTemplateFailure.None, await service.UpdateCampStagesAsync(otherUserId,
+            created.Camp.Id, new UpdateStageTemplateRequest(["Lagerspezifisch"]), TestContext.Current.CancellationToken));
+        Assert.Equal("Lagerspezifisch", (await service.GetCampStagesAsync(otherUserId,
+            created.Camp.Id, TestContext.Current.CancellationToken))!.Single().Name);
+    }
+
+    [Fact]
     public async Task FailedAdministratorPersistenceRollsBackCampAndAudit()
     {
         await ExecuteScriptAsync("""

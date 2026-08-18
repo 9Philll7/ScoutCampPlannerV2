@@ -59,8 +59,11 @@ public sealed class CampPackageService(
             var importedCamp = new Camp.Domain.Camp(
                 package.Camp.Id, package.Camp.TenantId, package.Camp.Name,
                 package.Camp.StartDate, package.Camp.EndDate);
+            importedCamp.ConfigureStructure(package.Camp.StructureMode == CampStructureMode.Fixed.ToString()
+                ? package.Camp.StructureLevelNames : []);
             importedCamp.Freeze(package.Manifest.TransferId);
             camp.Camps.Add(importedCamp);
+            camp.CampStages.AddRange(package.CampStages.Select(x => new CampStage(x.Id, x.CampId, x.Name, x.SortOrder)));
             camp.StructureNodes.AddRange(OrderStructureNodes(package.StructureNodes)
                 .Select(x => new StructureNode(x.Id, x.CampId, x.ParentId, x.Name)));
             catering.MealPlans.AddRange(package.MealPlans.Select(x => new MealPlan(x.Id, x.CampId, x.Name)));
@@ -97,13 +100,17 @@ public sealed class CampPackageService(
                 throw new CampPackageValidationException("Return package does not match the active transfer baseline.");
 
             await camp.StructureNodes.Where(x => x.CampId == existing.Id).ExecuteDeleteAsync(cancellationToken);
+            await camp.CampStages.Where(x => x.CampId == existing.Id).ExecuteDeleteAsync(cancellationToken);
             await catering.MealPlans.Where(x => x.CampId == existing.Id).ExecuteDeleteAsync(cancellationToken);
             foreach (var entry in camp.ChangeTracker.Entries<StructureNode>().Where(x => x.Entity.CampId == existing.Id))
+                entry.State = EntityState.Detached;
+            foreach (var entry in camp.ChangeTracker.Entries<CampStage>().Where(x => x.Entity.CampId == existing.Id))
                 entry.State = EntityState.Detached;
             foreach (var entry in catering.ChangeTracker.Entries<MealPlan>().Where(x => x.Entity.CampId == existing.Id))
                 entry.State = EntityState.Detached;
             camp.StructureNodes.AddRange(OrderStructureNodes(package.StructureNodes)
                 .Select(x => new StructureNode(x.Id, x.CampId, x.ParentId, x.Name)));
+            camp.CampStages.AddRange(package.CampStages.Select(x => new CampStage(x.Id, x.CampId, x.Name, x.SortOrder)));
             catering.MealPlans.AddRange(package.MealPlans.Select(x => new MealPlan(x.Id, x.CampId, x.Name)));
             existing.CompleteTransfer(package.Manifest.TransferId, package.Manifest.BaselineVersion);
             existing.ConfigureStructure(package.Camp.StructureMode == CampStructureMode.Fixed.ToString()
@@ -126,6 +133,8 @@ public sealed class CampPackageService(
     {
         var structureNodes = await camp.StructureNodes.Where(x => x.CampId == entity.Id)
             .Select(x => new StructureNodeData(x.Id, x.CampId, x.ParentId, x.Name)).ToListAsync(cancellationToken);
+        var stages = await camp.CampStages.Where(x => x.CampId == entity.Id).OrderBy(x => x.SortOrder)
+            .Select(x => new CampStageData(x.Id, x.CampId, x.Name, x.SortOrder)).ToListAsync(cancellationToken);
         var meals = await catering.MealPlans.Where(x => x.CampId == entity.Id)
             .Select(x => new MealPlanData(x.Id, x.CampId, x.Name)).ToListAsync(cancellationToken);
         var manifest = new CampPackageManifest(CampPackageVersions.Current, tenant.Id, entity.Id,
@@ -136,7 +145,7 @@ public sealed class CampPackageService(
                 entity.Id, entity.TenantId, entity.Name,
                 entity.StartDate ?? throw new InvalidOperationException("Legacy camps without a period cannot be exported."),
                 entity.EndDate ?? throw new InvalidOperationException("Legacy camps without a period cannot be exported."),
-                entity.StructureMode.ToString(), entity.GetStructureLevelNames()), structureNodes, meals));
+                entity.StructureMode.ToString(), entity.GetStructureLevelNames()), stages, structureNodes, meals));
     }
 
     private async Task EnlistAsync(IDbContextTransaction transaction, CancellationToken cancellationToken)

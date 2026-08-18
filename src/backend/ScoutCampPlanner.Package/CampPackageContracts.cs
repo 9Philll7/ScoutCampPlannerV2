@@ -28,6 +28,7 @@ public sealed record CampPackagePayload(
     CampPackageManifest Manifest,
     TenantData Tenant,
     CampData Camp,
+    IReadOnlyList<CampStageData> CampStages,
     IReadOnlyList<StructureNodeData> StructureNodes,
     IReadOnlyList<MealPlanData> MealPlans);
 
@@ -36,6 +37,7 @@ public sealed record CampData(
     Guid Id, Guid TenantId, string Name, DateOnly StartDate, DateOnly EndDate, string StructureMode,
     IReadOnlyList<string> StructureLevelNames);
 public sealed record StructureNodeData(Guid Id, Guid CampId, Guid? ParentId, string Name);
+public sealed record CampStageData(Guid Id, Guid CampId, string Name, int SortOrder);
 public sealed record MealPlanData(Guid Id, Guid CampId, string Name);
 
 public sealed class CampPackageValidationException(string message) : Exception(message);

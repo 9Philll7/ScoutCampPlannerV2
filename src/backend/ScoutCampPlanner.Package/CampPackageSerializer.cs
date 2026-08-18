@@ -52,6 +52,8 @@ public static class CampPackageSerializer
 
     private static void Validate(CampPackagePayload package)
     {
+        if (package.CampStages is null)
+            throw new CampPackageValidationException("Camp stages are missing.");
         if (package.Manifest.FormatVersion != CampPackageVersions.Current)
             throw new CampPackageValidationException($"Unsupported package version {package.Manifest.FormatVersion}.");
         if (package.Manifest.TenantId != package.Tenant.Id || package.Manifest.CampId != package.Camp.Id)
@@ -70,9 +72,15 @@ public static class CampPackageSerializer
             package.Camp.StructureLevelNames.Any(name => string.IsNullOrWhiteSpace(name) || name.Trim().Length > 100) ||
             package.Camp.StructureLevelNames.Select(name => name.Trim().ToUpperInvariant()).Distinct().Count() != package.Camp.StructureLevelNames.Count)
             throw new CampPackageValidationException("Camp structure levels are invalid.");
-        if (package.StructureNodes.Any(x => x.CampId != package.Camp.Id) ||
+        if (package.CampStages.Any(x => x.CampId != package.Camp.Id) ||
+            package.StructureNodes.Any(x => x.CampId != package.Camp.Id) ||
             package.MealPlans.Any(x => x.CampId != package.Camp.Id))
             throw new CampPackageValidationException("Package contains data for another camp.");
+        if (package.CampStages.Count == 0 || package.CampStages.Select(x => x.Id).Distinct().Count() != package.CampStages.Count ||
+            package.CampStages.Select(x => x.Name.Trim().ToUpperInvariant()).Distinct().Count() != package.CampStages.Count ||
+            package.CampStages.Any(x => x.Id == Guid.Empty || string.IsNullOrWhiteSpace(x.Name) || x.Name.Trim().Length > 100 || x.SortOrder < 0) ||
+            package.CampStages.Select(x => x.SortOrder).Order().Where((value, index) => value != index).Any())
+            throw new CampPackageValidationException("Camp stages are invalid.");
         var nodeIds = package.StructureNodes.Select(node => node.Id).ToHashSet();
         if (nodeIds.Count != package.StructureNodes.Count || package.StructureNodes.Any(node =>
             node.Id == Guid.Empty || node.ParentId == node.Id ||

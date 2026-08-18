@@ -57,6 +57,7 @@ public sealed class CampPackageTests
         cloud.Platform.Tenants.Add(new Tenant(tenantId, "Stamm Nord"));
         cloud.Camp.Camps.Add(new Camp.Domain.Camp(
             campId, tenantId, "Sommerlager", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14)));
+        cloud.Camp.CampStages.Add(new CampStage(Guid.NewGuid(), campId, "GuSp", 0));
         cloud.Camp.StructureNodes.Add(new StructureNode(structureNodeId, campId, null, "Nord"));
         cloud.Catering.MealPlans.Add(new MealPlan(mealId, campId, "Montag"));
         await cloud.SaveAsync();
@@ -94,6 +95,7 @@ public sealed class CampPackageTests
         cloud.Platform.Tenants.Add(new Tenant(tenantId, "Stamm Süd"));
         cloud.Camp.Camps.Add(new Camp.Domain.Camp(
             campId, tenantId, "Pfingstlager", new DateOnly(2027, 5, 14), new DateOnly(2027, 5, 17)));
+        cloud.Camp.CampStages.Add(new CampStage(Guid.NewGuid(), campId, "GuSp", 0));
         cloud.Catering.MealPlans.Add(new MealPlan(Guid.NewGuid(), campId, "Original"));
         await cloud.SaveAsync();
         var initial = await cloud.Packages.StartOfflineTransferAsync(campId);
@@ -115,7 +117,8 @@ public sealed class CampPackageTests
             new CampPackageManifest(1, tenantId, campId, Guid.NewGuid(), 1, CampPackageDirection.CloudToLocal,
                 ["Camp", "Catering"], DateTimeOffset.UtcNow),
             new TenantData(tenantId, "Tenant"), new CampData(
-                campId, tenantId, "Camp", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14), "Free", []), [], []);
+                campId, tenantId, "Camp", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14), "Free", []),
+            [new CampStageData(Guid.NewGuid(), campId, "GuSp", 0)], [], []);
     }
 
     private sealed class DatabaseHarness : IAsyncDisposable

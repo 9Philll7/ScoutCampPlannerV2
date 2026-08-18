@@ -152,6 +152,15 @@ type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
                   <p>{{ camp.startDate && camp.endDate ? camp.startDate + ' bis ' + camp.endDate : 'Legacy-Lager ohne Zeitraum' }}</p>
                   <p>{{ camp.isFrozen ? 'Offlinephase aktiv' : 'Online bearbeitbar' }}</p>
                   @if (structureCampId() === camp.id) {
+                    <h3>Lagerstufen</h3>
+                    @if (camp.canEdit) {
+                      <form [id]="'camp-stages-' + camp.id" (ngSubmit)="saveCampStages(camp)">
+                        <mat-form-field appearance="outline"><mat-label>Stufen dieses Lagers</mat-label>
+                          <textarea matInput name="campStages" [(ngModel)]="campStageInput" rows="4" required></textarea>
+                        </mat-form-field>
+                        <button matButton type="submit" [disabled]="submitting()">Lagerstufen speichern</button>
+                      </form>
+                    } @else { <p>{{ campStageInput }}</p> }
                     <h3>{{ structureConfiguration()?.mode === 'Fixed' ? 'Fixierte Lagerstruktur' : 'Freie Lagerstruktur' }}</h3>
                     @if (camp.canEdit) {
                       <form [id]="'structure-configuration-' + camp.id" (ngSubmit)="saveStructureConfiguration(camp)">
@@ -262,6 +271,7 @@ export class AppComponent {
   newStructureNodeName = '';
   structureLevelInput = '';
   stageTemplateInput = '';
+  campStageInput = '';
   moveTargetParentIds: Record<string, string> = {};
 
   constructor() { this.initialize(); }
@@ -400,6 +410,16 @@ export class AppComponent {
     this.campApi.getStructureConfiguration(camp.id).subscribe({ next: configuration => {
       this.structureConfiguration.set(configuration); this.structureLevelInput = configuration.levelNames.join('\n');
     }});
+    this.campApi.getCampStages(camp.id).subscribe({ next: stages => this.campStageInput = stages.map(value => value.name).join('\n') });
+  }
+
+  saveCampStages(camp: CampSummary) {
+    const names = this.campStageInput.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+    this.submitting.set(true); this.error.set(null);
+    this.campApi.updateCampStages(camp.id, names).subscribe({
+      next: () => { this.submitting.set(false); this.notice.set('Die Lagerstufen wurden gespeichert.'); },
+      error: () => { this.submitting.set(false); this.error.set('Die Lagerstufen konnten nicht gespeichert werden.'); }
+    });
   }
 
   saveStructureConfiguration(camp: CampSummary) {

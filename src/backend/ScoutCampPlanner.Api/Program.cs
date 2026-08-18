@@ -300,6 +300,26 @@ app.MapGet("/api/camps/{campId:guid}/structure", async (
         Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId, cancellationToken);
     return nodes is null ? Results.NotFound() : Results.Ok(nodes);
 }).RequireAuthorization();
+app.MapGet("/api/camps/{campId:guid}/stages", async (
+    Guid campId, ClaimsPrincipal principal, CampManagementService management, CancellationToken cancellationToken) =>
+{
+    var entries = await management.GetCampStagesAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId, cancellationToken);
+    return entries is null ? Results.NotFound() : Results.Ok(entries);
+}).RequireAuthorization();
+app.MapPut("/api/camps/{campId:guid}/stages", async (
+    Guid campId, UpdateStageTemplateRequest request, ClaimsPrincipal principal,
+    CampManagementService management, CancellationToken cancellationToken) =>
+{
+    var failure = await management.UpdateCampStagesAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId, request, cancellationToken);
+    return failure switch
+    {
+        UpdateStageTemplateFailure.None => Results.NoContent(),
+        UpdateStageTemplateFailure.Forbidden => Results.Forbid(),
+        _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["stageNames"] = ["Ungültige Lagerstufen."] }),
+    };
+}).RequireAuthorization();
 app.MapGet("/api/camps/{campId:guid}/structure/configuration", async (
     Guid campId, ClaimsPrincipal principal, CampManagementService management, CancellationToken cancellationToken) =>
 {
