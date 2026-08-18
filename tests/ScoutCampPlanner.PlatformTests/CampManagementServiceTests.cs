@@ -1,7 +1,9 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using ScoutCampPlanner.Api.Camps;
+using ScoutCampPlanner.Api.Catering;
 using ScoutCampPlanner.Camp.Infrastructure;
+using ScoutCampPlanner.Catering.Infrastructure;
 using ScoutCampPlanner.Platform.Application.Authorization;
 using ScoutCampPlanner.Platform.Domain;
 using ScoutCampPlanner.Platform.Infrastructure;
@@ -16,7 +18,9 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
     private SqliteConnection connection = null!;
     private PlatformDbContext platform = null!;
     private CampDbContext camps = null!;
+    private CateringDbContext catering = null!;
     private CampManagementService service = null!;
+    private CateringPlanningService cateringService = null!;
     private Guid tenantId;
     private Guid ownerUserId;
     private Guid otherUserId;
@@ -308,6 +312,25 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task TenantAdministratorCanConfigureFoodFactorsForExactStages()
+    {
+        string[] stages = ["Biber", "WiWö"];
+        var defaults = await cateringService.GetTenantFactorsAsync(
+            ownerUserId, tenantId, stages, TestContext.Current.CancellationToken);
+        Assert.All(defaults!, value => Assert.Equal(1m, value.Factor));
+        Assert.Equal(UpdateFoodFactorsFailure.Forbidden, await cateringService.UpdateTenantFactorsAsync(
+            otherUserId, tenantId, stages,
+            new UpdateTenantStageFoodFactorsRequest([new("Biber", 0.7m), new("WiWö", 0.8m)]),
+            TestContext.Current.CancellationToken));
+        Assert.Equal(UpdateFoodFactorsFailure.None, await cateringService.UpdateTenantFactorsAsync(
+            ownerUserId, tenantId, stages,
+            new UpdateTenantStageFoodFactorsRequest([new("Biber", 0.7m), new("WiWö", 0.8m)]),
+            TestContext.Current.CancellationToken));
+        Assert.Equal(new[] { 0.7m, 0.8m }, (await cateringService.GetTenantFactorsAsync(
+            ownerUserId, tenantId, stages, TestContext.Current.CancellationToken))!.Select(value => value.Factor));
+    }
+
+    [Fact]
     public async Task FailedAdministratorPersistenceRollsBackCampAndAudit()
     {
         await ExecuteScriptAsync("""
@@ -337,8 +360,10 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
         await connection.OpenAsync(TestContext.Current.CancellationToken);
         platform = new PlatformDbContext(new DbContextOptionsBuilder<PlatformDbContext>().UseSqlite(connection).Options);
         camps = new CampDbContext(new DbContextOptionsBuilder<CampDbContext>().UseSqlite(connection).Options);
+        catering = new CateringDbContext(new DbContextOptionsBuilder<CateringDbContext>().UseSqlite(connection).Options);
         await ExecuteScriptAsync(platform.Database.GenerateCreateScript());
         await ExecuteScriptAsync(camps.Database.GenerateCreateScript());
+        await ExecuteScriptAsync(catering.Database.GenerateCreateScript());
 
         tenantId = Guid.NewGuid();
         ownerUserId = Guid.NewGuid();
@@ -362,11 +387,14 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
             instanceId, Guid.NewGuid(), Now, TestContext.Current.CancellationToken);
         service = new CampManagementService(platform, camps, new AuditedOperationExecutor(platform, keys),
             new AuditRuntimeState(instanceId), new FixedTimeProvider(Now));
+        cateringService = new CateringPlanningService(platform, catering,
+            new AuditedOperationExecutor(platform, keys), new AuditRuntimeState(instanceId), new FixedTimeProvider(Now));
     }
 
     public async ValueTask DisposeAsync()
     {
         await camps.DisposeAsync();
+        await catering.DisposeAsync();
         await platform.DisposeAsync();
         await connection.DisposeAsync();
     }

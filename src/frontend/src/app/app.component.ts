@@ -10,7 +10,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { AuthenticationApiService, AuthenticatedUser } from './features/authentication/authentication-api.service';
-import { CampAdministratorOption, CampApiService, CampPlanningSummary, CampSummary, ParticipantEstimate, StructureConfiguration, StructureNodeSummary, TenantOption } from './features/camp/camp-api.service';
+import { CampAdministratorOption, CampApiService, CampPlanningSummary, CampSummary, ParticipantEstimate, StructureConfiguration, StructureNodeSummary, TenantOption, TenantStageFoodFactor } from './features/camp/camp-api.service';
 import { SetupApiService } from './features/setup/setup-api.service';
 
 type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
@@ -96,10 +96,19 @@ type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
                   <mat-form-field appearance="outline"><mat-label>Stufen (eine pro Zeile)</mat-label>
                     <textarea matInput name="stageTemplate" [(ngModel)]="stageTemplateInput" rows="6" required></textarea>
                   </mat-form-field>
+                  <h3>Verpflegungsfaktoren für KiJu</h3>
+                  <table><thead><tr><th>Stufe</th><th>Faktor</th></tr></thead><tbody>
+                    @for (entry of tenantStageFoodFactors; track entry.stageName) {
+                      <tr><td>{{ entry.stageName }}</td><td><input type="number" min="0.1" max="3" step="0.01"
+                        [(ngModel)]="entry.factor" [name]="'foodFactor-' + entry.stageName"></td></tr>
+                    }
+                  </tbody></table>
                 </form>
               </mat-card-content>
               <mat-card-actions align="end"><button matButton="filled" form="stage-template" type="submit"
-                [disabled]="submitting()">Vorlage speichern</button></mat-card-actions>
+                [disabled]="submitting()">Vorlage speichern</button>
+                <button matButton type="button" (click)="saveTenantStageFoodFactors(tenant.id)"
+                  [disabled]="submitting()">Faktoren speichern</button></mat-card-actions>
             </mat-card>
             <mat-card>
               <mat-card-header>
@@ -303,6 +312,7 @@ export class AppComponent {
   campStageInput = '';
   moveTargetParentIds: Record<string, string> = {};
   participantEstimates: ParticipantEstimate[] = [];
+  tenantStageFoodFactors: TenantStageFoodFactor[] = [];
 
   constructor() { this.initialize(); }
 
@@ -620,8 +630,23 @@ export class AppComponent {
 
   private loadStageTemplate(tenantId: string) {
     this.campApi.getStageTemplate(tenantId).subscribe({
-      next: entries => this.stageTemplateInput = entries.map(value => value.name).join('\n'),
+      next: entries => { this.stageTemplateInput = entries.map(value => value.name).join('\n'); this.loadTenantStageFoodFactors(tenantId); },
       error: () => this.error.set('Die Stufenvorlage konnte nicht geladen werden.')
+    });
+  }
+
+  private loadTenantStageFoodFactors(tenantId: string) {
+    this.campApi.getTenantStageFoodFactors(tenantId).subscribe({
+      next: factors => this.tenantStageFoodFactors = factors,
+      error: () => this.error.set('Die Verpflegungsfaktoren konnten nicht geladen werden.')
+    });
+  }
+
+  saveTenantStageFoodFactors(tenantId: string) {
+    this.submitting.set(true); this.error.set(null); this.notice.set(null);
+    this.campApi.updateTenantStageFoodFactors(tenantId, this.tenantStageFoodFactors).subscribe({
+      next: () => { this.submitting.set(false); this.notice.set('Die Verpflegungsfaktoren wurden gespeichert.'); },
+      error: () => { this.submitting.set(false); this.error.set('Die Verpflegungsfaktoren sind unvollständig oder ungültig.'); }
     });
   }
 
@@ -629,7 +654,7 @@ export class AppComponent {
     const names = this.stageTemplateInput.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
     this.submitting.set(true); this.error.set(null); this.notice.set(null);
     this.campApi.updateStageTemplate(tenantId, names).subscribe({
-      next: () => { this.submitting.set(false); this.notice.set('Die Stufenvorlage wurde gespeichert.'); },
+      next: () => { this.submitting.set(false); this.notice.set('Die Stufenvorlage wurde gespeichert.'); this.loadStageTemplate(tenantId); },
       error: (response: HttpErrorResponse) => { this.submitting.set(false); this.error.set(response.status === 403
         ? 'Du darfst die mandantenweite Stufenvorlage nicht ändern.'
         : 'Die Stufenvorlage enthält ungültige oder doppelte Namen.'); }

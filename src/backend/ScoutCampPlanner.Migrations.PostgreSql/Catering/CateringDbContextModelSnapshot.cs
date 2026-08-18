@@ -43,6 +43,37 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
 
                     b.ToTable("MealPlans", "catering");
                 });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.TenantStageFoodFactor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Factor")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<string>("NormalizedStageName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("StageName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "NormalizedStageName")
+                        .IsUnique();
+
+                    b.ToTable("TenantStageFoodFactors", "catering");
+                });
 #pragma warning restore 612, 618
         }
     }

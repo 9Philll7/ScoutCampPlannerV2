@@ -23,6 +23,7 @@ export interface CampPlanningSummary {
   stageTotals: { campStageId: string; stageName: string; childYouthCount: number; leaderCount: number }[];
   structureTotals: { structureNodeId: string; childYouthCount: number; leaderCount: number }[];
 }
+export interface TenantStageFoodFactor { stageName: string; factor: number; }
 export interface CreateCampRequest {
   name: string;
   startDate: string;
@@ -56,6 +57,16 @@ export class CampApiService {
   updateStageTemplate(tenantId: string, stageNames: string[]) {
     return this.http.put<void>(`${this.baseUrl}/api/tenants/${tenantId}/stage-template`,
       { stageNames }, { withCredentials: true });
+  }
+
+  getTenantStageFoodFactors(tenantId: string) {
+    return this.http.get<TenantStageFoodFactor[]>(`${this.baseUrl}/api/tenants/${tenantId}/catering-stage-factors`,
+      { withCredentials: true });
+  }
+
+  updateTenantStageFoodFactors(tenantId: string, factors: TenantStageFoodFactor[]) {
+    return this.http.put<void>(`${this.baseUrl}/api/tenants/${tenantId}/catering-stage-factors`,
+      { factors }, { withCredentials: true });
   }
 
   getCampStages(campId: string) {

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ScoutCampPlanner.Catering.Infrastructure;
 
@@ -10,9 +11,11 @@ using ScoutCampPlanner.Catering.Infrastructure;
 namespace ScoutCampPlanner.Migrations.Sqlite.Catering
 {
     [DbContext(typeof(CateringDbContext))]
-    partial class CateringDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260818185125_AddTenantStageFoodFactors")]
+    partial class AddTenantStageFoodFactors
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.5");

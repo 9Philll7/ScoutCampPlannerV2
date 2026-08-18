@@ -8,6 +8,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using ScoutCampPlanner.Api.Camps;
+using ScoutCampPlanner.Api.Catering;
 using ScoutCampPlanner.Camp.Infrastructure;
 using ScoutCampPlanner.Catering.Infrastructure;
 using ScoutCampPlanner.Migrations.PostgreSql;
@@ -84,6 +85,7 @@ builder.Services.AddDbContext<CampDbContext>((services, options) => Configure(op
 builder.Services.AddDbContext<CateringDbContext>((services, options) => Configure(options, services.GetRequiredService<DbConnection>(), provider, "catering"));
 builder.Services.AddScoped<CampPackageService>();
 builder.Services.AddScoped<CampManagementService>();
+builder.Services.AddScoped<CateringPlanningService>();
 builder.Services.AddSingleton<IPasswordPolicy, PasswordPolicy>();
 builder.Services.AddSingleton<IPasswordVerifier>(
     _ => new Argon2idPasswordVerifier(Argon2idOperatingMode.Server));
@@ -268,6 +270,37 @@ app.MapPut("/api/tenants/{tenantId:guid}/stage-template", async (
         _ => Results.ValidationProblem(new Dictionary<string, string[]>
         {
             ["stageNames"] = ["Es werden 1 bis 50 eindeutige Stufennamen mit höchstens 100 Zeichen benötigt."],
+        }),
+    };
+}).RequireAuthorization();
+app.MapGet("/api/tenants/{tenantId:guid}/catering-stage-factors", async (
+    Guid tenantId, ClaimsPrincipal principal, CampManagementService camps, CateringPlanningService catering,
+    CancellationToken cancellationToken) =>
+{
+    var stages = await camps.GetStageTemplateAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), tenantId, cancellationToken);
+    if (stages is null) return Results.NotFound();
+    var factors = await catering.GetTenantFactorsAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), tenantId,
+        stages.Select(value => value.Name).ToList(), cancellationToken);
+    return factors is null ? Results.NotFound() : Results.Ok(factors);
+}).RequireAuthorization();
+app.MapPut("/api/tenants/{tenantId:guid}/catering-stage-factors", async (
+    Guid tenantId, UpdateTenantStageFoodFactorsRequest request, ClaimsPrincipal principal,
+    CampManagementService camps, CateringPlanningService catering, CancellationToken cancellationToken) =>
+{
+    Guid actorId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    var stages = await camps.GetStageTemplateAsync(actorId, tenantId, cancellationToken);
+    if (stages is null) return Results.NotFound();
+    var failure = await catering.UpdateTenantFactorsAsync(actorId, tenantId,
+        stages.Select(value => value.Name).ToList(), request, cancellationToken);
+    return failure switch
+    {
+        UpdateFoodFactorsFailure.None => Results.NoContent(),
+        UpdateFoodFactorsFailure.Forbidden => Results.Forbid(),
+        _ => Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["factors"] = ["Für jede Stufe wird ein Faktor von 0,1 bis 3,0 mit höchstens zwei Nachkommastellen benötigt."],
         }),
     };
 }).RequireAuthorization();
