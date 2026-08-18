@@ -30,6 +30,10 @@ public sealed record ParticipantEstimateSummary(Guid CampStageId, string StageNa
 public sealed record ParticipantEstimateInput(Guid CampStageId, int ChildYouthCount, int LeaderCount);
 public sealed record UpdateParticipantEstimatesRequest(IReadOnlyList<ParticipantEstimateInput>? Estimates);
 public enum UpdateParticipantEstimatesFailure { None, NotFound, Frozen, NotLeaf, InvalidEstimates }
+public sealed record StageEstimateTotal(Guid CampStageId, string StageName, long ChildYouthCount, long LeaderCount);
+public sealed record StructureEstimateTotal(Guid StructureNodeId, long ChildYouthCount, long LeaderCount);
+public sealed record CampPlanningSummary(
+    IReadOnlyList<StageEstimateTotal> StageTotals, IReadOnlyList<StructureEstimateTotal> StructureTotals);
 
 public enum CreateCampFailure
 {
@@ -418,6 +422,40 @@ public sealed class CampManagementService(
         return stages.Select(stage => estimates.TryGetValue(stage.Id, out var estimate)
             ? new ParticipantEstimateSummary(stage.Id, stage.Name, estimate.ChildYouthCount, estimate.LeaderCount)
             : new ParticipantEstimateSummary(stage.Id, stage.Name, 0, 0)).ToList();
+    }
+
+    public async Task<CampPlanningSummary?> GetPlanningSummaryAsync(
+        Guid actorUserId, Guid campId, CancellationToken cancellationToken = default)
+    {
+        if (!await HasCampPermissionAsync(actorUserId, campId, Permissions.Camp.View, cancellationToken)) return null;
+        var stages = await camps.CampStages.Where(value => value.CampId == campId).OrderBy(value => value.SortOrder)
+            .Select(value => new { value.Id, value.Name }).ToListAsync(cancellationToken);
+        var nodes = await camps.StructureNodes.Where(value => value.CampId == campId)
+            .Select(value => new { value.Id, value.ParentId }).ToListAsync(cancellationToken);
+        var estimates = await camps.ParticipantEstimates.Where(value => value.CampId == campId)
+            .ToListAsync(cancellationToken);
+        var directTotals = estimates.GroupBy(value => value.StructureNodeId).ToDictionary(group => group.Key,
+            group => (Child: group.Sum(value => (long)value.ChildYouthCount), Leader: group.Sum(value => (long)value.LeaderCount)));
+        var children = nodes.ToLookup(value => value.ParentId);
+        var memo = new Dictionary<Guid, (long Child, long Leader)>();
+        (long Child, long Leader) Total(Guid nodeId)
+        {
+            if (memo.TryGetValue(nodeId, out var known)) return known;
+            var total = directTotals.GetValueOrDefault(nodeId);
+            foreach (var child in children[nodeId])
+            {
+                var childTotal = Total(child.Id); total.Child += childTotal.Child; total.Leader += childTotal.Leader;
+            }
+            return memo[nodeId] = total;
+        }
+        var structureTotals = nodes.Select(node =>
+        {
+            var total = Total(node.Id); return new StructureEstimateTotal(node.Id, total.Child, total.Leader);
+        }).ToList();
+        var stageTotals = stages.Select(stage => new StageEstimateTotal(stage.Id, stage.Name,
+            estimates.Where(value => value.CampStageId == stage.Id).Sum(value => (long)value.ChildYouthCount),
+            estimates.Where(value => value.CampStageId == stage.Id).Sum(value => (long)value.LeaderCount))).ToList();
+        return new(stageTotals, structureTotals);
     }
 
     public async Task<UpdateParticipantEstimatesFailure> UpdateParticipantEstimatesAsync(

@@ -278,6 +278,36 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task PlanningSummaryAggregatesStagesAndStructureBranches()
+    {
+        CreateCampResult created = await service.CreateAsync(ownerUserId, tenantId,
+            new CreateCampRequest("Übersicht", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14),
+                [otherMembershipId]), TestContext.Current.CancellationToken);
+        Guid campId = created.Camp!.Id;
+        var root = await service.CreateStructureNodeAsync(otherUserId, campId,
+            new CreateStructureNodeRequest(null, "Bereich"), TestContext.Current.CancellationToken);
+        var first = await service.CreateStructureNodeAsync(otherUserId, campId,
+            new CreateStructureNodeRequest(root.Node!.Id, "Gruppe 1"), TestContext.Current.CancellationToken);
+        var second = await service.CreateStructureNodeAsync(otherUserId, campId,
+            new CreateStructureNodeRequest(root.Node.Id, "Gruppe 2"), TestContext.Current.CancellationToken);
+        var stages = (await service.GetCampStagesAsync(otherUserId, campId, TestContext.Current.CancellationToken))!;
+        ParticipantEstimateInput[] Values(int children, int leaders) => stages.Select((stage, index) =>
+            new ParticipantEstimateInput(stage.Id, index == 0 ? children : 0, index == 0 ? leaders : 0)).ToArray();
+        await service.UpdateParticipantEstimatesAsync(otherUserId, campId, first.Node!.Id,
+            new UpdateParticipantEstimatesRequest(Values(10, 2)), TestContext.Current.CancellationToken);
+        await service.UpdateParticipantEstimatesAsync(otherUserId, campId, second.Node!.Id,
+            new UpdateParticipantEstimatesRequest(Values(7, 1)), TestContext.Current.CancellationToken);
+
+        CampPlanningSummary summary = (await service.GetPlanningSummaryAsync(
+            otherUserId, campId, TestContext.Current.CancellationToken))!;
+        Assert.Equal(17, summary.StageTotals.First().ChildYouthCount);
+        Assert.Equal(3, summary.StageTotals.First().LeaderCount);
+        StructureEstimateTotal rootTotal = summary.StructureTotals.Single(value => value.StructureNodeId == root.Node.Id);
+        Assert.Equal(17, rootTotal.ChildYouthCount);
+        Assert.Equal(3, rootTotal.LeaderCount);
+    }
+
+    [Fact]
     public async Task FailedAdministratorPersistenceRollsBackCampAndAudit()
     {
         await ExecuteScriptAsync("""

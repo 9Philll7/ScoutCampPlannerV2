@@ -307,6 +307,13 @@ app.MapGet("/api/camps/{campId:guid}/stages", async (
         Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId, cancellationToken);
     return entries is null ? Results.NotFound() : Results.Ok(entries);
 }).RequireAuthorization();
+app.MapGet("/api/camps/{campId:guid}/planning-summary", async (
+    Guid campId, ClaimsPrincipal principal, CampManagementService management, CancellationToken cancellationToken) =>
+{
+    var summary = await management.GetPlanningSummaryAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId, cancellationToken);
+    return summary is null ? Results.NotFound() : Results.Ok(summary);
+}).RequireAuthorization();
 app.MapPut("/api/camps/{campId:guid}/stages", async (
     Guid campId, UpdateStageTemplateRequest request, ClaimsPrincipal principal,
     CampManagementService management, CancellationToken cancellationToken) =>

@@ -19,6 +19,10 @@ export interface StructureNodeSummary { id: string; campId: string; parentId: st
 export interface StructureConfiguration { mode: 'Free' | 'Fixed'; levelNames: string[]; }
 export interface StageTemplateEntry { id: string; name: string; sortOrder: number; }
 export interface ParticipantEstimate { campStageId: string; stageName: string; childYouthCount: number; leaderCount: number; }
+export interface CampPlanningSummary {
+  stageTotals: { campStageId: string; stageName: string; childYouthCount: number; leaderCount: number }[];
+  structureTotals: { structureNodeId: string; childYouthCount: number; leaderCount: number }[];
+}
 export interface CreateCampRequest {
   name: string;
   startDate: string;
@@ -70,6 +74,11 @@ export class CampApiService {
     return this.http.put<void>(`${this.baseUrl}/api/camps/${campId}/structure/${nodeId}/participant-estimates`,
       { estimates: estimates.map(value => ({ campStageId: value.campStageId,
         childYouthCount: value.childYouthCount, leaderCount: value.leaderCount })) }, { withCredentials: true });
+  }
+
+  getPlanningSummary(campId: string) {
+    return this.http.get<CampPlanningSummary>(`${this.baseUrl}/api/camps/${campId}/planning-summary`,
+      { withCredentials: true });
   }
 
   create(tenantId: string, request: CreateCampRequest) {

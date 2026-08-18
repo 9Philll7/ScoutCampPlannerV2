@@ -19,6 +19,8 @@ For every leaf structure node, the camp stores non-negative whole-number estimat
 
 Estimates contain no personal identity. A structure node with non-zero estimates cannot receive child nodes. Moving a node keeps its estimates attached to that node.
 
+Planning totals are derived from the stored leaf estimates and are not persisted separately. The overview shows camp totals per stage and aggregated `KiJu` and `Leiter` totals for every structure branch. A parent total therefore includes all descendant leaves.
+
 Participants have:
 - identity data
 - assignment data

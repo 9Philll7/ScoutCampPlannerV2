@@ -10,7 +10,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { AuthenticationApiService, AuthenticatedUser } from './features/authentication/authentication-api.service';
-import { CampAdministratorOption, CampApiService, CampSummary, ParticipantEstimate, StructureConfiguration, StructureNodeSummary, TenantOption } from './features/camp/camp-api.service';
+import { CampAdministratorOption, CampApiService, CampPlanningSummary, CampSummary, ParticipantEstimate, StructureConfiguration, StructureNodeSummary, TenantOption } from './features/camp/camp-api.service';
 import { SetupApiService } from './features/setup/setup-api.service';
 
 type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
@@ -162,6 +162,14 @@ type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
                       </form>
                     } @else { <p>{{ campStageInput }}</p> }
                     <h3>{{ structureConfiguration()?.mode === 'Fixed' ? 'Fixierte Lagerstruktur' : 'Freie Lagerstruktur' }}</h3>
+                    @if (planningSummary(); as summary) {
+                      <h3>Planungsübersicht</h3>
+                      <table><thead><tr><th>Stufe</th><th>KiJu</th><th>Leiter</th></tr></thead><tbody>
+                        @for (total of summary.stageTotals; track total.campStageId) {
+                          <tr><td>{{ total.stageName }}</td><td>{{ total.childYouthCount }}</td><td>{{ total.leaderCount }}</td></tr>
+                        }
+                      </tbody></table>
+                    }
                     @if (camp.canEdit) {
                       <form [id]="'structure-configuration-' + camp.id" (ngSubmit)="saveStructureConfiguration(camp)">
                         <mat-form-field appearance="outline"><mat-label>Ebenen (eine pro Zeile; leer = frei)</mat-label>
@@ -173,6 +181,9 @@ type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
                     @for (row of structureRows(); track row.node.id) {
                       <p [style.margin-left.px]="row.depth * 24">
                         {{ row.node.name }}
+                        @if (structureTotal(row.node.id); as total) {
+                          <span> – KiJu: {{ total.childYouthCount }}, Leiter: {{ total.leaderCount }}</span>
+                        }
                         @if (camp.canEdit) {
                           @if (isStructureLeaf(row.node)) {
                             <button matButton type="button" (click)="openEstimates(camp, row.node)">Planung</button>
@@ -275,6 +286,7 @@ export class AppComponent {
   readonly structureNodes = signal<StructureNodeSummary[]>([]);
   readonly structureConfiguration = signal<StructureConfiguration | null>(null);
   readonly estimateNodeId = signal<string | null>(null);
+  readonly planningSummary = signal<CampPlanningSummary | null>(null);
   tenantName = '';
   email = '';
   password = '';
@@ -418,10 +430,10 @@ export class AppComponent {
   toggleStructure(camp: CampSummary) {
     if (this.structureCampId() === camp.id) {
       this.structureCampId.set(null); this.structureNodes.set([]); this.structureConfiguration.set(null);
-      this.estimateNodeId.set(null); this.participantEstimates = []; return;
+      this.estimateNodeId.set(null); this.planningSummary.set(null); this.participantEstimates = []; return;
     }
     this.structureCampId.set(camp.id); this.structureNodes.set([]);
-    this.estimateNodeId.set(null); this.participantEstimates = [];
+    this.estimateNodeId.set(null); this.planningSummary.set(null); this.participantEstimates = [];
     this.newStructureParentId = ''; this.newStructureNodeName = '';
     this.campApi.listStructure(camp.id).subscribe({
       next: nodes => { this.structureNodes.set(nodes); this.moveTargetParentIds = Object.fromEntries(nodes.map(node => [node.id, node.parentId ?? ''])); },
@@ -431,6 +443,7 @@ export class AppComponent {
       this.structureConfiguration.set(configuration); this.structureLevelInput = configuration.levelNames.join('\n');
     }});
     this.campApi.getCampStages(camp.id).subscribe({ next: stages => this.campStageInput = stages.map(value => value.name).join('\n') });
+    this.loadPlanningSummary(camp.id);
   }
 
   saveCampStages(camp: CampSummary) {
@@ -479,8 +492,19 @@ export class AppComponent {
     const nodeId = this.estimateNodeId(); if (!nodeId) return;
     this.submitting.set(true); this.error.set(null);
     this.campApi.updateParticipantEstimates(camp.id, nodeId, this.participantEstimates).subscribe({
-      next: () => { this.submitting.set(false); this.notice.set('Die Teilnehmerschätzung wurde gespeichert.'); },
+      next: () => { this.submitting.set(false); this.notice.set('Die Teilnehmerschätzung wurde gespeichert.'); this.loadPlanningSummary(camp.id); },
       error: () => { this.submitting.set(false); this.error.set('Die Teilnehmerschätzung konnte nicht gespeichert werden.'); }
+    });
+  }
+
+  structureTotal(nodeId: string) {
+    return this.planningSummary()?.structureTotals.find(value => value.structureNodeId === nodeId) ?? null;
+  }
+
+  private loadPlanningSummary(campId: string) {
+    this.campApi.getPlanningSummary(campId).subscribe({
+      next: summary => this.planningSummary.set(summary),
+      error: () => this.error.set('Die Planungsübersicht konnte nicht geladen werden.')
     });
   }
 
