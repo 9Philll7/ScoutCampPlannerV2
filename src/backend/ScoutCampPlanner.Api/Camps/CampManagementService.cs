@@ -22,6 +22,7 @@ public sealed record StructureNodeSummary(Guid Id, Guid CampId, Guid? ParentId, 
 public sealed record CreateStructureNodeRequest(Guid? ParentId, string Name);
 public sealed record StructureConfiguration(string Mode, IReadOnlyList<string> LevelNames);
 public sealed record UpdateStructureConfigurationRequest(IReadOnlyCollection<string>? LevelNames);
+public sealed record MoveStructureNodeRequest(Guid? ParentId);
 
 public enum CreateCampFailure
 {
@@ -52,6 +53,7 @@ public sealed record CreateStructureNodeResult(
     public bool IsSuccessful => Node is not null && Failure == CreateStructureNodeFailure.None;
 }
 public enum DeleteStructureNodeFailure { None, NotFound, Frozen, HasChildren }
+public enum MoveStructureNodeFailure { None, NotFound, Frozen, Cycle, DuplicateName, MaximumDepthReached }
 
 public sealed class CampManagementService(
     PlatformDbContext platform,
@@ -294,6 +296,72 @@ public sealed class CampManagementService(
             throw;
         }
         return DeleteStructureNodeFailure.None;
+    }
+
+    public async Task<MoveStructureNodeFailure> MoveStructureNodeAsync(
+        Guid actorUserId, Guid campId, Guid nodeId, MoveStructureNodeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await HasCampPermissionAsync(actorUserId, campId, Permissions.Camp.Edit, cancellationToken))
+            return MoveStructureNodeFailure.NotFound;
+        var camp = await camps.Camps.SingleOrDefaultAsync(value => value.Id == campId, cancellationToken);
+        var nodes = await camps.StructureNodes.Where(value => value.CampId == campId).ToListAsync(cancellationToken);
+        var node = nodes.SingleOrDefault(value => value.Id == nodeId);
+        if (camp is null || node is null) return MoveStructureNodeFailure.NotFound;
+        if (camp.IsFrozen) return MoveStructureNodeFailure.Frozen;
+        if (request.ParentId == nodeId) return MoveStructureNodeFailure.Cycle;
+        if (request.ParentId is Guid requestedParent && nodes.All(value => value.Id != requestedParent))
+            return MoveStructureNodeFailure.NotFound;
+        if (node.ParentId == request.ParentId) return MoveStructureNodeFailure.None;
+
+        var descendants = new HashSet<Guid>();
+        void AddDescendants(Guid parentId)
+        {
+            foreach (var child in nodes.Where(value => value.ParentId == parentId))
+                if (descendants.Add(child.Id)) AddDescendants(child.Id);
+        }
+        AddDescendants(node.Id);
+        if (request.ParentId is Guid parentId && descendants.Contains(parentId))
+            return MoveStructureNodeFailure.Cycle;
+        if (nodes.Any(value => value.Id != node.Id && value.ParentId == request.ParentId &&
+            value.NormalizedName == node.NormalizedName))
+            return MoveStructureNodeFailure.DuplicateName;
+
+        int NewDepth()
+        {
+            int depth = 1; Guid? current = request.ParentId;
+            while (current is Guid id) { depth++; current = nodes.Single(value => value.Id == id).ParentId; }
+            return depth;
+        }
+        int SubtreeHeight(Guid id) => 1 + nodes.Where(value => value.ParentId == id)
+            .Select(child => SubtreeHeight(child.Id)).DefaultIfEmpty(0).Max();
+        if (camp.StructureMode == ScoutCampPlanner.Camp.Domain.CampStructureMode.Fixed &&
+            NewDepth() + SubtreeHeight(node.Id) - 1 > camp.GetStructureLevelNames().Count)
+            return MoveStructureNodeFailure.MaximumDepthReached;
+
+        node.MoveTo(request.ParentId);
+        var auditEvent = new AuditEventDraft(Guid.NewGuid(), timeProvider.GetUtcNow(),
+            "camp.structure-node.moved", "success", actorUserId, camp.TenantId, camp.Id,
+            "camp-structure-node", node.Id, "server", auditRuntime.InstanceId, Guid.NewGuid(), null, null,
+            request.ParentId is Guid target ? new Dictionary<string, string> { ["parentNodeId"] = target.ToString() } : []);
+        try { await auditedOperation.ExecuteAsync(auditEvent, async operationCancellationToken =>
+        {
+            var transaction = platform.Database.CurrentTransaction
+                ?? throw new InvalidOperationException("The Platform transaction is unavailable.");
+            await camps.Database.UseTransactionAsync(transaction.GetDbTransaction(), operationCancellationToken);
+            try { await camps.SaveChangesAsync(operationCancellationToken); }
+            finally { await camps.Database.UseTransactionAsync(null, CancellationToken.None); }
+        }, cancellationToken); }
+        catch (DbUpdateException)
+        {
+            camps.ChangeTracker.Clear();
+            if (await camps.StructureNodes.AsNoTracking().AnyAsync(value => value.Id != nodeId &&
+                value.CampId == campId && value.ParentId == request.ParentId &&
+                value.NormalizedName == node.NormalizedName, cancellationToken))
+                return MoveStructureNodeFailure.DuplicateName;
+            throw;
+        }
+        return MoveStructureNodeFailure.None;
     }
 
     public async Task<CreateCampResult> CreateAsync(

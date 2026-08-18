@@ -151,6 +151,17 @@ type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
                       <p [style.margin-left.px]="row.depth * 24">
                         {{ row.node.name }}
                         @if (camp.canEdit) {
+                          <mat-form-field appearance="outline">
+                            <mat-label>Verschieben nach</mat-label>
+                            <mat-select [name]="'moveTarget-' + row.node.id" [(ngModel)]="moveTargetParentIds[row.node.id]">
+                              <mat-option value="">Oberste Ebene</mat-option>
+                              @for (target of moveTargets(row.node); track target.id) {
+                                <mat-option [value]="target.id">{{ target.name }}</mat-option>
+                              }
+                            </mat-select>
+                          </mat-form-field>
+                          <button matButton type="button" (click)="moveStructureNode(camp, row.node)"
+                            [disabled]="submitting() || camp.isFrozen">Verschieben</button>
                           <button matButton type="button" (click)="deleteStructureNode(camp, row.node)"
                             [disabled]="submitting() || camp.isFrozen">Löschen</button>
                         }
@@ -236,6 +247,7 @@ export class AppComponent {
   newStructureParentId = '';
   newStructureNodeName = '';
   structureLevelInput = '';
+  moveTargetParentIds: Record<string, string> = {};
 
   constructor() { this.initialize(); }
 
@@ -367,7 +379,7 @@ export class AppComponent {
     this.structureCampId.set(camp.id); this.structureNodes.set([]);
     this.newStructureParentId = ''; this.newStructureNodeName = '';
     this.campApi.listStructure(camp.id).subscribe({
-      next: nodes => this.structureNodes.set(nodes),
+      next: nodes => { this.structureNodes.set(nodes); this.moveTargetParentIds = Object.fromEntries(nodes.map(node => [node.id, node.parentId ?? ''])); },
       error: () => this.error.set('Die Lagerstruktur konnte nicht geladen werden.')
     });
     this.campApi.getStructureConfiguration(camp.id).subscribe({ next: configuration => {
@@ -426,6 +438,31 @@ export class AppComponent {
           ? 'Ein Struktureintrag mit Untereinträgen kann nicht gelöscht werden.'
           : response.status === 409 ? 'Während der Offlinephase kann die Struktur nicht geändert werden.'
           : 'Der Struktureintrag konnte nicht gelöscht werden.');
+      }
+    });
+  }
+
+  moveTargets(node: StructureNodeSummary): StructureNodeSummary[] {
+    const excluded = new Set<string>([node.id]);
+    const addChildren = (id: string) => this.structureNodes().filter(value => value.parentId === id)
+      .forEach(value => { excluded.add(value.id); addChildren(value.id); });
+    addChildren(node.id);
+    return this.structureNodes().filter(value => !excluded.has(value.id));
+  }
+
+  moveStructureNode(camp: CampSummary, node: StructureNodeSummary) {
+    if (this.submitting()) return;
+    const parentId = this.moveTargetParentIds[node.id] || null;
+    this.submitting.set(true); this.error.set(null); this.notice.set(null);
+    this.campApi.moveStructureNode(camp.id, node.id, parentId).subscribe({
+      next: () => { this.submitting.set(false); this.structureNodes.update(nodes => nodes.map(value => value.id === node.id ? { ...value, parentId } : value)); this.notice.set('Der Strukturzweig wurde verschoben.'); },
+      error: (response: HttpErrorResponse) => {
+        this.submitting.set(false);
+        const code = response.error?.code;
+        this.error.set(code === 'duplicate_structure_name' ? 'Am Ziel existiert bereits ein Eintrag mit diesem Namen.'
+          : code === 'maximum_structure_depth_reached' ? 'Der Zweig wäre am Ziel tiefer als erlaubt.'
+          : code === 'structure_cycle' ? 'Ein Zweig kann nicht unter einen eigenen Untereintrag verschoben werden.'
+          : 'Der Strukturzweig konnte nicht verschoben werden.');
       }
     });
   }

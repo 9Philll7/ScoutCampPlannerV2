@@ -326,6 +326,22 @@ app.MapDelete("/api/camps/{campId:guid}/structure/{nodeId:guid}", async (
         _ => Results.Conflict(new { code = "structure_node_has_children" }),
     };
 }).RequireAuthorization();
+app.MapPut("/api/camps/{campId:guid}/structure/{nodeId:guid}/parent", async (
+    Guid campId, Guid nodeId, MoveStructureNodeRequest request, ClaimsPrincipal principal,
+    CampManagementService management, CancellationToken cancellationToken) =>
+{
+    MoveStructureNodeFailure failure = await management.MoveStructureNodeAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId, nodeId, request, cancellationToken);
+    return failure switch
+    {
+        MoveStructureNodeFailure.None => Results.NoContent(),
+        MoveStructureNodeFailure.NotFound => Results.NotFound(),
+        MoveStructureNodeFailure.Frozen => Results.Conflict(new { code = "camp_frozen" }),
+        MoveStructureNodeFailure.Cycle => Results.Conflict(new { code = "structure_cycle" }),
+        MoveStructureNodeFailure.DuplicateName => Results.Conflict(new { code = "duplicate_structure_name" }),
+        _ => Results.Conflict(new { code = "maximum_structure_depth_reached" }),
+    };
+}).RequireAuthorization();
 app.MapGet("/api/camps", () => Results.BadRequest(new { code = "tenant_context_required" }))
     .RequireAuthorization();
 app.MapPost("/api/camps/{campId:guid}/offline-package", async (

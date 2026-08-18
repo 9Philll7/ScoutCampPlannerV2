@@ -32,4 +32,11 @@ public sealed class StructureNode
     public Guid? ParentId { get; private set; }
     public string Name { get; private set; } = string.Empty;
     public string NormalizedName { get; private set; } = string.Empty;
+
+    public void MoveTo(Guid? parentId)
+    {
+        if (parentId == Guid.Empty) throw new ArgumentException("Parent ID must be null or non-empty.", nameof(parentId));
+        if (parentId == Id) throw new ArgumentException("A structure node cannot be its own parent.", nameof(parentId));
+        ParentId = parentId;
+    }
 }

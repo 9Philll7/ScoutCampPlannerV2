@@ -184,6 +184,34 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task MovingStructureBranchEnforcesTreeAndFixedDepth()
+    {
+        CreateCampResult created = await service.CreateAsync(ownerUserId, tenantId,
+            new CreateCampRequest("Verschieben", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14),
+                [otherMembershipId]), TestContext.Current.CancellationToken);
+        Guid campId = created.Camp!.Id;
+        var north = await service.CreateStructureNodeAsync(otherUserId, campId,
+            new CreateStructureNodeRequest(null, "Nord"), TestContext.Current.CancellationToken);
+        var south = await service.CreateStructureNodeAsync(otherUserId, campId,
+            new CreateStructureNodeRequest(null, "Süd"), TestContext.Current.CancellationToken);
+        var group = await service.CreateStructureNodeAsync(otherUserId, campId,
+            new CreateStructureNodeRequest(north.Node!.Id, "Gruppe"), TestContext.Current.CancellationToken);
+        var patrol = await service.CreateStructureNodeAsync(otherUserId, campId,
+            new CreateStructureNodeRequest(group.Node!.Id, "Patrulle"), TestContext.Current.CancellationToken);
+
+        Assert.Equal(MoveStructureNodeFailure.Cycle, await service.MoveStructureNodeAsync(otherUserId, campId,
+            north.Node.Id, new MoveStructureNodeRequest(patrol.Node!.Id), TestContext.Current.CancellationToken));
+        Assert.True(await service.UpdateStructureConfigurationAsync(otherUserId, campId,
+            new UpdateStructureConfigurationRequest(["Bereich", "Gruppe", "Patrulle"]), TestContext.Current.CancellationToken));
+        Assert.Equal(MoveStructureNodeFailure.MaximumDepthReached, await service.MoveStructureNodeAsync(
+            otherUserId, campId, north.Node.Id, new MoveStructureNodeRequest(south.Node!.Id), TestContext.Current.CancellationToken));
+        Assert.Equal(MoveStructureNodeFailure.None, await service.MoveStructureNodeAsync(
+            otherUserId, campId, group.Node.Id, new MoveStructureNodeRequest(south.Node.Id), TestContext.Current.CancellationToken));
+        Assert.Equal(south.Node.Id, (await camps.StructureNodes.SingleAsync(value =>
+            value.Id == group.Node.Id, TestContext.Current.CancellationToken)).ParentId);
+    }
+
+    [Fact]
     public async Task FailedAdministratorPersistenceRollsBackCampAndAudit()
     {
         await ExecuteScriptAsync("""

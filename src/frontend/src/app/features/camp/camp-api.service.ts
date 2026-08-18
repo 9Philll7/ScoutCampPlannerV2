@@ -67,6 +67,11 @@ export class CampApiService {
       { withCredentials: true });
   }
 
+  moveStructureNode(campId: string, nodeId: string, parentId: string | null) {
+    return this.http.put<void>(`${this.baseUrl}/api/camps/${campId}/structure/${nodeId}/parent`,
+      { parentId }, { withCredentials: true });
+  }
+
   getStructureConfiguration(campId: string) {
     return this.http.get<StructureConfiguration>(`${this.baseUrl}/api/camps/${campId}/structure/configuration`,
       { withCredentials: true });
