@@ -51,6 +51,7 @@ public sealed record CreateStructureNodeResult(
 {
     public bool IsSuccessful => Node is not null && Failure == CreateStructureNodeFailure.None;
 }
+public enum DeleteStructureNodeFailure { None, NotFound, Frozen, HasChildren }
 
 public sealed class CampManagementService(
     PlatformDbContext platform,
@@ -251,6 +252,48 @@ public sealed class CampManagementService(
 
         return new(new StructureNodeSummary(node.Id, node.CampId, node.ParentId, node.Name),
             CreateStructureNodeFailure.None);
+    }
+
+    public async Task<DeleteStructureNodeFailure> DeleteStructureNodeAsync(
+        Guid actorUserId, Guid campId, Guid nodeId, CancellationToken cancellationToken = default)
+    {
+        if (!await HasCampPermissionAsync(actorUserId, campId, Permissions.Camp.Edit, cancellationToken))
+            return DeleteStructureNodeFailure.NotFound;
+        var camp = await camps.Camps.SingleOrDefaultAsync(value => value.Id == campId, cancellationToken);
+        var node = await camps.StructureNodes.SingleOrDefaultAsync(
+            value => value.Id == nodeId && value.CampId == campId, cancellationToken);
+        if (camp is null || node is null) return DeleteStructureNodeFailure.NotFound;
+        if (camp.IsFrozen) return DeleteStructureNodeFailure.Frozen;
+        if (await camps.StructureNodes.AnyAsync(value => value.ParentId == nodeId, cancellationToken))
+            return DeleteStructureNodeFailure.HasChildren;
+
+        var auditEvent = new AuditEventDraft(
+            Guid.NewGuid(), timeProvider.GetUtcNow(), "camp.structure-node.deleted", "success",
+            actorUserId, camp.TenantId, camp.Id, "camp-structure-node", node.Id, "server",
+            auditRuntime.InstanceId, Guid.NewGuid(), null, null, new Dictionary<string, string>());
+        try
+        {
+            await auditedOperation.ExecuteAsync(auditEvent, async operationCancellationToken =>
+            {
+                var transaction = platform.Database.CurrentTransaction
+                    ?? throw new InvalidOperationException("The Platform transaction is unavailable.");
+                await camps.Database.UseTransactionAsync(transaction.GetDbTransaction(), operationCancellationToken);
+                try
+                {
+                    camps.StructureNodes.Remove(node);
+                    await camps.SaveChangesAsync(operationCancellationToken);
+                }
+                finally { await camps.Database.UseTransactionAsync(null, CancellationToken.None); }
+            }, cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            camps.ChangeTracker.Clear();
+            if (await camps.StructureNodes.AsNoTracking().AnyAsync(value => value.ParentId == nodeId, cancellationToken))
+                return DeleteStructureNodeFailure.HasChildren;
+            throw;
+        }
+        return DeleteStructureNodeFailure.None;
     }
 
     public async Task<CreateCampResult> CreateAsync(

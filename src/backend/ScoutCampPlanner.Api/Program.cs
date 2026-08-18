@@ -312,6 +312,20 @@ app.MapPost("/api/camps/{campId:guid}/structure", async (
             : "Bitte gib einen Namen mit höchstens 200 Zeichen ein."]
     });
 }).RequireAuthorization();
+app.MapDelete("/api/camps/{campId:guid}/structure/{nodeId:guid}", async (
+    Guid campId, Guid nodeId, ClaimsPrincipal principal, CampManagementService management,
+    CancellationToken cancellationToken) =>
+{
+    DeleteStructureNodeFailure failure = await management.DeleteStructureNodeAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId, nodeId, cancellationToken);
+    return failure switch
+    {
+        DeleteStructureNodeFailure.None => Results.NoContent(),
+        DeleteStructureNodeFailure.NotFound => Results.NotFound(),
+        DeleteStructureNodeFailure.Frozen => Results.Conflict(new { code = "camp_frozen" }),
+        _ => Results.Conflict(new { code = "structure_node_has_children" }),
+    };
+}).RequireAuthorization();
 app.MapGet("/api/camps", () => Results.BadRequest(new { code = "tenant_context_required" }))
     .RequireAuthorization();
 app.MapPost("/api/camps/{campId:guid}/offline-package", async (

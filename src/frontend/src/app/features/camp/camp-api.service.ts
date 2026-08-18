@@ -62,6 +62,11 @@ export class CampApiService {
       { parentId, name }, { withCredentials: true });
   }
 
+  deleteStructureNode(campId: string, nodeId: string) {
+    return this.http.delete<void>(`${this.baseUrl}/api/camps/${campId}/structure/${nodeId}`,
+      { withCredentials: true });
+  }
+
   getStructureConfiguration(campId: string) {
     return this.http.get<StructureConfiguration>(`${this.baseUrl}/api/camps/${campId}/structure/configuration`,
       { withCredentials: true });

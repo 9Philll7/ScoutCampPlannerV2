@@ -148,7 +148,13 @@ type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
                       </form>
                     }
                     @for (row of structureRows(); track row.node.id) {
-                      <p [style.margin-left.px]="row.depth * 24">{{ row.node.name }}</p>
+                      <p [style.margin-left.px]="row.depth * 24">
+                        {{ row.node.name }}
+                        @if (camp.canEdit) {
+                          <button matButton type="button" (click)="deleteStructureNode(camp, row.node)"
+                            [disabled]="submitting() || camp.isFrozen">Löschen</button>
+                        }
+                      </p>
                     } @empty { <p>Noch keine Struktureinträge vorhanden.</p> }
                     @if (camp.canEdit) {
                       <form [id]="'create-structure-node-' + camp.id" (ngSubmit)="createStructureNode(camp)">
@@ -405,6 +411,21 @@ export class AppComponent {
         this.error.set(response.status === 409 ? 'Während der Offlinephase kann die Struktur nicht geändert werden.' :
           response.status === 404 ? 'Du darfst diese Lagerstruktur nicht ändern.' :
           errors ? Object.values(errors).flat()[0] ?? 'Die Eingabe ist ungültig.' : 'Der Struktureintrag konnte nicht angelegt werden.');
+      }
+    });
+  }
+
+  deleteStructureNode(camp: CampSummary, node: StructureNodeSummary) {
+    if (this.submitting()) return;
+    this.submitting.set(true); this.error.set(null); this.notice.set(null);
+    this.campApi.deleteStructureNode(camp.id, node.id).subscribe({
+      next: () => { this.submitting.set(false); this.structureNodes.update(nodes => nodes.filter(value => value.id !== node.id)); this.notice.set('Der Struktureintrag wurde gelöscht.'); },
+      error: (response: HttpErrorResponse) => {
+        this.submitting.set(false);
+        this.error.set(response.status === 409 && response.error?.code === 'structure_node_has_children'
+          ? 'Ein Struktureintrag mit Untereinträgen kann nicht gelöscht werden.'
+          : response.status === 409 ? 'Während der Offlinephase kann die Struktur nicht geändert werden.'
+          : 'Der Struktureintrag konnte nicht gelöscht werden.');
       }
     });
   }

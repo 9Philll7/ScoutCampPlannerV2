@@ -162,6 +162,28 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task CampAdminCanDeleteOnlyLeafStructureNodes()
+    {
+        CreateCampResult created = await service.CreateAsync(ownerUserId, tenantId,
+            new CreateCampRequest("Löschen", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14),
+                [otherMembershipId]), TestContext.Current.CancellationToken);
+        var parent = await service.CreateStructureNodeAsync(otherUserId, created.Camp!.Id,
+            new CreateStructureNodeRequest(null, "Bereich"), TestContext.Current.CancellationToken);
+        var child = await service.CreateStructureNodeAsync(otherUserId, created.Camp.Id,
+            new CreateStructureNodeRequest(parent.Node!.Id, "Gruppe"), TestContext.Current.CancellationToken);
+
+        Assert.Equal(DeleteStructureNodeFailure.HasChildren, await service.DeleteStructureNodeAsync(
+            otherUserId, created.Camp.Id, parent.Node.Id, TestContext.Current.CancellationToken));
+        Assert.Equal(DeleteStructureNodeFailure.None, await service.DeleteStructureNodeAsync(
+            otherUserId, created.Camp.Id, child.Node!.Id, TestContext.Current.CancellationToken));
+        Assert.Equal(DeleteStructureNodeFailure.None, await service.DeleteStructureNodeAsync(
+            otherUserId, created.Camp.Id, parent.Node.Id, TestContext.Current.CancellationToken));
+        Assert.Empty(await camps.StructureNodes.ToArrayAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(2, await platform.AuditEvents.CountAsync(value =>
+            value.Action == "camp.structure-node.deleted", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task FailedAdministratorPersistenceRollsBackCampAndAudit()
     {
         await ExecuteScriptAsync("""
