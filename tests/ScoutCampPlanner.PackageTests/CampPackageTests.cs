@@ -52,8 +52,8 @@ public sealed class CampPackageTests
         await using var cloud = await DatabaseHarness.CreateAsync();
         var tenantId = Guid.NewGuid();
         var campId = Guid.NewGuid();
-        var structureNodeId = Guid.NewGuid();
         var stageId = Guid.NewGuid();
+        var structureNodeId = Guid.NewGuid();
         var estimateId = Guid.NewGuid();
         var mealId = Guid.NewGuid();
         cloud.Platform.Tenants.Add(new Tenant(tenantId, "Stamm Nord"));
@@ -119,12 +119,14 @@ public sealed class CampPackageTests
     {
         var tenantId = Guid.NewGuid();
         var campId = Guid.NewGuid();
+        var stageId = Guid.NewGuid();
         return new CampPackagePayload(
             new CampPackageManifest(1, tenantId, campId, Guid.NewGuid(), 1, CampPackageDirection.CloudToLocal,
                 ["Camp", "Catering"], DateTimeOffset.UtcNow),
             new TenantData(tenantId, "Tenant"), new CampData(
                 campId, tenantId, "Camp", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14), "Free", []),
-            [new CampStageData(Guid.NewGuid(), campId, "GuSp", 0)], [], [], []);
+            [new CampStageData(stageId, campId, "GuSp", 0)], [],
+            [new CampStageFoodFactorData(Guid.NewGuid(), campId, stageId, "GuSp", 1m)], [], []);
     }
 
     private sealed class DatabaseHarness : IAsyncDisposable

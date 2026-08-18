@@ -7,6 +7,7 @@ public sealed class CateringDbContext(DbContextOptions<CateringDbContext> option
 {
     public DbSet<MealPlan> MealPlans => Set<MealPlan>();
     public DbSet<TenantStageFoodFactor> TenantStageFoodFactors => Set<TenantStageFoodFactor>();
+    public DbSet<CampStageFoodFactor> CampStageFoodFactors => Set<CampStageFoodFactor>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -26,6 +27,14 @@ public sealed class CateringDbContext(DbContextOptions<CateringDbContext> option
             entity.Property(x => x.NormalizedStageName).HasMaxLength(100);
             entity.Property(x => x.Factor).HasPrecision(5, 2);
             entity.HasIndex(x => new { x.TenantId, x.NormalizedStageName }).IsUnique();
+        });
+        modelBuilder.Entity<CampStageFoodFactor>(entity =>
+        {
+            entity.ToTable("CampStageFoodFactors"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.StageName).HasMaxLength(100);
+            entity.Property(x => x.Factor).HasPrecision(5, 2);
+            entity.HasIndex(x => new { x.CampId, x.CampStageId }).IsUnique();
+            entity.HasIndex(x => x.CampId);
         });
     }
 }

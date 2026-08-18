@@ -65,7 +65,7 @@ The validated module dependency direction is:
 
 ## Camp package transfer
 
-Before the first product release, package format version 1 was extended with the required camp start and end date, the neutral Camp structure tree, its free or administrator-defined fixed-depth configuration, the stable camp-specific stage list, and anonymous participant estimates. The tenant stage template is not camp data and is therefore not transferred. The obsolete spike-only Camp cooking-unit payload was removed. Earlier spike-generated version-1 files are development artifacts and are intentionally rejected; no released compatibility promise is affected. Version 2 remains reserved for the validated encryption and signature model.
+Before the first product release, package format version 1 was extended with the required camp start and end date, the neutral Camp structure tree, its free or administrator-defined fixed-depth configuration, the stable camp-specific stage list, anonymous participant estimates, and the Catering-owned camp food factors. Tenant templates are not camp data and are therefore not transferred. The obsolete spike-only Camp cooking-unit payload was removed. Earlier spike-generated version-1 files are development artifacts and are intentionally rejected; no released compatibility promise is affected. Version 2 remains reserved for the validated encryption and signature model.
 
 - Camp packages are versioned domain-level transfer packages. A raw SQLite database file is not used as the transfer format.
 - Starting an offline phase freezes the camp in the source system for write operations.

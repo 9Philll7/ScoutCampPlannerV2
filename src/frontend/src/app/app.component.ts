@@ -10,7 +10,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { AuthenticationApiService, AuthenticatedUser } from './features/authentication/authentication-api.service';
-import { CampAdministratorOption, CampApiService, CampPlanningSummary, CampSummary, ParticipantEstimate, StructureConfiguration, StructureNodeSummary, TenantOption, TenantStageFoodFactor } from './features/camp/camp-api.service';
+import { CampAdministratorOption, CampApiService, CampPlanningSummary, CampStageFoodFactor, CampSummary, ParticipantEstimate, StructureConfiguration, StructureNodeSummary, TenantOption, TenantStageFoodFactor, WeightedStageTotal } from './features/camp/camp-api.service';
 import { SetupApiService } from './features/setup/setup-api.service';
 
 type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
@@ -170,6 +170,25 @@ type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
                         <button matButton type="submit" [disabled]="submitting()">Lagerstufen speichern</button>
                       </form>
                     } @else { <p>{{ campStageInput }}</p> }
+                    <h3>Verpflegungsfaktoren des Lagers</h3>
+                    <table><thead><tr><th>Stufe</th><th>KiJu-Faktor</th></tr></thead><tbody>
+                      @for (entry of campStageFoodFactors; track entry.campStageId) {
+                        <tr><td>{{ entry.stageName }}</td><td><input type="number" min="0.1" max="3" step="0.01"
+                          [(ngModel)]="entry.factor" [name]="'campFoodFactor-' + entry.campStageId"></td></tr>
+                      }
+                    </tbody></table>
+                    @if (camp.canEdit) {
+                      <button matButton type="button" (click)="saveCampStageFoodFactors(camp)">Faktoren speichern</button>
+                    }
+                    @if (weightedFoodTotals.length) {
+                      <h3>Gewichtete Verpflegungseinheiten</h3>
+                      <table><thead><tr><th>Stufe</th><th>KiJu</th><th>Leiter</th><th>Faktor</th><th>Einheiten</th></tr></thead><tbody>
+                        @for (total of weightedFoodTotals; track total.campStageId) {
+                          <tr><td>{{ total.stageName }}</td><td>{{ total.childYouthCount }}</td><td>{{ total.leaderCount }}</td>
+                            <td>{{ total.factor }}</td><td>{{ total.foodUnits }}</td></tr>
+                        }
+                      </tbody></table>
+                    }
                     <h3>{{ structureConfiguration()?.mode === 'Fixed' ? 'Fixierte Lagerstruktur' : 'Freie Lagerstruktur' }}</h3>
                     @if (planningSummary(); as summary) {
                       <h3>Planungsübersicht</h3>
@@ -313,6 +332,8 @@ export class AppComponent {
   moveTargetParentIds: Record<string, string> = {};
   participantEstimates: ParticipantEstimate[] = [];
   tenantStageFoodFactors: TenantStageFoodFactor[] = [];
+  campStageFoodFactors: CampStageFoodFactor[] = [];
+  weightedFoodTotals: WeightedStageTotal[] = [];
 
   constructor() { this.initialize(); }
 
@@ -440,10 +461,12 @@ export class AppComponent {
   toggleStructure(camp: CampSummary) {
     if (this.structureCampId() === camp.id) {
       this.structureCampId.set(null); this.structureNodes.set([]); this.structureConfiguration.set(null);
-      this.estimateNodeId.set(null); this.planningSummary.set(null); this.participantEstimates = []; return;
+      this.estimateNodeId.set(null); this.planningSummary.set(null); this.participantEstimates = [];
+      this.campStageFoodFactors = []; this.weightedFoodTotals = []; return;
     }
     this.structureCampId.set(camp.id); this.structureNodes.set([]);
     this.estimateNodeId.set(null); this.planningSummary.set(null); this.participantEstimates = [];
+    this.campStageFoodFactors = []; this.weightedFoodTotals = [];
     this.newStructureParentId = ''; this.newStructureNodeName = '';
     this.campApi.listStructure(camp.id).subscribe({
       next: nodes => { this.structureNodes.set(nodes); this.moveTargetParentIds = Object.fromEntries(nodes.map(node => [node.id, node.parentId ?? ''])); },
@@ -454,13 +477,16 @@ export class AppComponent {
     }});
     this.campApi.getCampStages(camp.id).subscribe({ next: stages => this.campStageInput = stages.map(value => value.name).join('\n') });
     this.loadPlanningSummary(camp.id);
+    this.loadCampStageFoodFactors(camp.id);
+    this.loadWeightedFoodSummary(camp.id);
   }
 
   saveCampStages(camp: CampSummary) {
     const names = this.campStageInput.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
     this.submitting.set(true); this.error.set(null);
     this.campApi.updateCampStages(camp.id, names).subscribe({
-      next: () => { this.submitting.set(false); this.notice.set('Die Lagerstufen wurden gespeichert.'); },
+      next: () => { this.submitting.set(false); this.notice.set('Die Lagerstufen wurden gespeichert.');
+        this.loadCampStageFoodFactors(camp.id); this.loadWeightedFoodSummary(camp.id); },
       error: () => { this.submitting.set(false); this.error.set('Die Lagerstufen konnten nicht gespeichert werden.'); }
     });
   }
@@ -502,7 +528,7 @@ export class AppComponent {
     const nodeId = this.estimateNodeId(); if (!nodeId) return;
     this.submitting.set(true); this.error.set(null);
     this.campApi.updateParticipantEstimates(camp.id, nodeId, this.participantEstimates).subscribe({
-      next: () => { this.submitting.set(false); this.notice.set('Die Teilnehmerschätzung wurde gespeichert.'); this.loadPlanningSummary(camp.id); },
+      next: () => { this.submitting.set(false); this.notice.set('Die Teilnehmerschätzung wurde gespeichert.'); this.loadPlanningSummary(camp.id); this.loadWeightedFoodSummary(camp.id); },
       error: () => { this.submitting.set(false); this.error.set('Die Teilnehmerschätzung konnte nicht gespeichert werden.'); }
     });
   }
@@ -515,6 +541,28 @@ export class AppComponent {
     this.campApi.getPlanningSummary(campId).subscribe({
       next: summary => this.planningSummary.set(summary),
       error: () => this.error.set('Die Planungsübersicht konnte nicht geladen werden.')
+    });
+  }
+
+  private loadCampStageFoodFactors(campId: string) {
+    this.campApi.getCampStageFoodFactors(campId).subscribe({
+      next: factors => this.campStageFoodFactors = factors,
+      error: () => this.error.set('Die Lager-Verpflegungsfaktoren konnten nicht geladen werden.')
+    });
+  }
+
+  saveCampStageFoodFactors(camp: CampSummary) {
+    this.submitting.set(true); this.error.set(null);
+    this.campApi.updateCampStageFoodFactors(camp.id, this.campStageFoodFactors).subscribe({
+      next: () => { this.submitting.set(false); this.notice.set('Die Lager-Verpflegungsfaktoren wurden gespeichert.'); this.loadWeightedFoodSummary(camp.id); },
+      error: () => { this.submitting.set(false); this.error.set('Die Lager-Verpflegungsfaktoren sind ungültig.'); }
+    });
+  }
+
+  private loadWeightedFoodSummary(campId: string) {
+    this.campApi.getWeightedFoodSummary(campId).subscribe({
+      next: totals => this.weightedFoodTotals = totals,
+      error: () => this.error.set('Die gewichtete Verpflegungsübersicht konnte nicht geladen werden.')
     });
   }
 

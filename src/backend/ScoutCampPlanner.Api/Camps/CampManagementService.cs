@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using ScoutCampPlanner.Camp.Infrastructure;
+using ScoutCampPlanner.Catering.Domain;
+using ScoutCampPlanner.Catering.Infrastructure;
 using ScoutCampPlanner.Platform.Application.Auditing;
 using ScoutCampPlanner.Platform.Application.Authorization;
 using ScoutCampPlanner.Platform.Domain;
@@ -24,6 +26,7 @@ public sealed record StructureConfiguration(string Mode, IReadOnlyList<string> L
 public sealed record UpdateStructureConfigurationRequest(IReadOnlyCollection<string>? LevelNames);
 public sealed record MoveStructureNodeRequest(Guid? ParentId);
 public sealed record StageTemplateEntrySummary(Guid Id, string Name, int SortOrder);
+public sealed record CampStageContext(Guid TenantId, IReadOnlyList<StageTemplateEntrySummary> Stages);
 public sealed record UpdateStageTemplateRequest(IReadOnlyList<string>? StageNames);
 public enum UpdateStageTemplateFailure { None, Forbidden, InvalidStages }
 public sealed record ParticipantEstimateSummary(Guid CampStageId, string StageName, int ChildYouthCount, int LeaderCount);
@@ -69,6 +72,7 @@ public enum MoveStructureNodeFailure { None, NotFound, Frozen, Cycle, DuplicateN
 public sealed class CampManagementService(
     PlatformDbContext platform,
     CampDbContext camps,
+    CateringDbContext catering,
     IAuditedOperationExecutor auditedOperation,
     AuditRuntimeState auditRuntime,
     TimeProvider timeProvider)
@@ -163,6 +167,16 @@ public sealed class CampManagementService(
             new StageTemplateEntrySummary(Guid.Empty, name, index)).ToList();
     }
 
+    public async Task<CampStageContext?> GetCampStageContextAsync(
+        Guid actorUserId, Guid campId, CancellationToken cancellationToken = default)
+    {
+        var stages = await GetCampStagesAsync(actorUserId, campId, cancellationToken);
+        if (stages is null) return null;
+        Guid tenantId = await camps.Camps.Where(value => value.Id == campId)
+            .Select(value => value.TenantId).SingleAsync(cancellationToken);
+        return new(tenantId, stages);
+    }
+
     public async Task<UpdateStageTemplateFailure> UpdateCampStagesAsync(
         Guid actorUserId, Guid campId, UpdateStageTemplateRequest request, CancellationToken cancellationToken = default)
     {
@@ -178,6 +192,11 @@ public sealed class CampManagementService(
             return UpdateStageTemplateFailure.InvalidStages;
         var entries = names.Select((name, index) => new ScoutCampPlanner.Camp.Domain.CampStage(
             Guid.NewGuid(), campId, name, index)).ToArray();
+        var existingFactors = await catering.CampStageFoodFactors.Where(value => value.CampId == campId)
+            .ToListAsync(cancellationToken);
+        var replacementFactors = entries.Select(stage => new CampStageFoodFactor(Guid.NewGuid(), campId, stage.Id,
+            stage.Name, existingFactors.FirstOrDefault(value =>
+                value.StageName.Trim().ToUpperInvariant() == stage.NormalizedName)?.Factor ?? 1m)).ToArray();
         var auditEvent = new AuditEventDraft(Guid.NewGuid(), timeProvider.GetUtcNow(), "camp.stages.updated", "success",
             actorUserId, camp.TenantId, camp.Id, "camp-stages", camp.Id, "server", auditRuntime.InstanceId,
             Guid.NewGuid(), null, null, new Dictionary<string, string> { ["stageCount"] = entries.Length.ToString() });
@@ -185,12 +204,19 @@ public sealed class CampManagementService(
         {
             var transaction = platform.Database.CurrentTransaction!;
             await camps.Database.UseTransactionAsync(transaction.GetDbTransaction(), operationCancellationToken);
+            await catering.Database.UseTransactionAsync(transaction.GetDbTransaction(), operationCancellationToken);
             try
             {
                 await camps.CampStages.Where(value => value.CampId == campId).ExecuteDeleteAsync(operationCancellationToken);
+                await catering.CampStageFoodFactors.Where(value => value.CampId == campId).ExecuteDeleteAsync(operationCancellationToken);
                 camps.CampStages.AddRange(entries); await camps.SaveChangesAsync(operationCancellationToken);
+                catering.CampStageFoodFactors.AddRange(replacementFactors); await catering.SaveChangesAsync(operationCancellationToken);
             }
-            finally { await camps.Database.UseTransactionAsync(null, CancellationToken.None); }
+            finally
+            {
+                await camps.Database.UseTransactionAsync(null, CancellationToken.None);
+                await catering.Database.UseTransactionAsync(null, CancellationToken.None);
+            }
         }, cancellationToken);
         return UpdateStageTemplateFailure.None;
     }
@@ -601,6 +627,12 @@ public sealed class CampManagementService(
         var stageNames = await camps.TenantStageTemplateEntries.Where(value => value.TenantId == tenantId)
             .OrderBy(value => value.SortOrder).Select(value => value.Name).ToListAsync(cancellationToken);
         if (stageNames.Count == 0) stageNames.AddRange(SuggestedStageNames);
+        var campStages = stageNames.Select((name, index) => new ScoutCampPlanner.Camp.Domain.CampStage(
+            Guid.NewGuid(), camp.Id, name, index)).ToArray();
+        var tenantFactors = await catering.TenantStageFoodFactors.Where(value => value.TenantId == tenantId)
+            .ToDictionaryAsync(value => value.NormalizedStageName, cancellationToken);
+        var campFactors = campStages.Select(stage => new CampStageFoodFactor(Guid.NewGuid(), camp.Id, stage.Id,
+            stage.Name, tenantFactors.TryGetValue(stage.NormalizedName, out var configured) ? configured.Factor : 1m)).ToArray();
         var auditEvent = new AuditEventDraft(
             Guid.NewGuid(), timeProvider.GetUtcNow(), "camp.created", "success", actorUserId, tenantId, camp.Id,
             "camp", camp.Id, "server", auditRuntime.InstanceId, Guid.NewGuid(), null, null,
@@ -613,11 +645,12 @@ public sealed class CampManagementService(
                 var transaction = platform.Database.CurrentTransaction
                     ?? throw new InvalidOperationException("The Platform transaction is unavailable.");
                 await camps.Database.UseTransactionAsync(transaction.GetDbTransaction(), operationCancellationToken);
+                await catering.Database.UseTransactionAsync(transaction.GetDbTransaction(), operationCancellationToken);
                 try
                 {
                     camps.Camps.Add(camp);
-                    camps.CampStages.AddRange(stageNames.Select((name, index) =>
-                        new ScoutCampPlanner.Camp.Domain.CampStage(Guid.NewGuid(), camp.Id, name, index)));
+                    camps.CampStages.AddRange(campStages);
+                    catering.CampStageFoodFactors.AddRange(campFactors);
                     foreach (TenantMembership administrator in administrators)
                     {
                         var membership = new CampMembership(Guid.NewGuid(), administrator.Id, camp.Id);
@@ -625,16 +658,19 @@ public sealed class CampManagementService(
                         platform.CampRoleAssignments.Add(new CampRoleAssignment(membership.Id, Roles.CampAdmin));
                     }
                     await camps.SaveChangesAsync(operationCancellationToken);
+                    await catering.SaveChangesAsync(operationCancellationToken);
                 }
                 finally
                 {
                     await camps.Database.UseTransactionAsync(null, CancellationToken.None);
+                    await catering.Database.UseTransactionAsync(null, CancellationToken.None);
                 }
             }, cancellationToken);
         }
         catch (DbUpdateException)
         {
             camps.ChangeTracker.Clear();
+            catering.ChangeTracker.Clear();
             if (await camps.Camps.AsNoTracking().AnyAsync(existing => existing.TenantId == tenantId &&
                 existing.NormalizedName == normalizedName && existing.StartDate == request.StartDate &&
                 existing.EndDate == request.EndDate, cancellationToken))
@@ -644,6 +680,7 @@ public sealed class CampManagementService(
         catch
         {
             camps.ChangeTracker.Clear();
+            catering.ChangeTracker.Clear();
             throw;
         }
 

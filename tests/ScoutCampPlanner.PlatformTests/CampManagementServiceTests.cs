@@ -331,6 +331,31 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task NewCampReceivesStableFoodFactorsAndWeightedTotalsCountLeadersFully()
+    {
+        await service.UpdateStageTemplateAsync(ownerUserId, tenantId,
+            new UpdateStageTemplateRequest(["Biber"]), TestContext.Current.CancellationToken);
+        await cateringService.UpdateTenantFactorsAsync(ownerUserId, tenantId, ["Biber"],
+            new UpdateTenantStageFoodFactorsRequest([new("Biber", 0.5m)]), TestContext.Current.CancellationToken);
+        CreateCampResult created = await service.CreateAsync(ownerUserId, tenantId,
+            new CreateCampRequest("Faktorlager", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14),
+                [otherMembershipId]), TestContext.Current.CancellationToken);
+        CampStageContext context = (await service.GetCampStageContextAsync(
+            otherUserId, created.Camp!.Id, TestContext.Current.CancellationToken))!;
+        await cateringService.UpdateTenantFactorsAsync(ownerUserId, tenantId, ["Biber"],
+            new UpdateTenantStageFoodFactorsRequest([new("Biber", 0.9m)]), TestContext.Current.CancellationToken);
+        var factors = await cateringService.GetCampFactorsAsync(tenantId, created.Camp.Id,
+            context.Stages.Select(value => new CampStageReference(value.Id, value.Name)).ToList(),
+            TestContext.Current.CancellationToken);
+        Assert.Equal(0.5m, factors.Single().Factor);
+
+        var summary = new CampPlanningSummary(
+            [new StageEstimateTotal(context.Stages.Single().Id, "Biber", 20, 4)], []);
+        WeightedStageTotal weighted = CateringPlanningService.CalculateWeightedTotals(summary, factors).Single();
+        Assert.Equal(14m, weighted.FoodUnits);
+    }
+
+    [Fact]
     public async Task FailedAdministratorPersistenceRollsBackCampAndAudit()
     {
         await ExecuteScriptAsync("""
@@ -385,7 +410,7 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
         var keys = new FixedAuditKeyProvider();
         await new AuditJournalInitializer(platform, keys).InitializeAsync(
             instanceId, Guid.NewGuid(), Now, TestContext.Current.CancellationToken);
-        service = new CampManagementService(platform, camps, new AuditedOperationExecutor(platform, keys),
+        service = new CampManagementService(platform, camps, catering, new AuditedOperationExecutor(platform, keys),
             new AuditRuntimeState(instanceId), new FixedTimeProvider(Now));
         cateringService = new CateringPlanningService(platform, catering,
             new AuditedOperationExecutor(platform, keys), new AuditRuntimeState(instanceId), new FixedTimeProvider(Now));

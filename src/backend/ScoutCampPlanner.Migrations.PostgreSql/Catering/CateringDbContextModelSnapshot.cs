@@ -23,6 +23,37 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CampStageFoodFactor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CampId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CampStageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Factor")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<string>("StageName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampId");
+
+                    b.HasIndex("CampId", "CampStageId")
+                        .IsUnique();
+
+                    b.ToTable("CampStageFoodFactors", "catering");
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.MealPlan", b =>
                 {
                     b.Property<Guid>("Id")

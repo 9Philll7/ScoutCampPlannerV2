@@ -347,6 +347,43 @@ app.MapGet("/api/camps/{campId:guid}/planning-summary", async (
         Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId, cancellationToken);
     return summary is null ? Results.NotFound() : Results.Ok(summary);
 }).RequireAuthorization();
+app.MapGet("/api/camps/{campId:guid}/catering-stage-factors", async (
+    Guid campId, ClaimsPrincipal principal, CampManagementService camps, CateringPlanningService catering,
+    CancellationToken cancellationToken) =>
+{
+    var context = await camps.GetCampStageContextAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId, cancellationToken);
+    if (context is null) return Results.NotFound();
+    return Results.Ok(await catering.GetCampFactorsAsync(context.TenantId, campId,
+        context.Stages.Select(value => new CampStageReference(value.Id, value.Name)).ToList(), cancellationToken));
+}).RequireAuthorization();
+app.MapPut("/api/camps/{campId:guid}/catering-stage-factors", async (
+    Guid campId, UpdateCampStageFoodFactorsRequest request, ClaimsPrincipal principal,
+    CampManagementService camps, CateringPlanningService catering, CancellationToken cancellationToken) =>
+{
+    Guid actorId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    if (!await camps.HasCampPermissionAsync(actorId, campId,
+        ScoutCampPlanner.Platform.Application.Authorization.Permissions.Camp.Edit, cancellationToken))
+        return Results.NotFound();
+    var context = await camps.GetCampStageContextAsync(actorId, campId, cancellationToken);
+    if (context is null) return Results.NotFound();
+    var failure = await catering.UpdateCampFactorsAsync(actorId, context.TenantId, campId,
+        context.Stages.Select(value => new CampStageReference(value.Id, value.Name)).ToList(), request, cancellationToken);
+    return failure == UpdateFoodFactorsFailure.None ? Results.NoContent() : Results.ValidationProblem(
+        new Dictionary<string, string[]> { ["factors"] = ["Ungültige Lagerfaktoren."] });
+}).RequireAuthorization();
+app.MapGet("/api/camps/{campId:guid}/weighted-food-summary", async (
+    Guid campId, ClaimsPrincipal principal, CampManagementService camps, CateringPlanningService catering,
+    CancellationToken cancellationToken) =>
+{
+    Guid actorId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    var context = await camps.GetCampStageContextAsync(actorId, campId, cancellationToken);
+    var summary = await camps.GetPlanningSummaryAsync(actorId, campId, cancellationToken);
+    if (context is null || summary is null) return Results.NotFound();
+    var factors = await catering.GetCampFactorsAsync(context.TenantId, campId,
+        context.Stages.Select(value => new CampStageReference(value.Id, value.Name)).ToList(), cancellationToken);
+    return Results.Ok(CateringPlanningService.CalculateWeightedTotals(summary, factors));
+}).RequireAuthorization();
 app.MapPut("/api/camps/{campId:guid}/stages", async (
     Guid campId, UpdateStageTemplateRequest request, ClaimsPrincipal principal,
     CampManagementService management, CancellationToken cancellationToken) =>

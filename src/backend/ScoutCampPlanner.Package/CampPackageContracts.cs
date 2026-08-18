@@ -30,6 +30,7 @@ public sealed record CampPackagePayload(
     CampData Camp,
     IReadOnlyList<CampStageData> CampStages,
     IReadOnlyList<ParticipantEstimateData> ParticipantEstimates,
+    IReadOnlyList<CampStageFoodFactorData> CampStageFoodFactors,
     IReadOnlyList<StructureNodeData> StructureNodes,
     IReadOnlyList<MealPlanData> MealPlans);
 
@@ -41,6 +42,7 @@ public sealed record StructureNodeData(Guid Id, Guid CampId, Guid? ParentId, str
 public sealed record CampStageData(Guid Id, Guid CampId, string Name, int SortOrder);
 public sealed record ParticipantEstimateData(Guid Id, Guid CampId, Guid StructureNodeId, Guid CampStageId,
     int ChildYouthCount, int LeaderCount);
+public sealed record CampStageFoodFactorData(Guid Id, Guid CampId, Guid CampStageId, string StageName, decimal Factor);
 public sealed record MealPlanData(Guid Id, Guid CampId, string Name);
 
 public sealed class CampPackageValidationException(string message) : Exception(message);

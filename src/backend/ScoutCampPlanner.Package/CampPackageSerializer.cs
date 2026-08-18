@@ -52,7 +52,7 @@ public static class CampPackageSerializer
 
     private static void Validate(CampPackagePayload package)
     {
-        if (package.CampStages is null || package.ParticipantEstimates is null)
+        if (package.CampStages is null || package.ParticipantEstimates is null || package.CampStageFoodFactors is null)
             throw new CampPackageValidationException("Camp stages are missing.");
         if (package.Manifest.FormatVersion != CampPackageVersions.Current)
             throw new CampPackageValidationException($"Unsupported package version {package.Manifest.FormatVersion}.");
@@ -74,6 +74,7 @@ public static class CampPackageSerializer
             throw new CampPackageValidationException("Camp structure levels are invalid.");
         if (package.CampStages.Any(x => x.CampId != package.Camp.Id) ||
             package.ParticipantEstimates.Any(x => x.CampId != package.Camp.Id) ||
+            package.CampStageFoodFactors.Any(x => x.CampId != package.Camp.Id) ||
             package.StructureNodes.Any(x => x.CampId != package.Camp.Id) ||
             package.MealPlans.Any(x => x.CampId != package.Camp.Id))
             throw new CampPackageValidationException("Package contains data for another camp.");
@@ -83,6 +84,12 @@ public static class CampPackageSerializer
             package.CampStages.Select(x => x.SortOrder).Order().Where((value, index) => value != index).Any())
             throw new CampPackageValidationException("Camp stages are invalid.");
         var stageIds = package.CampStages.Select(x => x.Id).ToHashSet();
+        if (package.CampStageFoodFactors.Count != package.CampStages.Count ||
+            package.CampStageFoodFactors.Select(x => x.Id).Distinct().Count() != package.CampStageFoodFactors.Count ||
+            package.CampStageFoodFactors.Select(x => x.CampStageId).Distinct().Count() != package.CampStageFoodFactors.Count ||
+            package.CampStageFoodFactors.Any(x => x.Id == Guid.Empty || !stageIds.Contains(x.CampStageId) ||
+                string.IsNullOrWhiteSpace(x.StageName) || x.Factor < 0.1m || x.Factor > 3m || decimal.Round(x.Factor, 2) != x.Factor))
+            throw new CampPackageValidationException("Camp stage food factors are invalid.");
         var structureIds = package.StructureNodes.Select(x => x.Id).ToHashSet();
         if (package.ParticipantEstimates.Select(x => x.Id).Distinct().Count() != package.ParticipantEstimates.Count ||
             package.ParticipantEstimates.Select(x => new { x.StructureNodeId, x.CampStageId }).Distinct().Count() != package.ParticipantEstimates.Count ||
