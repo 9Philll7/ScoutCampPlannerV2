@@ -29,6 +29,7 @@ public sealed record UpdateStructureConfigurationRequest(IReadOnlyCollection<str
 public sealed record MoveStructureNodeRequest(Guid? ParentId);
 public sealed record StageTemplateEntrySummary(Guid Id, string Name, int SortOrder);
 public sealed record CampStageContext(Guid TenantId, IReadOnlyList<StageTemplateEntrySummary> Stages);
+public sealed record CampMealContext(Guid TenantId, DateOnly StartDate, DateOnly EndDate, bool IsFrozen);
 public sealed record UpdateStageTemplateRequest(IReadOnlyList<string>? StageNames);
 public enum UpdateStageTemplateFailure { None, Forbidden, InvalidStages }
 public sealed record ParticipantEstimateSummary(Guid CampStageId, string StageName, int ChildYouthCount, int LeaderCount);
@@ -177,6 +178,15 @@ public sealed class CampManagementService(
         Guid tenantId = await camps.Camps.Where(value => value.Id == campId)
             .Select(value => value.TenantId).SingleAsync(cancellationToken);
         return new(tenantId, stages);
+    }
+
+    public async Task<CampMealContext?> GetCampMealContextAsync(
+        Guid actorUserId, Guid campId, CancellationToken cancellationToken = default)
+    {
+        if (!await HasCampPermissionAsync(actorUserId, campId, Permissions.Camp.View, cancellationToken)) return null;
+        return await camps.Camps.Where(value => value.Id == campId && value.StartDate != null && value.EndDate != null)
+            .Select(value => new CampMealContext(value.TenantId, value.StartDate!.Value, value.EndDate!.Value, value.IsFrozen))
+            .SingleOrDefaultAsync(cancellationToken);
     }
 
     public async Task<UpdateStageTemplateFailure> UpdateCampStagesAsync(
@@ -698,6 +708,11 @@ public sealed class CampManagementService(
             .ToDictionaryAsync(value => value.NormalizedStageName, cancellationToken);
         var campFactors = campStages.Select(stage => new CampStageFoodFactor(Guid.NewGuid(), camp.Id, stage.Id,
             stage.Name, tenantFactors.TryGetValue(stage.NormalizedName, out var configured) ? configured.Factor : 1m)).ToArray();
+        string[] defaultMealNames = ["Frühstück", "Mittagessen", "Abendessen"];
+        var mealTypes = defaultMealNames.Select((name, index) => new CampMealType(Guid.NewGuid(), camp.Id, name, index)).ToArray();
+        var meals = Enumerable.Range(0, request.EndDate.DayNumber - request.StartDate.DayNumber + 1)
+            .SelectMany(offset => mealTypes.Select(type => new CampMeal(
+                Guid.NewGuid(), camp.Id, type.Id, request.StartDate.AddDays(offset)))).ToArray();
         var auditEvent = new AuditEventDraft(
             Guid.NewGuid(), timeProvider.GetUtcNow(), "camp.created", "success", actorUserId, tenantId, camp.Id,
             "camp", camp.Id, "server", auditRuntime.InstanceId, Guid.NewGuid(), null, null,
@@ -716,6 +731,8 @@ public sealed class CampManagementService(
                     camps.Camps.Add(camp);
                     camps.CampStages.AddRange(campStages);
                     catering.CampStageFoodFactors.AddRange(campFactors);
+                    catering.CampMealTypes.AddRange(mealTypes);
+                    catering.CampMeals.AddRange(meals);
                     foreach (TenantMembership administrator in administrators)
                     {
                         var membership = new CampMembership(Guid.NewGuid(), administrator.Id, camp.Id);
@@ -785,14 +802,28 @@ public sealed class CampManagementService(
                 var transaction = platform.Database.CurrentTransaction
                     ?? throw new InvalidOperationException("The Platform transaction is unavailable.");
                 await camps.Database.UseTransactionAsync(transaction.GetDbTransaction(), operationCancellationToken);
+                await catering.Database.UseTransactionAsync(transaction.GetDbTransaction(), operationCancellationToken);
                 try
                 {
                     camp.UpdateDetails(request.Name, request.StartDate, request.EndDate);
+                    var mealTypes = await catering.CampMealTypes.Where(value => value.CampId == campId)
+                        .ToListAsync(operationCancellationToken);
+                    await catering.CampMeals.Where(value => value.CampId == campId &&
+                        (value.Date < request.StartDate || value.Date > request.EndDate)).ExecuteDeleteAsync(operationCancellationToken);
+                    var existing = await catering.CampMeals.Where(value => value.CampId == campId)
+                        .Select(value => new { value.Date, value.MealTypeId }).ToListAsync(operationCancellationToken);
+                    var existingKeys = existing.Select(value => (value.Date, value.MealTypeId)).ToHashSet();
+                    for (DateOnly date = request.StartDate; date <= request.EndDate; date = date.AddDays(1))
+                        foreach (var type in mealTypes)
+                            if (!existingKeys.Contains((date, type.Id)))
+                                catering.CampMeals.Add(new CampMeal(Guid.NewGuid(), campId, type.Id, date));
                     await camps.SaveChangesAsync(operationCancellationToken);
+                    await catering.SaveChangesAsync(operationCancellationToken);
                 }
                 finally
                 {
                     await camps.Database.UseTransactionAsync(null, CancellationToken.None);
+                    await catering.Database.UseTransactionAsync(null, CancellationToken.None);
                 }
             }, cancellationToken);
         }

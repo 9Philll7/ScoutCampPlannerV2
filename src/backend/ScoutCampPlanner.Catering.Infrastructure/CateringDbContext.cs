@@ -6,6 +6,8 @@ namespace ScoutCampPlanner.Catering.Infrastructure;
 public sealed class CateringDbContext(DbContextOptions<CateringDbContext> options) : DbContext(options)
 {
     public DbSet<MealPlan> MealPlans => Set<MealPlan>();
+    public DbSet<CampMealType> CampMealTypes => Set<CampMealType>();
+    public DbSet<CampMeal> CampMeals => Set<CampMeal>();
     public DbSet<TenantStageFoodFactor> TenantStageFoodFactors => Set<TenantStageFoodFactor>();
     public DbSet<CampStageFoodFactor> CampStageFoodFactors => Set<CampStageFoodFactor>();
 
@@ -19,6 +21,20 @@ public sealed class CateringDbContext(DbContextOptions<CateringDbContext> option
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(200);
             entity.HasIndex(x => x.CampId);
+        });
+        modelBuilder.Entity<CampMealType>(entity =>
+        {
+            entity.ToTable("CampMealTypes"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(100);
+            entity.Property(x => x.NormalizedName).HasMaxLength(100);
+            entity.HasIndex(x => new { x.CampId, x.NormalizedName }).IsUnique();
+            entity.HasIndex(x => new { x.CampId, x.SortOrder }).IsUnique();
+        });
+        modelBuilder.Entity<CampMeal>(entity =>
+        {
+            entity.ToTable("CampMeals"); entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.CampId, x.Date, x.MealTypeId }).IsUnique();
+            entity.HasIndex(x => x.MealTypeId);
         });
         modelBuilder.Entity<TenantStageFoodFactor>(entity =>
         {

@@ -15,7 +15,7 @@ import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { concatMap, forkJoin } from 'rxjs';
 import { AuthenticationApiService, AuthenticatedUser } from './features/authentication/authentication-api.service';
-import { CampAdministratorOption, CampApiService, CampPlanningSummary, CampStageFoodFactor, CampSummary, ParticipantEstimate, StructureConfiguration, StructureNodeSummary, TenantOption, TenantStageFoodFactor, WeightedStageTotal } from './features/camp/camp-api.service';
+import { CampAdministratorOption, CampApiService, CampMeal, CampMealType, CampPlanningSummary, CampStageFoodFactor, CampSummary, ParticipantEstimate, StructureConfiguration, StructureNodeSummary, TenantOption, TenantStageFoodFactor, WeightedStageTotal } from './features/camp/camp-api.service';
 import { SetupApiService } from './features/setup/setup-api.service';
 import { ActionIconComponent } from './shared/action-icon.component';
 
@@ -546,6 +546,54 @@ type CampSection = 'general' | 'structure' | 'catering';
                   }
                   @if (campSection() === 'catering') {
                     <section class="settings-section">
+                      <div class="section-heading"><div><p class="eyebrow">Mahlzeiten</p><h3>Tagesplan</h3></div>
+                        @if (camp.canEdit) {
+                          <button matIconButton type="button" class="icon-only save-required" aria-label="Mahlzeitenbezeichnungen speichern"
+                            matTooltip="Mahlzeitenbezeichnungen speichern" (click)="saveMealTypes(camp)"
+                            [disabled]="submitting() || camp.isFrozen || !mealTypesChanged()"><scp-action-icon name="save"/></button>
+                        }
+                      </div>
+                      <p class="context-info">Alle Mahlzeiten sind zunächst an jedem Lagertag aktiv. Deaktiviere einzelne Einträge etwa für An- und Abreisetage.</p>
+                      <div class="meal-type-list">
+                        @for (type of mealTypes(); track type.id; let index = $index) {
+                          <div class="meal-type-entry"><mat-form-field appearance="outline"><mat-label>Mahlzeitenbezeichnung</mat-label>
+                            <input matInput [ngModel]="type.name" (ngModelChange)="updateMealTypeName(index, $event)"
+                              [name]="'mealType-' + type.id" maxlength="100" [disabled]="!camp.canEdit || camp.isFrozen">
+                          </mat-form-field>
+                          @if (camp.canEdit && !camp.isFrozen) {
+                            <button matIconButton type="button" class="icon-only" aria-label="Bezeichnung nach vorne verschieben"
+                              matTooltip="Nach vorne verschieben" (click)="moveMealType(index, -1)" [disabled]="$first">
+                              <scp-action-icon name="up"/></button>
+                            <button matIconButton type="button" class="icon-only" aria-label="Bezeichnung nach hinten verschieben"
+                              matTooltip="Nach hinten verschieben" (click)="moveMealType(index, 1)" [disabled]="$last">
+                              <scp-action-icon name="down"/></button>
+                            <button matIconButton type="button" class="icon-only remove-action" aria-label="Bezeichnung entfernen"
+                              matTooltip="Bezeichnung entfernen" (click)="removeMealType(index)" [disabled]="mealTypes().length <= 1">
+                              <scp-action-icon name="remove"/></button>
+                          }</div>
+                        }
+                        @if (camp.canEdit && !camp.isFrozen) {
+                          <button matButton type="button" (click)="addMealType()"><scp-action-icon name="add"/>Bezeichnung hinzufügen</button>
+                        }
+                      </div>
+                      @if (mealDates().length) {
+                        <div class="meal-plan-table"><table><thead><tr><th>Datum</th>
+                          @for (type of mealTypes(); track type.id) { <th>{{ type.name }}</th> }
+                        </tr></thead><tbody>
+                          @for (date of mealDates(); track date) {
+                            <tr><td>{{ date }}</td>
+                              @for (type of mealTypes(); track type.id) {
+                                <td>@if (mealFor(date, type.id); as meal) {
+                                  <mat-checkbox [checked]="meal.isActive" (change)="setMealActivity(camp, meal, $event.checked)"
+                                    [disabled]="!camp.canEdit || camp.isFrozen || submitting()"/>
+                                }</td>
+                              }
+                            </tr>
+                          }
+                        </tbody></table></div>
+                      }
+                    </section>
+                    <section class="settings-section">
                       <div class="section-heading"><div><p class="eyebrow">Verpflegungsplanung</p><h3>Gewichtete Verpflegungseinheiten</h3></div></div>
                       <p class="context-info">Die Einheiten ergeben sich aus den Schätzwerten der Lagerstruktur und den Faktoren der Lagerstufen.</p>
                       @if (weightedFoodTotals().length) {
@@ -641,6 +689,9 @@ export class AppComponent {
   private persistedCampStageFoodFactors: CampStageFoodFactor[] = [];
   readonly editingCampStageIndexes = signal<ReadonlySet<number>>(new Set());
   readonly weightedFoodTotals = signal<WeightedStageTotal[]>([]);
+  readonly mealTypes = signal<CampMealType[]>([]);
+  readonly meals = signal<CampMeal[]>([]);
+  private persistedMealTypeNames: string[] = [];
 
   constructor() { this.initialize(); }
 
@@ -770,6 +821,7 @@ export class AppComponent {
   openCampCatering(camp: CampSummary) {
     this.campSection.set('catering');
     this.loadWeightedFoodSummary(camp.id);
+    this.loadMealPlan(camp.id);
   }
 
   closeCamp() {
@@ -1136,6 +1188,47 @@ export class AppComponent {
     this.campApi.getWeightedFoodSummary(campId).subscribe({
       next: totals => this.weightedFoodTotals.set(totals),
       error: () => this.error.set('Die gewichtete Verpflegungsübersicht konnte nicht geladen werden.')
+    });
+  }
+
+  private loadMealPlan(campId: string) {
+    this.campApi.getMealPlan(campId).subscribe({ next: plan => {
+      this.mealTypes.set(plan.mealTypes); this.meals.set(plan.meals);
+      this.persistedMealTypeNames = plan.mealTypes.map(value => value.name);
+    }, error: () => this.error.set('Der Mahlzeitenplan konnte nicht geladen werden.') });
+  }
+
+  mealDates() { return [...new Set(this.meals().map(value => value.date))].sort(); }
+  mealFor(date: string, mealTypeId: string) { return this.meals().find(value => value.date === date && value.mealTypeId === mealTypeId); }
+  mealTypesChanged() {
+    const current = this.mealTypes().map(value => value.name.trim());
+    return current.length !== this.persistedMealTypeNames.length || current.some((value, index) => value !== this.persistedMealTypeNames[index]);
+  }
+  updateMealTypeName(index: number, name: string) {
+    this.mealTypes.update(values => values.map((value, candidate) => candidate === index ? { ...value, name } : value));
+  }
+  addMealType() { this.mealTypes.update(values => [...values, { id: `new-${crypto.randomUUID()}`, name: '', sortOrder: values.length }]); }
+  removeMealType(index: number) { this.mealTypes.update(values => values.filter((_, candidate) => candidate !== index)); }
+  moveMealType(index: number, direction: -1 | 1) {
+    const values = [...this.mealTypes()]; const target = index + direction;
+    if (target < 0 || target >= values.length) return;
+    [values[index], values[target]] = [values[target], values[index]];
+    this.mealTypes.set(values.map((value, sortOrder) => ({ ...value, sortOrder })));
+  }
+  saveMealTypes(camp: CampSummary) {
+    const names = this.mealTypes().map(value => value.name.trim());
+    if (!names.length || names.some(value => !value) || this.submitting()) return;
+    this.submitting.set(true); this.error.set(null);
+    this.campApi.updateMealTypes(camp.id, names).subscribe({
+      next: () => { this.submitting.set(false); this.notice.set('Die Mahlzeitenbezeichnungen wurden gespeichert.'); this.loadMealPlan(camp.id); },
+      error: () => { this.submitting.set(false); this.error.set('Die Mahlzeitenbezeichnungen konnten nicht gespeichert werden.'); }
+    });
+  }
+  setMealActivity(camp: CampSummary, meal: CampMeal, isActive: boolean) {
+    this.submitting.set(true); this.error.set(null);
+    this.campApi.updateMealActivity(camp.id, meal.id, isActive).subscribe({
+      next: () => { this.submitting.set(false); this.meals.update(values => values.map(value => value.id === meal.id ? { ...value, isActive } : value)); },
+      error: () => { this.submitting.set(false); this.error.set('Die Mahlzeit konnte nicht geändert werden.'); }
     });
   }
 

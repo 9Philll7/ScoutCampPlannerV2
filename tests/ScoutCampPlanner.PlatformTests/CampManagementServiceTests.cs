@@ -410,6 +410,39 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
             .SingleAsync(TestContext.Current.CancellationToken)).Sequence);
     }
 
+    [Fact]
+    public async Task NewCampGetsDefaultMealsForEveryCampDay()
+    {
+        var created = await service.CreateAsync(ownerUserId, tenantId,
+            new CreateCampRequest("Mahlzeiten", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 3), [otherMembershipId]),
+            TestContext.Current.CancellationToken);
+        var plan = await cateringService.GetMealPlanAsync(created.Camp!.Id, new DateOnly(2027, 7, 1),
+            new DateOnly(2027, 7, 3), TestContext.Current.CancellationToken);
+        Assert.Equal(["Frühstück", "Mittagessen", "Abendessen"], plan.MealTypes.Select(value => value.Name));
+        Assert.Equal(9, plan.Meals.Count);
+        Assert.All(plan.Meals, meal => Assert.True(meal.IsActive));
+    }
+
+    [Fact]
+    public async Task MealTypesAndIndividualActivityCanBeChanged()
+    {
+        var created = await service.CreateAsync(ownerUserId, tenantId,
+            new CreateCampRequest("Mahlzeiten ändern", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 2), [otherMembershipId]),
+            TestContext.Current.CancellationToken);
+        Guid campId = created.Camp!.Id;
+        Assert.Equal(UpdateCampMealsFailure.None, await cateringService.UpdateMealTypesAsync(ownerUserId, tenantId,
+            campId, new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 2), false,
+            new UpdateCampMealTypesRequest(["Brunch", "Abendessen"]), TestContext.Current.CancellationToken));
+        var plan = await cateringService.GetMealPlanAsync(campId, new DateOnly(2027, 7, 1),
+            new DateOnly(2027, 7, 2), TestContext.Current.CancellationToken);
+        Assert.Equal(4, plan.Meals.Count);
+        var brunch = plan.Meals.First(value => value.MealTypeName == "Brunch");
+        Assert.Equal(UpdateCampMealsFailure.None, await cateringService.SetMealActivityAsync(ownerUserId, tenantId, campId, brunch.Id, false,
+            new UpdateCampMealActivityRequest(false), TestContext.Current.CancellationToken));
+        Assert.False((await cateringService.GetMealPlanAsync(campId, new DateOnly(2027, 7, 1),
+            new DateOnly(2027, 7, 2), TestContext.Current.CancellationToken)).Meals.Single(value => value.Id == brunch.Id).IsActive);
+    }
+
     public async ValueTask InitializeAsync()
     {
         SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_winsqlite3());

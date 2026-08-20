@@ -65,6 +65,12 @@ button.icon-only scp-action-icon { margin-right: 0; }
 .structure-planning-editor { display: grid; gap: 0.75rem; flex-basis: 100%; padding: 1rem; border-top: 1px solid #d7e1d5; background: #f8faf7; }
 .structure-planning-editor h3 { margin: 0.15rem 0 0; }
 .structure-planning-editor .remove-action { margin-left: auto; color: #8b2525; }
+.meal-type-list { display: flex; align-items: flex-start; gap: 0.75rem; flex-wrap: wrap; }
+.meal-type-entry { display: flex; align-items: center; gap: 0.25rem; }
+.meal-type-list mat-form-field { width: 13rem; margin-bottom: -1.25rem; }
+.meal-type-list button { margin-top: 0.35rem; }
+.meal-plan-table { overflow-x: auto; }
+.meal-plan-table th:not(:first-child), .meal-plan-table td:not(:first-child) { text-align: center; }
 .context-info { margin: 0 0 0.25rem; padding: 0.8rem 1rem; border-left: 3px solid #78a681; border-radius: 0 0.55rem 0.55rem 0; background: #edf5ed; color: #38543d; }
 .inline-loading { display: flex; align-items: center; gap: 0.75rem; min-height: 3rem; color: #526054; }
 .stage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; }

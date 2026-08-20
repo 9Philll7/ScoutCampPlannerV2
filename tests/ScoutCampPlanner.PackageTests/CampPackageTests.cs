@@ -74,6 +74,8 @@ public sealed class CampPackageTests
         var structureNodeId = Guid.NewGuid();
         var estimateId = Guid.NewGuid();
         var mealId = Guid.NewGuid();
+        var mealTypeId = Guid.NewGuid();
+        var campMealId = Guid.NewGuid();
         cloud.Platform.Tenants.Add(new Tenant(tenantId, "Stamm Nord"));
         cloud.Camp.Camps.Add(new Camp.Domain.Camp(
             campId, tenantId, "Sommerlager", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14)));
@@ -81,6 +83,8 @@ public sealed class CampPackageTests
         cloud.Camp.StructureNodes.Add(new StructureNode(structureNodeId, campId, null, "Nord"));
         cloud.Camp.ParticipantEstimates.Add(new ParticipantEstimate(estimateId, campId, structureNodeId, stageId, 18, 4));
         cloud.Catering.MealPlans.Add(new MealPlan(mealId, campId, "Montag"));
+        cloud.Catering.CampMealTypes.Add(new CampMealType(mealTypeId, campId, "Frühstück", 0));
+        cloud.Catering.CampMeals.Add(new CampMeal(campMealId, campId, mealTypeId, new DateOnly(2027, 7, 1)));
         await cloud.SaveAsync();
 
         var initialPackage = await cloud.Packages.StartOfflineTransferAsync(campId);
@@ -91,6 +95,7 @@ public sealed class CampPackageTests
         await local.Packages.ImportInitialPackageAsync(initialPackage);
         var localMeal = await local.Catering.MealPlans.SingleAsync();
         localMeal.Rename("Montag offline geändert");
+        (await local.Catering.CampMeals.SingleAsync()).SetActive(false);
         await local.Catering.SaveChangesAsync();
 
         var returnPackage = await local.Packages.CreateReturnPackageAsync(campId);
@@ -105,6 +110,7 @@ public sealed class CampPackageTests
         Assert.Equal(18, importedEstimate.ChildYouthCount);
         Assert.Equal(mealId, importedMeal.Id);
         Assert.Equal("Montag offline geändert", importedMeal.Name);
+        Assert.False((await cloud.Catering.CampMeals.SingleAsync()).IsActive);
         Assert.Equal(new DateOnly(2027, 7, 1), completedCamp.StartDate);
         Assert.Equal(new DateOnly(2027, 7, 14), completedCamp.EndDate);
         Assert.False(completedCamp.IsFrozen);

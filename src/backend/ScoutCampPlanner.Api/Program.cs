@@ -384,6 +384,43 @@ app.MapGet("/api/camps/{campId:guid}/weighted-food-summary", async (
         context.Stages.Select(value => new CampStageReference(value.Id, value.Name)).ToList(), cancellationToken);
     return Results.Ok(CateringPlanningService.CalculateWeightedTotals(summary, factors));
 }).RequireAuthorization();
+app.MapGet("/api/camps/{campId:guid}/meal-plan", async (
+    Guid campId, ClaimsPrincipal principal, CampManagementService camps, CateringPlanningService catering,
+    CancellationToken cancellationToken) =>
+{
+    Guid actorId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    var context = await camps.GetCampMealContextAsync(actorId, campId, cancellationToken);
+    return context is null ? Results.NotFound() : Results.Ok(await catering.GetMealPlanAsync(
+        campId, context.StartDate, context.EndDate, cancellationToken));
+}).RequireAuthorization();
+app.MapPut("/api/camps/{campId:guid}/meal-types", async (
+    Guid campId, UpdateCampMealTypesRequest request, ClaimsPrincipal principal,
+    CampManagementService camps, CateringPlanningService catering, CancellationToken cancellationToken) =>
+{
+    Guid actorId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    if (!await camps.HasCampPermissionAsync(actorId, campId,
+        ScoutCampPlanner.Platform.Application.Authorization.Permissions.Camp.Edit, cancellationToken)) return Results.NotFound();
+    var context = await camps.GetCampMealContextAsync(actorId, campId, cancellationToken);
+    if (context is null) return Results.NotFound();
+    var failure = await catering.UpdateMealTypesAsync(actorId, context.TenantId, campId,
+        context.StartDate, context.EndDate, context.IsFrozen, request, cancellationToken);
+    return failure switch { UpdateCampMealsFailure.None => Results.NoContent(),
+        UpdateCampMealsFailure.Frozen => Results.Conflict(new { code = "camp_frozen" }),
+        _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["names"] = ["Ungültige oder doppelte Mahlzeitenbezeichnungen."] }) };
+}).RequireAuthorization();
+app.MapPut("/api/camps/{campId:guid}/meals/{mealId:guid}/activity", async (
+    Guid campId, Guid mealId, UpdateCampMealActivityRequest request, ClaimsPrincipal principal,
+    CampManagementService camps, CateringPlanningService catering, CancellationToken cancellationToken) =>
+{
+    Guid actorId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    if (!await camps.HasCampPermissionAsync(actorId, campId,
+        ScoutCampPlanner.Platform.Application.Authorization.Permissions.Camp.Edit, cancellationToken)) return Results.NotFound();
+    var context = await camps.GetCampMealContextAsync(actorId, campId, cancellationToken);
+    if (context is null) return Results.NotFound();
+    var failure = await catering.SetMealActivityAsync(actorId, context.TenantId, campId, mealId, context.IsFrozen, request, cancellationToken);
+    return failure switch { UpdateCampMealsFailure.None => Results.NoContent(),
+        UpdateCampMealsFailure.Frozen => Results.Conflict(new { code = "camp_frozen" }), _ => Results.NotFound() };
+}).RequireAuthorization();
 app.MapPut("/api/camps/{campId:guid}/stages", async (
     Guid campId, UpdateStageTemplateRequest request, ClaimsPrincipal principal,
     CampManagementService management, CancellationToken cancellationToken) =>

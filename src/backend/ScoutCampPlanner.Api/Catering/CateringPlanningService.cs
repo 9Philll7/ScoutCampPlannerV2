@@ -19,11 +19,103 @@ public sealed record CampStageFoodFactorSummary(Guid CampStageId, string StageNa
 public sealed record UpdateCampStageFoodFactorsRequest(IReadOnlyList<CampStageFoodFactorSummary>? Factors);
 public sealed record WeightedStageTotal(Guid CampStageId, string StageName, long ChildYouthCount,
     long LeaderCount, decimal Factor, decimal FoodUnits);
+public sealed record CampMealTypeSummary(Guid Id, string Name, int SortOrder);
+public sealed record CampMealSummary(Guid Id, Guid MealTypeId, string MealTypeName, DateOnly Date, bool IsActive);
+public sealed record CampMealPlanSummary(IReadOnlyList<CampMealTypeSummary> MealTypes, IReadOnlyList<CampMealSummary> Meals);
+public sealed record UpdateCampMealTypesRequest(IReadOnlyList<string>? Names);
+public sealed record UpdateCampMealActivityRequest(bool IsActive);
+public enum UpdateCampMealsFailure { None, Invalid, Frozen }
 
 public sealed class CateringPlanningService(
     PlatformDbContext platform, CateringDbContext catering, IAuditedOperationExecutor auditedOperation,
     AuditRuntimeState auditRuntime, TimeProvider timeProvider)
 {
+    public async Task<CampMealPlanSummary> GetMealPlanAsync(
+        Guid campId, DateOnly startDate, DateOnly endDate, CancellationToken cancellationToken = default)
+    {
+        if (!await catering.CampMealTypes.AnyAsync(value => value.CampId == campId, cancellationToken))
+        {
+            string[] defaults = ["Frühstück", "Mittagessen", "Abendessen"];
+            var newTypes = defaults.Select((name, index) => new CampMealType(Guid.NewGuid(), campId, name, index)).ToArray();
+            catering.CampMealTypes.AddRange(newTypes);
+            for (DateOnly date = startDate; date <= endDate; date = date.AddDays(1))
+                foreach (var type in newTypes) catering.CampMeals.Add(new CampMeal(Guid.NewGuid(), campId, type.Id, date));
+            await catering.SaveChangesAsync(cancellationToken);
+        }
+        var types = await catering.CampMealTypes.Where(value => value.CampId == campId).OrderBy(value => value.SortOrder)
+            .Select(value => new CampMealTypeSummary(value.Id, value.Name, value.SortOrder)).ToListAsync(cancellationToken);
+        var names = types.ToDictionary(value => value.Id, value => value.Name);
+        var meals = await catering.CampMeals.Where(value => value.CampId == campId).OrderBy(value => value.Date)
+            .ThenBy(value => value.MealTypeId).ToListAsync(cancellationToken);
+        return new(types, meals.Select(value => new CampMealSummary(value.Id, value.MealTypeId,
+            names.GetValueOrDefault(value.MealTypeId, string.Empty), value.Date, value.IsActive)).ToList());
+    }
+
+    public async Task<UpdateCampMealsFailure> UpdateMealTypesAsync(
+        Guid actorUserId, Guid tenantId, Guid campId, DateOnly startDate, DateOnly endDate, bool frozen,
+        UpdateCampMealTypesRequest request, CancellationToken cancellationToken = default)
+    {
+        if (frozen) return UpdateCampMealsFailure.Frozen;
+        string[] names = request.Names?.Select(value => value?.Trim() ?? string.Empty).ToArray() ?? [];
+        if (names.Length == 0 || names.Any(value => value.Length is 0 or > 100) ||
+            names.Select(value => value.ToUpperInvariant()).Distinct().Count() != names.Length)
+            return UpdateCampMealsFailure.Invalid;
+        var existing = await catering.CampMealTypes.Where(value => value.CampId == campId).ToListAsync(cancellationToken);
+        var byName = existing.ToDictionary(value => value.NormalizedName);
+        var retained = new HashSet<Guid>();
+        for (int index = 0; index < names.Length; index++)
+        {
+            string normalized = names[index].ToUpperInvariant();
+            if (!byName.TryGetValue(normalized, out var type))
+            {
+                type = new CampMealType(Guid.NewGuid(), campId, names[index], index);
+                catering.CampMealTypes.Add(type);
+                for (DateOnly date = startDate; date <= endDate; date = date.AddDays(1))
+                    catering.CampMeals.Add(new CampMeal(Guid.NewGuid(), campId, type.Id, date));
+            }
+            else type.Update(names[index], index);
+            retained.Add(type.Id);
+        }
+        Guid[] removed = existing.Where(value => !retained.Contains(value.Id)).Select(value => value.Id).ToArray();
+        if (removed.Length > 0)
+        {
+            catering.CampMeals.RemoveRange(await catering.CampMeals.Where(value => removed.Contains(value.MealTypeId)).ToListAsync(cancellationToken));
+            catering.CampMealTypes.RemoveRange(existing.Where(value => removed.Contains(value.Id)));
+        }
+        var auditEvent = new AuditEventDraft(Guid.NewGuid(), timeProvider.GetUtcNow(), "camp.meal-types.updated", "success",
+            actorUserId, tenantId, campId, "camp-meal-types", campId, "server", auditRuntime.InstanceId,
+            Guid.NewGuid(), null, null, new Dictionary<string, string> { ["mealTypeCount"] = names.Length.ToString() });
+        await auditedOperation.ExecuteAsync(auditEvent, async operationCancellationToken =>
+        {
+            var transaction = platform.Database.CurrentTransaction!;
+            await catering.Database.UseTransactionAsync(transaction.GetDbTransaction(), operationCancellationToken);
+            try { await catering.SaveChangesAsync(operationCancellationToken); }
+            finally { await catering.Database.UseTransactionAsync(null, CancellationToken.None); }
+        }, cancellationToken);
+        return UpdateCampMealsFailure.None;
+    }
+
+    public async Task<UpdateCampMealsFailure> SetMealActivityAsync(
+        Guid actorUserId, Guid tenantId, Guid campId, Guid mealId, bool frozen, UpdateCampMealActivityRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (frozen) return UpdateCampMealsFailure.Frozen;
+        var meal = await catering.CampMeals.SingleOrDefaultAsync(value => value.Id == mealId && value.CampId == campId, cancellationToken);
+        if (meal is null) return UpdateCampMealsFailure.Invalid;
+        meal.SetActive(request.IsActive);
+        var auditEvent = new AuditEventDraft(Guid.NewGuid(), timeProvider.GetUtcNow(), "camp.meal-activity.updated", "success",
+            actorUserId, tenantId, campId, "camp-meal", mealId, "server", auditRuntime.InstanceId,
+            Guid.NewGuid(), null, null, new Dictionary<string, string> { ["isActive"] = request.IsActive.ToString() });
+        await auditedOperation.ExecuteAsync(auditEvent, async operationCancellationToken =>
+        {
+            var transaction = platform.Database.CurrentTransaction!;
+            await catering.Database.UseTransactionAsync(transaction.GetDbTransaction(), operationCancellationToken);
+            try { await catering.SaveChangesAsync(operationCancellationToken); }
+            finally { await catering.Database.UseTransactionAsync(null, CancellationToken.None); }
+        }, cancellationToken);
+        return UpdateCampMealsFailure.None;
+    }
+
     public async Task<IReadOnlyList<TenantStageFoodFactorSummary>?> GetTenantFactorsAsync(
         Guid actorUserId, Guid tenantId, IReadOnlyList<string> stageNames, CancellationToken cancellationToken = default)
     {

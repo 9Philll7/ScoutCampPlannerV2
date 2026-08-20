@@ -30,6 +30,8 @@ The manifest contains:
 
 Version 1 requires the `Camp` and `Catering` module payloads. Platform data is limited to the tenant reference needed to establish a local instance. Return import never replaces Platform-owned tenant or user data.
 
+The Catering payload includes the camp-specific meal labels and every dated meal with its active state, so arrival/departure-day adjustments survive Cloud → Local → Cloud replacement.
+
 ## Import rules
 
 - Manifest and payload identities must match.

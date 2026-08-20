@@ -76,8 +76,19 @@ public static class CampPackageSerializer
             package.ParticipantEstimates.Any(x => x.CampId != package.Camp.Id) ||
             package.CampStageFoodFactors.Any(x => x.CampId != package.Camp.Id) ||
             package.StructureNodes.Any(x => x.CampId != package.Camp.Id) ||
-            package.MealPlans.Any(x => x.CampId != package.Camp.Id))
+            package.MealPlans.Any(x => x.CampId != package.Camp.Id) ||
+            (package.CampMealTypes ?? []).Any(x => x.CampId != package.Camp.Id) ||
+            (package.CampMeals ?? []).Any(x => x.CampId != package.Camp.Id))
             throw new CampPackageValidationException("Package contains data for another camp.");
+        var mealTypes = package.CampMealTypes ?? [];
+        var mealTypeIds = mealTypes.Select(x => x.Id).ToHashSet();
+        if (mealTypeIds.Count != mealTypes.Count || mealTypes.Any(x => x.Id == Guid.Empty ||
+            string.IsNullOrWhiteSpace(x.Name) || x.Name.Trim().Length > 100 || x.SortOrder < 0) ||
+            mealTypes.Select(x => x.Name.Trim().ToUpperInvariant()).Distinct().Count() != mealTypes.Count ||
+            mealTypes.Select(x => x.SortOrder).Order().Where((value, index) => value != index).Any() ||
+            (package.CampMeals ?? []).Any(x => x.Id == Guid.Empty || !mealTypeIds.Contains(x.MealTypeId) ||
+                x.Date < package.Camp.StartDate || x.Date > package.Camp.EndDate))
+            throw new CampPackageValidationException("Camp meal schedule is invalid.");
         if (package.CampStages.Count == 0 || package.CampStages.Select(x => x.Id).Distinct().Count() != package.CampStages.Count ||
             package.CampStages.Select(x => x.Name.Trim().ToUpperInvariant()).Distinct().Count() != package.CampStages.Count ||
             package.CampStages.Any(x => x.Id == Guid.Empty || string.IsNullOrWhiteSpace(x.Name) || x.Name.Trim().Length > 100 || x.SortOrder < 0) ||
