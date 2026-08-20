@@ -4,9 +4,13 @@ html { @include mat.theme((color: mat.$green-palette, typography: Roboto, densit
 html { min-height: 100%; background: #f3f5f0; }
 body { min-height: 100%; margin: 0; font-family: Roboto, Arial, sans-serif; background: #f3f5f0; color: #172217; }
 main { max-width: 1120px; margin: 0 auto; padding: 2.5rem 1.5rem 5rem; }
-.app-toolbar { position: sticky; top: 0; z-index: 10; padding-inline: max(1.5rem, calc((100vw - 1120px) / 2)); box-shadow: 0 1px 8px rgb(19 43 22 / 18%); }
+.app-toolbar { position: sticky; top: 0; z-index: 10; min-height: 64px; height: auto; padding-inline: max(1.5rem, calc((100vw - 1120px) / 2)); box-shadow: 0 1px 8px rgb(19 43 22 / 18%); }
 .brand { display: inline-flex; align-items: center; gap: 0.75rem; font-weight: 600; letter-spacing: -0.01em; }
 .brand-mark { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 0.55rem; background: rgb(255 255 255 / 18%); font-size: 0.7rem; letter-spacing: 0.06em; }
+.toolbar-section-toggle { display: flex; align-items: center; gap: 0.15rem; margin-left: 1.5rem; padding: 0.2rem; border: 1px solid rgb(255 255 255 / 22%); border-radius: 0.75rem; background: rgb(20 58 27 / 20%); }
+.toolbar-section-toggle button { border-radius: 0.55rem; }
+.toolbar-section-toggle button.active { background: rgb(255 255 255 / 92%); color: #174d22; box-shadow: 0 1px 4px rgb(17 44 22 / 22%); }
+.toolbar-back { margin-left: 0.65rem; }
 button scp-action-icon { margin-right: 0.45rem; }
 button.icon-only scp-action-icon { margin-right: 0; }
 .icon-button-tooltip { display: inline-flex; }
@@ -25,8 +29,6 @@ button.icon-only scp-action-icon { margin-right: 0; }
 .content-card mat-card-actions { padding: 0.5rem 1.25rem 1.25rem; gap: 0.35rem; flex-wrap: wrap; }
 .create-camp-card { border-left: 4px solid #4d8056; }
 .camp-card mat-card-title { font-size: 1.3rem; }
-.camp-detail-header { display: flex; align-items: center; gap: 1.25rem; padding: 0.5rem 0; }
-.camp-detail-header h2 { margin: 0.15rem 0 0; font-size: 1.55rem; }
 .camp-navigation { margin-top: -0.5rem; }
 .settings-section { display: grid; gap: 1rem; padding: 1.25rem; border: 1px solid #dce4da; border-radius: 0.9rem; background: #fff; }
 .settings-section + .settings-section { margin-top: 1.25rem; }
@@ -44,14 +46,20 @@ button.icon-only scp-action-icon { margin-right: 0; }
 .create-node-form { grid-template-columns: minmax(13rem, 1fr) minmax(13rem, 1fr) auto; align-items: start; }
 .create-node-form button { margin-top: 0.35rem; }
 .structure-tree { display: grid; gap: 0.55rem; margin-top: 1.25rem; }
+.camp-root-node { margin-left: 0; border-color: #91b997; background: #f0f7f0; }
 .structure-node-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-left: calc(var(--tree-depth) * 1.5rem); padding: 0.65rem 0.75rem; border: 1px solid #dce4da; border-radius: 0.7rem; background: #fff; box-shadow: 0 1px 3px rgb(27 48 29 / 5%); }
 .structure-node-main { display: flex; align-items: center; gap: 0.65rem; min-width: 10rem; }
+.structure-collapse-button { flex: 0 0 auto; }
 .structure-node-main > div { display: grid; gap: 0.15rem; }
 .structure-node-main small { color: #667168; }
+.structure-node-name-field { min-width: min(20rem, 55vw); margin-bottom: -1.25rem; }
 .structure-level-badge { width: fit-content; padding: 0.12rem 0.45rem; border-radius: 999px; background: #e4eee5; color: #416348; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.035em; text-transform: uppercase; }
 .structure-node-marker { width: 0.65rem; height: 0.65rem; border: 2px solid #5e8a66; border-radius: 50%; background: #e7f1e8; }
 .structure-node-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.3rem; flex-wrap: wrap; }
 .structure-move-editor, .structure-rename-editor { display: flex; align-items: flex-start; gap: 0.75rem; flex-basis: 100%; padding: 0.75rem; border-top: 1px solid #e1e6df; background: #f8faf7; }
+.structure-create-editor { display: flex; align-items: flex-start; gap: 0.75rem; flex-basis: 100%; padding: 0.75rem; border-top: 1px solid #d7e1d5; background: #f8faf7; }
+.structure-create-editor mat-form-field { flex: 1; margin-bottom: -1.25rem; }
+.structure-create-editor button { margin-top: 0.35rem; }
 .structure-move-editor mat-form-field, .structure-rename-editor mat-form-field { flex: 1; margin-bottom: -1.25rem; }
 .structure-move-editor button, .structure-rename-editor button { margin-top: 0.35rem; }
 .structure-planning-editor { display: grid; gap: 0.75rem; flex-basis: 100%; padding: 1rem; border-top: 1px solid #d7e1d5; background: #f8faf7; }
@@ -92,12 +100,15 @@ td input[type='number'] { box-sizing: border-box; width: 7rem; max-width: 100%; 
 @media (max-width: 700px) {
   main { padding: 1.5rem 1rem 3rem; }
   .app-toolbar { padding-inline: 1rem; }
+  .brand > span:last-child { display: none; }
+  .toolbar-section-toggle { margin-left: 0.5rem; }
+  .toolbar-section-toggle button, .toolbar-back { min-width: 2.5rem; padding-inline: 0.6rem; font-size: 0; }
+  .toolbar-section-toggle button scp-action-icon, .toolbar-back scp-action-icon { margin-right: 0; }
   .user-email { display: none; }
   .page-header { align-items: stretch; flex-direction: column; gap: 1rem; }
   .tenant-select { width: 100%; margin-bottom: -1rem; }
   .section-navigation { box-sizing: border-box; width: 100%; }
   .section-navigation button { flex: 1; }
-  .camp-detail-header { align-items: flex-start; flex-direction: column; gap: 0.5rem; }
   .section-heading { align-items: flex-start; }
   .structure-settings mat-button-toggle-group { display: grid; width: 100%; }
   .level-row { grid-template-columns: 2.25rem 1fr; }
@@ -107,6 +118,8 @@ td input[type='number'] { box-sizing: border-box; width: 7rem; max-width: 100%; 
   .structure-node-row { align-items: stretch; flex-direction: column; margin-left: calc(var(--tree-depth) * 0.75rem); }
   .structure-node-actions { justify-content: flex-start; }
   .structure-move-editor, .structure-rename-editor { align-items: stretch; flex-direction: column; }
+  .structure-create-editor { align-items: stretch; flex-direction: column; }
+  .structure-create-editor button { align-self: start; margin-top: 0; }
   .structure-move-editor button, .structure-rename-editor button { align-self: start; margin-top: 0; }
   .stage-grid { grid-template-columns: 1fr; }
   .add-stage-row { align-items: stretch; flex-direction: column; }

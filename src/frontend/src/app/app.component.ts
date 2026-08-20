@@ -33,6 +33,18 @@ type CampSection = 'general' | 'structure' | 'catering';
   template: `
     <mat-toolbar color="primary" class="app-toolbar">
       <span class="brand"><span class="brand-mark">SCP</span><span>ScoutCampPlanner</span></span>
+      @if (state() === 'application') {
+        <nav class="toolbar-section-toggle" aria-label="Bereich auswählen">
+          <button matButton [class.active]="applicationSection() === 'camps'" (click)="showSection('camps')">
+            <scp-action-icon name="camp"/>Lager</button>
+          <button matButton [class.active]="applicationSection() === 'organization'" (click)="showSection('organization')">
+            <scp-action-icon name="organization"/>Organisation</button>
+        </nav>
+        @if (applicationSection() === 'camps' && openedCampId()) {
+          <button matButton type="button" class="toolbar-back" (click)="closeCamp()">
+            <scp-action-icon name="back"/>Lagerübersicht</button>
+        }
+      }
       <span class="toolbar-spacer"></span>
       @if (user(); as currentUser) {
         <span class="user-email">{{ currentUser.email }}</span>
@@ -89,11 +101,15 @@ type CampSection = 'general' | 'structure' | 'catering';
           <div class="application-shell">
           <header class="page-header">
             <div>
+              @if (applicationSection() === 'camps' && openedCampId()) {
+                <h1>{{ openedCamp()?.name }}</h1>
+              } @else {
               <p class="eyebrow">{{ selectedTenant()?.name ?? 'ScoutCampPlanner' }}</p>
               <h1>{{ applicationSection() === 'camps' ? 'Lager' : 'Organisation' }}</h1>
               <p class="page-description">{{ applicationSection() === 'camps'
                 ? 'Lager anlegen, öffnen und für den Offlinebetrieb vorbereiten.'
                 : 'Mandantenweite Vorgaben für zukünftige Lager verwalten.' }}</p>
+              }
             </div>
             @if (tenants().length > 1) {
               <mat-form-field appearance="outline" class="tenant-select"><mat-label>Organisation</mat-label>
@@ -103,10 +119,6 @@ type CampSection = 'general' | 'structure' | 'catering';
               </mat-form-field>
             }
           </header>
-          <nav class="section-navigation" aria-label="Hauptnavigation">
-            <button matButton [class.active]="applicationSection() === 'camps'" (click)="showSection('camps')"><scp-action-icon name="camp"/>Lager</button>
-            <button matButton [class.active]="applicationSection() === 'organization'" (click)="showSection('organization')"><scp-action-icon name="organization"/>Organisation</button>
-          </nav>
           @if (error()) { <p class="message error" role="alert">{{ error() }}</p> }
           @if (notice()) { <p class="message notice" role="status">{{ notice() }}</p> }
           @if (applicationSection() === 'organization') {
@@ -171,10 +183,6 @@ type CampSection = 'general' | 'structure' | 'catering';
           }
           } @else {
           @if (openedCamp(); as opened) {
-            <div class="camp-detail-header">
-              <button matButton type="button" (click)="closeCamp()"><scp-action-icon name="back"/>Zur Lagerübersicht</button>
-              <div><p class="eyebrow">Geöffnetes Lager</p><h2>{{ opened.name }}</h2></div>
-            </div>
             <nav class="section-navigation camp-navigation" aria-label="Lagernavigation">
               <button matButton [class.active]="campSection() === 'general'" (click)="campSection.set('general')">
                 <scp-action-icon name="edit"/>Grundeinstellungen</button>
@@ -272,6 +280,54 @@ type CampSection = 'general' | 'structure' | 'catering';
                   <p>{{ camp.isFrozen ? 'Offlinephase aktiv' : 'Online bearbeitbar' }}</p>
                 }
                 </section>
+                <section class="settings-section structure-settings">
+                  <div class="section-heading">
+                    <div><p class="eyebrow">Strukturadministration</p><h3>Strukturtiefe</h3></div>
+                    @if (camp.canEdit && structureConfigurationChanged()) {
+                      <button matIconButton type="button" class="icon-only save-required"
+                        aria-label="Strukturkonfiguration speichern" matTooltip="Strukturkonfiguration speichern"
+                        (click)="saveStructureConfiguration(camp)" [disabled]="submitting() || camp.isFrozen">
+                        <scp-action-icon name="save"/></button>
+                    }
+                  </div>
+                  <mat-button-toggle-group aria-label="Strukturmodus" [ngModel]="structureMode()"
+                    (ngModelChange)="setStructureMode($event)" [disabled]="!camp.canEdit || camp.isFrozen">
+                    <mat-button-toggle value="Free">Freie Struktur</mat-button-toggle>
+                    <mat-button-toggle value="Fixed">Definierte Ebenen</mat-button-toggle>
+                  </mat-button-toggle-group>
+                  @if (structureMode() === 'Free') {
+                    <p class="context-info">Knoten können ohne vorgegebene maximale Tiefe angelegt werden.</p>
+                  } @else {
+                    <div class="level-list">
+                      @for (level of structureLevelNames(); track $index) {
+                        <div class="level-row">
+                          <span class="level-number">{{ $index + 1 }}</span>
+                          <mat-form-field appearance="outline"><mat-label>Bezeichnung der Ebene</mat-label>
+                            <input matInput [ngModel]="level" (ngModelChange)="renameStructureLevel($index, $event)"
+                              [name]="'structureLevel-' + $index" maxlength="100" required
+                              [disabled]="!camp.canEdit || camp.isFrozen">
+                          </mat-form-field>
+                          <div class="level-actions">
+                            <button matIconButton type="button" class="icon-only" aria-label="Ebene nach oben verschieben"
+                              matTooltip="Nach oben verschieben" (click)="moveStructureLevel($index, -1)"
+                              [disabled]="$first || !camp.canEdit || camp.isFrozen"><scp-action-icon name="up"/></button>
+                            <button matIconButton type="button" class="icon-only" aria-label="Ebene nach unten verschieben"
+                              matTooltip="Nach unten verschieben" (click)="moveStructureLevel($index, 1)"
+                              [disabled]="$last || !camp.canEdit || camp.isFrozen"><scp-action-icon name="down"/></button>
+                            <button matIconButton type="button" class="icon-only remove-action" aria-label="Ebene entfernen"
+                              matTooltip="Ebene entfernen" (click)="removeStructureLevel($index)"
+                              [disabled]="structureLevelNames().length === 1 || !camp.canEdit || camp.isFrozen">
+                              <scp-action-icon name="remove"/></button>
+                          </div>
+                        </div>
+                      }
+                    </div>
+                    @if (camp.canEdit) {
+                      <button matButton type="button" class="add-level-button" (click)="addStructureLevel()"
+                        [disabled]="camp.isFrozen"><scp-action-icon name="add"/>Ebene hinzufügen</button>
+                    }
+                  }
+                </section>
                 <section class="settings-section">
                   <div class="section-heading"><div><p class="eyebrow">Planungsgrundlage</p><h3>Lagerstufen</h3></div></div>
                   <p class="context-info">Diese Stufen gelten nur für dieses Lager. Der KiJu-Faktor wird für die Verpflegungsplanung verwendet; Leiter zählen immer mit Faktor 1,0.</p>
@@ -327,90 +383,73 @@ type CampSection = 'general' | 'structure' | 'catering';
                 </section>
                 }
                 @if (campSection() === 'structure' && structureCampId() === camp.id) {
-                    <section class="settings-section structure-settings">
-                      <div class="section-heading">
-                        <div><p class="eyebrow">Aufbau</p><h3>Strukturtiefe</h3></div>
-                        @if (camp.canEdit && structureConfigurationChanged()) {
-                          <button matIconButton type="button" class="icon-only save-required"
-                            aria-label="Strukturkonfiguration speichern" matTooltip="Strukturkonfiguration speichern"
-                            (click)="saveStructureConfiguration(camp)" [disabled]="submitting() || camp.isFrozen">
-                            <scp-action-icon name="save"/></button>
-                        }
-                      </div>
-                      <mat-button-toggle-group aria-label="Strukturmodus" [ngModel]="structureMode()"
-                        (ngModelChange)="setStructureMode($event)" [disabled]="!camp.canEdit || camp.isFrozen">
-                        <mat-button-toggle value="Free">Freie Struktur</mat-button-toggle>
-                        <mat-button-toggle value="Fixed">Definierte Ebenen</mat-button-toggle>
-                      </mat-button-toggle-group>
-                      @if (structureMode() === 'Free') {
-                        <p class="context-info">Knoten können ohne vorgegebene maximale Tiefe angelegt werden.</p>
-                      } @else {
-                        <div class="level-list">
-                          @for (level of structureLevelNames(); track $index) {
-                            <div class="level-row">
-                              <span class="level-number">{{ $index + 1 }}</span>
-                              <mat-form-field appearance="outline"><mat-label>Bezeichnung der Ebene</mat-label>
-                                <input matInput [ngModel]="level" (ngModelChange)="renameStructureLevel($index, $event)"
-                                  [name]="'structureLevel-' + $index" maxlength="100" required
-                                  [disabled]="!camp.canEdit || camp.isFrozen">
-                              </mat-form-field>
-                              <div class="level-actions">
-                                <button matIconButton type="button" class="icon-only" aria-label="Ebene nach oben verschieben"
-                                  matTooltip="Nach oben verschieben" (click)="moveStructureLevel($index, -1)"
-                                  [disabled]="$first || !camp.canEdit || camp.isFrozen"><scp-action-icon name="up"/></button>
-                                <button matIconButton type="button" class="icon-only" aria-label="Ebene nach unten verschieben"
-                                  matTooltip="Nach unten verschieben" (click)="moveStructureLevel($index, 1)"
-                                  [disabled]="$last || !camp.canEdit || camp.isFrozen"><scp-action-icon name="down"/></button>
-                                <button matIconButton type="button" class="icon-only remove-action" aria-label="Ebene entfernen"
-                                  matTooltip="Ebene entfernen" (click)="removeStructureLevel($index)"
-                                  [disabled]="structureLevelNames().length === 1 || !camp.canEdit || camp.isFrozen">
-                                  <scp-action-icon name="remove"/></button>
-                              </div>
-                            </div>
+                    <section class="structure-tree" aria-label="Lagerstruktur">
+                      <div class="structure-node-row camp-root-node">
+                        <div class="structure-node-main">
+                          @if (structureNodes().length > 0) {
+                            <button matIconButton type="button" class="icon-only structure-collapse-button"
+                              [attr.aria-label]="isStructureNodeCollapsed('camp') ? 'Lagerstruktur ausklappen' : 'Lagerstruktur einklappen'"
+                              [matTooltip]="isStructureNodeCollapsed('camp') ? 'Ausklappen' : 'Einklappen'"
+                              (click)="toggleStructureNodeCollapsed('camp')">
+                              <scp-action-icon [name]="isStructureNodeCollapsed('camp') ? 'expand' : 'collapse'"/></button>
+                          }
+                          <span class="structure-node-marker"></span><div>
+                          <span class="structure-level-badge">Lager</span><strong>{{ camp.name }}</strong>
+                          <small>KiJu: {{ campChildYouthTotal() }} · Leiter: {{ campLeaderTotal() }}</small>
+                        </div></div>
+                        <div class="structure-node-actions">
+                          <button matIconButton type="button" class="icon-only"
+                            [class.editing-active]="planningDetailsVisible()" aria-label="Planungsdetails anzeigen"
+                            matTooltip="Planungsdetails" (click)="planningDetailsVisible.update(value => !value)">
+                            <scp-action-icon name="info"/></button>
+                          @if (camp.canEdit) {
+                            <button matIconButton type="button" class="icon-only" aria-label="Knoten hinzufügen"
+                              matTooltip="Knoten hinzufügen" (click)="toggleCreateStructureNode(null)"
+                              [disabled]="submitting() || camp.isFrozen"><scp-action-icon name="add"/></button>
                           }
                         </div>
-                        @if (camp.canEdit) {
-                          <button matButton type="button" class="add-level-button" (click)="addStructureLevel()"
-                            [disabled]="camp.isFrozen"><scp-action-icon name="add"/>Ebene hinzufügen</button>
+                        @if (planningDetailsVisible() && planningSummary(); as summary) {
+                          <div class="structure-planning-editor"><table><thead><tr><th>Stufe</th><th>KiJu</th><th>Leiter</th></tr></thead><tbody>
+                            @for (total of summary.stageTotals; track total.campStageId) {
+                              <tr><td>{{ total.stageName }}</td><td>{{ total.childYouthCount }}</td><td>{{ total.leaderCount }}</td></tr>
+                            }
+                          </tbody></table></div>
                         }
-                      }
-                    </section>
-                    @if (planningSummary(); as summary) {
-                      <h3>Planungsübersicht</h3>
-                      <table><thead><tr><th>Stufe</th><th>KiJu</th><th>Leiter</th></tr></thead><tbody>
-                        @for (total of summary.stageTotals; track total.campStageId) {
-                          <tr><td>{{ total.stageName }}</td><td>{{ total.childYouthCount }}</td><td>{{ total.leaderCount }}</td></tr>
+                        @if (creatingStructureParent() === 'camp') {
+                          <form class="structure-create-editor" (ngSubmit)="createStructureNode(camp)">
+                            <mat-form-field appearance="outline"><mat-label>Name des neuen Knotens</mat-label>
+                              <input matInput name="rootStructureName" [(ngModel)]="newStructureNodeName" maxlength="200" required>
+                            </mat-form-field>
+                            <button matButton="filled" type="submit" [disabled]="submitting() || !newStructureNodeName.trim()">
+                              <scp-action-icon name="add"/>Anlegen</button>
+                          </form>
                         }
-                      </tbody></table>
-                    }
-                    @if (camp.canEdit) {
-                      <section class="settings-section create-node-section">
-                        <div class="section-heading"><div><p class="eyebrow">Struktur erweitern</p><h3>Neuen Knoten anlegen</h3></div></div>
-                        <form [id]="'create-structure-node-' + camp.id" class="create-node-form" (ngSubmit)="createStructureNode(camp)">
-                          <mat-form-field appearance="outline"><mat-label>Einfügen unter</mat-label>
-                            <mat-select name="structureParent" [(ngModel)]="newStructureParentId">
-                              <mat-option value="">Oberste Ebene</mat-option>
-                              @for (row of structureRows(); track row.node.id) {
-                                <mat-option [value]="row.node.id">{{ structureNodePath(row.node) }}</mat-option>
-                              }
-                            </mat-select>
-                          </mat-form-field>
-                          <mat-form-field appearance="outline"><mat-label>Name des neuen Knotens</mat-label>
-                            <input matInput name="structureName" [(ngModel)]="newStructureNodeName" maxlength="200" required>
-                          </mat-form-field>
-                          <button matButton="filled" type="submit" [disabled]="submitting() || camp.isFrozen || !newStructureNodeName.trim()">
-                            <scp-action-icon name="add"/>Knoten anlegen</button>
-                        </form>
-                      </section>
-                    }
-                    <section class="structure-tree" aria-label="Lagerstruktur">
+                      </div>
                     @for (row of structureRows(); track row.node.id) {
-                      <div class="structure-node-row" [style.--tree-depth]="row.depth">
-                        <div class="structure-node-main"><span class="structure-node-marker"></span><div>
+                      <div class="structure-node-row" [style.--tree-depth]="row.depth + 1">
+                        <div class="structure-node-main">
+                          @if (!isStructureLeaf(row.node)) {
+                            <button matIconButton type="button" class="icon-only structure-collapse-button"
+                              [attr.aria-label]="isStructureNodeCollapsed(row.node.id) ? 'Unterknoten ausklappen' : 'Unterknoten einklappen'"
+                              [matTooltip]="isStructureNodeCollapsed(row.node.id) ? 'Ausklappen' : 'Einklappen'"
+                              (click)="toggleStructureNodeCollapsed(row.node.id)">
+                              <scp-action-icon [name]="isStructureNodeCollapsed(row.node.id) ? 'expand' : 'collapse'"/></button>
+                          }
+                          <span class="structure-node-marker"></span><div>
                           @if (structureLevelLabel(row.depth); as levelLabel) {
                             <span class="structure-level-badge">{{ levelLabel }}</span>
                           }
-                          <strong>{{ row.node.name }}</strong>
+                          @if (editingStructureNodeId() === row.node.id) {
+                            <mat-form-field appearance="outline" class="structure-node-name-field">
+                              <mat-label>Name des Knotens</mat-label>
+                              <input matInput [(ngModel)]="editStructureNodeName" [ngModelOptions]="{ standalone: true }"
+                                maxlength="200" required
+                                (keydown.enter)="renameStructureNode(camp, row.node)"
+                                (keydown.escape)="toggleRenameStructureNode(row.node)">
+                            </mat-form-field>
+                          } @else {
+                            <strong>{{ row.node.name }}</strong>
+                          }
                         @if (structureTotal(row.node.id); as total) {
                           <small>KiJu: {{ total.childYouthCount }} · Leiter: {{ total.leaderCount }}</small>
                         }
@@ -421,12 +460,25 @@ type CampSection = 'general' | 'structure' | 'catering';
                             <button matButton type="button" [class.editing-active]="estimateNodeId() === row.node.id"
                               (click)="openEstimates(camp, row.node)"><scp-action-icon name="planning"/>Planung</button>
                           }
-                          <button matIconButton type="button" class="icon-only"
-                            [class.editing-active]="editingStructureNodeId() === row.node.id"
-                            [attr.aria-label]="editingStructureNodeId() === row.node.id ? 'Umbenennen beenden' : 'Eintrag umbenennen'"
-                            [matTooltip]="editingStructureNodeId() === row.node.id ? 'Umbenennen beenden' : 'Eintrag umbenennen'"
-                            (click)="toggleRenameStructureNode(row.node)" [disabled]="submitting() || camp.isFrozen">
-                            <scp-action-icon name="edit"/></button>
+                          @if (canAddStructureChild(row)) {
+                            <button matIconButton type="button" class="icon-only" aria-label="Unterknoten hinzufügen"
+                              matTooltip="Unterknoten hinzufügen" (click)="toggleCreateStructureNode(row.node.id)"
+                              [disabled]="submitting() || camp.isFrozen"><scp-action-icon name="add"/></button>
+                          }
+                          @if (editingStructureNodeId() === row.node.id && hasStructureNodeNameChanged(row.node)) {
+                            <button matIconButton type="button" class="icon-only save-required"
+                              aria-label="Neuen Namen speichern" matTooltip="Neuen Namen speichern"
+                              (click)="renameStructureNode(camp, row.node)"
+                              [disabled]="submitting() || !editStructureNodeName.trim() || camp.isFrozen">
+                              <scp-action-icon name="save"/></button>
+                          } @else {
+                            <button matIconButton type="button" class="icon-only"
+                              [class.editing-active]="editingStructureNodeId() === row.node.id"
+                              [attr.aria-label]="editingStructureNodeId() === row.node.id ? 'Umbenennen beenden' : 'Eintrag umbenennen'"
+                              [matTooltip]="editingStructureNodeId() === row.node.id ? 'Umbenennen beenden' : 'Eintrag umbenennen'"
+                              (click)="toggleRenameStructureNode(row.node)" [disabled]="submitting() || camp.isFrozen">
+                              <scp-action-icon name="edit"/></button>
+                          }
                           <button matIconButton type="button" class="icon-only"
                             [class.editing-active]="movingStructureNodeId() === row.node.id"
                             [attr.aria-label]="movingStructureNodeId() === row.node.id ? 'Verschieben beenden' : 'Eintrag verschieben'"
@@ -441,6 +493,15 @@ type CampSection = 'general' | 'structure' | 'catering';
                           </span>
                           </div>
                         }
+                        @if (creatingStructureParent() === row.node.id) {
+                          <form class="structure-create-editor" (ngSubmit)="createStructureNode(camp)">
+                            <mat-form-field appearance="outline"><mat-label>Neuer Unterknoten</mat-label>
+                              <input matInput name="childStructureName" [(ngModel)]="newStructureNodeName" maxlength="200" required>
+                            </mat-form-field>
+                            <button matButton="filled" type="submit" [disabled]="submitting() || !newStructureNodeName.trim()">
+                              <scp-action-icon name="add"/>Anlegen</button>
+                          </form>
+                        }
                         @if (movingStructureNodeId() === row.node.id) {
                           <div class="structure-move-editor">
                             <mat-form-field appearance="outline"><mat-label>Neuer übergeordneter Knoten</mat-label>
@@ -454,18 +515,6 @@ type CampSection = 'general' | 'structure' | 'catering';
                             <button matButton="filled" type="button" (click)="moveStructureNode(camp, row.node)"
                               [disabled]="submitting() || camp.isFrozen"><scp-action-icon name="move"/>Verschieben bestätigen</button>
                           </div>
-                        }
-                        @if (editingStructureNodeId() === row.node.id) {
-                          <form class="structure-rename-editor" (ngSubmit)="renameStructureNode(camp, row.node)">
-                            <mat-form-field appearance="outline"><mat-label>Neuer Name</mat-label>
-                              <input matInput name="structureRename" [(ngModel)]="editStructureNodeName"
-                                maxlength="200" required>
-                            </mat-form-field>
-                            <button matIconButton type="submit" class="icon-only save-required"
-                              aria-label="Neuen Namen speichern" matTooltip="Neuen Namen speichern"
-                              [disabled]="submitting() || !editStructureNodeName.trim() || editStructureNodeName.trim() === row.node.name">
-                              <scp-action-icon name="save"/></button>
-                          </form>
                         }
                         @if (estimateNodeId() === row.node.id) {
                           <section class="structure-planning-editor">
@@ -489,7 +538,10 @@ type CampSection = 'general' | 'structure' | 'catering';
                           </section>
                         }
                       </div>
-                    } @empty { <p>Noch keine Struktureinträge vorhanden.</p> }
+                    }
+                    @if (structureNodes().length === 0) {
+                      <p>Noch keine Struktureinträge vorhanden.</p>
+                    }
                     </section>
                   }
                   @if (campSection() === 'catering') {
@@ -560,6 +612,9 @@ export class AppComponent {
   readonly estimateNodeId = signal<string | null>(null);
   readonly movingStructureNodeId = signal<string | null>(null);
   readonly editingStructureNodeId = signal<string | null>(null);
+  readonly creatingStructureParent = signal<string | 'camp' | null>(null);
+  readonly collapsedStructureNodeIds = signal<ReadonlySet<string>>(new Set());
+  readonly planningDetailsVisible = signal(false);
   readonly planningSummary = signal<CampPlanningSummary | null>(null);
   tenantName = '';
   email = '';
@@ -702,6 +757,7 @@ export class AppComponent {
     this.openedCampId.set(camp.id);
     this.campSection.set('general');
     this.loadCampStageFoodFactors(camp.id);
+    this.loadStructureConfiguration(camp.id);
     this.error.set(null);
     this.notice.set(null);
   }
@@ -721,6 +777,8 @@ export class AppComponent {
     this.campSection.set('general');
     this.editingCampId.set(null);
     this.movingStructureNodeId.set(null);
+    this.collapsedStructureNodeIds.set(new Set());
+    this.creatingStructureParent.set(null); this.planningDetailsVisible.set(false);
     if (this.structureCampId()) this.structureCampId.set(null);
     this.error.set(null);
     this.notice.set(null);
@@ -752,10 +810,11 @@ export class AppComponent {
   toggleStructure(camp: CampSummary) {
     if (this.structureCampId() === camp.id) {
       this.structureCampId.set(null); this.structureNodes.set([]); this.structureConfiguration.set(null);
+      this.collapsedStructureNodeIds.set(new Set());
       this.estimateNodeId.set(null); this.movingStructureNodeId.set(null); this.planningSummary.set(null); this.participantEstimates.set([]);
       this.weightedFoodTotals.set([]); return;
     }
-    this.structureCampId.set(camp.id); this.structureNodes.set([]);
+    this.structureCampId.set(camp.id); this.structureNodes.set([]); this.collapsedStructureNodeIds.set(new Set());
     this.estimateNodeId.set(null); this.movingStructureNodeId.set(null); this.planningSummary.set(null); this.participantEstimates.set([]);
     this.weightedFoodTotals.set([]);
     this.newStructureParentId = ''; this.newStructureNodeName = '';
@@ -763,13 +822,7 @@ export class AppComponent {
       next: nodes => { this.structureNodes.set(nodes); this.moveTargetParentIds = Object.fromEntries(nodes.map(node => [node.id, node.parentId ?? ''])); },
       error: () => this.error.set('Die Lagerstruktur konnte nicht geladen werden.')
     });
-    this.campApi.getStructureConfiguration(camp.id).subscribe({ next: configuration => {
-      this.structureConfiguration.set(configuration);
-      this.structureMode.set(configuration.mode);
-      this.structureLevelNames.set([...configuration.levelNames]);
-      this.persistedStructureMode = configuration.mode;
-      this.persistedStructureLevelNames = [...configuration.levelNames];
-    }});
+    this.loadStructureConfiguration(camp.id);
     this.loadPlanningSummary(camp.id);
     this.loadWeightedFoodSummary(camp.id);
   }
@@ -788,6 +841,19 @@ export class AppComponent {
         this.notice.set('Die Strukturtiefe wurde aktualisiert.');
       },
       error: () => { this.submitting.set(false); this.error.set('Die Strukturtiefe ist ungültig oder für den bestehenden Baum zu kurz.'); }
+    });
+  }
+
+  private loadStructureConfiguration(campId: string) {
+    this.campApi.getStructureConfiguration(campId).subscribe({
+      next: configuration => {
+        this.structureConfiguration.set(configuration);
+        this.structureMode.set(configuration.mode);
+        this.structureLevelNames.set([...configuration.levelNames]);
+        this.persistedStructureMode = configuration.mode;
+        this.persistedStructureLevelNames = [...configuration.levelNames];
+      },
+      error: () => this.error.set('Die Strukturkonfiguration konnte nicht geladen werden.')
     });
   }
 
@@ -828,13 +894,54 @@ export class AppComponent {
   structureRows(): { node: StructureNodeSummary; depth: number }[] {
     const nodes = this.structureNodes();
     const result: { node: StructureNodeSummary; depth: number }[] = [];
+    if (this.isStructureNodeCollapsed('camp')) return result;
     const append = (parentId: string | null, depth: number) => {
       nodes.filter(node => node.parentId === parentId)
         .sort((left, right) => left.name.localeCompare(right.name, 'de'))
-        .forEach(node => { result.push({ node, depth }); append(node.id, depth + 1); });
+        .forEach(node => {
+          result.push({ node, depth });
+          if (!this.isStructureNodeCollapsed(node.id)) append(node.id, depth + 1);
+        });
     };
     append(null, 0);
     return result;
+  }
+
+  isStructureNodeCollapsed(nodeId: string) {
+    return this.collapsedStructureNodeIds().has(nodeId);
+  }
+
+  toggleStructureNodeCollapsed(nodeId: string) {
+    this.collapsedStructureNodeIds.update(current => {
+      const updated = new Set(current);
+      if (updated.has(nodeId)) updated.delete(nodeId); else updated.add(nodeId);
+      return updated;
+    });
+  }
+
+  campChildYouthTotal() {
+    return this.planningSummary()?.stageTotals.reduce((sum, value) => sum + value.childYouthCount, 0) ?? 0;
+  }
+
+  campLeaderTotal() {
+    return this.planningSummary()?.stageTotals.reduce((sum, value) => sum + value.leaderCount, 0) ?? 0;
+  }
+
+  canAddStructureChild(row: { node: StructureNodeSummary; depth: number }) {
+    const total = this.structureTotal(row.node.id);
+    const hasChildren = !this.isStructureLeaf(row.node);
+    if (!hasChildren && total && (total.childYouthCount > 0 || total.leaderCount > 0)) return false;
+    return this.structureMode() === 'Free' || row.depth + 1 < this.structureLevelNames().length;
+  }
+
+  toggleCreateStructureNode(parentId: string | null) {
+    const target = parentId ?? 'camp';
+    if (this.creatingStructureParent() === target) {
+      this.creatingStructureParent.set(null); this.newStructureNodeName = ''; return;
+    }
+    this.creatingStructureParent.set(target);
+    this.newStructureParentId = parentId ?? '';
+    this.newStructureNodeName = '';
   }
 
   structureNodePath(node: StructureNodeSummary) {
@@ -1039,7 +1146,8 @@ export class AppComponent {
       camp.id, this.newStructureParentId || null, this.newStructureNodeName).subscribe({
       next: node => {
         this.submitting.set(false); this.structureNodes.update(nodes => [...nodes, node]);
-        this.newStructureNodeName = ''; this.notice.set('Der Struktureintrag wurde angelegt.');
+        this.newStructureNodeName = ''; this.creatingStructureParent.set(null);
+        this.notice.set('Der Struktureintrag wurde angelegt.');
       },
       error: (response: HttpErrorResponse) => {
         this.submitting.set(false);
@@ -1093,6 +1201,10 @@ export class AppComponent {
     }
     this.editingStructureNodeId.set(node.id);
     this.editStructureNodeName = node.name;
+  }
+
+  hasStructureNodeNameChanged(node: StructureNodeSummary) {
+    return this.editStructureNodeName.trim() !== node.name;
   }
 
   renameStructureNode(camp: CampSummary, node: StructureNodeSummary) {

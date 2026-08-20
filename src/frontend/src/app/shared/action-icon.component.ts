@@ -1,7 +1,8 @@
 import { Component, input } from '@angular/core';
 
-export type ActionIconName = 'add' | 'back' | 'camp' | 'download' | 'edit' | 'login' | 'logout' |
-  'move' | 'organization' | 'planning' | 'refresh' | 'remove' | 'save' | 'structure' | 'up' | 'down';
+export type ActionIconName = 'add' | 'back' | 'camp' | 'download' | 'edit' | 'info' | 'login' | 'logout' |
+  'move' | 'organization' | 'planning' | 'refresh' | 'remove' | 'save' | 'structure' | 'up' | 'down' |
+  'expand' | 'collapse';
 
 @Component({
   selector: 'scp-action-icon',
@@ -15,6 +16,7 @@ export type ActionIconName = 'add' | 'back' | 'camp' | 'download' | 'edit' | 'lo
         @case ('camp') { <path d="m3 20 9-16 9 16M7.5 20 12 12l4.5 8M3 20h18"/> }
         @case ('download') { <path d="M12 3v12m0 0 4-4m-4 4-4-4M5 20h14"/> }
         @case ('edit') { <path d="m4 20 4.5-1 10-10-3.5-3.5-10 10L4 20ZM13.5 7l3.5 3.5"/> }
+        @case ('info') { <path d="M12 11v6m0-10h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/> }
         @case ('login') { <path d="M10 17l5-5-5-5m5 5H3m10-8h6a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/> }
         @case ('logout') { <path d="m14 17 5-5-5-5m5 5H7m4-8H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6"/> }
         @case ('move') { <path d="M12 3v18m0-18-3 3m3-3 3 3m-3 15-3-3m3 3 3-3M3 12h18m-18 0 3-3m-3 3 3 3m15-3-3-3m3 3-3 3"/> }
@@ -26,6 +28,8 @@ export type ActionIconName = 'add' | 'back' | 'camp' | 'download' | 'edit' | 'lo
         @case ('structure') { <path d="M9 4h6v4H9zM4 16h6v4H4zm10 0h6v4h-6zM12 8v4m-5 4v-4h10v4"/> }
         @case ('up') { <path d="m6 15 6-6 6 6"/> }
         @case ('down') { <path d="m6 9 6 6 6-6"/> }
+        @case ('expand') { <path d="m9 6 6 6-6 6"/> }
+        @case ('collapse') { <path d="m6 9 6 6 6-6"/> }
       }
     </svg>
   `,
