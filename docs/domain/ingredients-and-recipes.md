@@ -24,19 +24,17 @@ Base ingredients contain:
 
 ## Variants
 
-Variants are not handled globally on ingredient level.
+Variants are owned by the ingredient domain and are treated as 1:1 interchangeable. Recipes reference base ingredients and do not manually select variants as alternatives.
 
-A recipe defines whether:
-- a variant is used
-- a replacement ingredient is used
+A recipe may define position-specific replacement ingredients for explicit allergen, intolerance, or dietary conflicts. Different replacement rules are not automatically combined.
 
 The requirement originates from participant needs.
 
 Example:
 Normal butter can require lactose-free butter depending on participants.
 
-## Central and local data
+## Central, tenant and camp data
 
-Central published ingredients/recipes can have local copies.
+Published recipes flow explicitly from the central catalog into a tenant library and from there into a camp library. Every reference targets a concrete immutable revision. Editing an upstream recipe creates an independently editable copy in the receiving scope with lineage to its source revision.
 
-Local changes must not silently overwrite central data.
+Tenant and camp changes must not silently overwrite upstream data. There is no automatic synchronization or semantic merge.
