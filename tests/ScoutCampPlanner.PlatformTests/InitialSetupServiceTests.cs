@@ -37,6 +37,8 @@ public sealed class InitialSetupServiceTests
         Assert.NotEqual("River maple lantern orbit 47!", credential.Verifier);
         Assert.Equal(Roles.TenantOwner,
             (await fixture.Database.TenantRoleAssignments.SingleAsync(TestContext.Current.CancellationToken)).RoleIdentifier);
+        Assert.Equal(Roles.PlatformAdmin,
+            (await fixture.Database.PlatformRoleAssignments.SingleAsync(TestContext.Current.CancellationToken)).RoleIdentifier);
         Assert.Equal("identity.initial-setup",
             (await fixture.Database.AuditEvents.SingleAsync(TestContext.Current.CancellationToken)).Action);
     }

@@ -21,7 +21,8 @@ At minimum, reject publication for the following conditions.
 - normalized duplicate name in recipe scope
 - invalid recipe type
 - portion-based recipe without `reference_servings > 0`
-- portion-based recipe without reference age group
+- portion-based published revision whose reference is not normalized to standard portions with factor `1.0`
+- tenant/camp draft authoring stage without a positive snapshotted factor
 - quantity-based recipe without `reference_quantity > 0`
 - quantity-based recipe without valid reference unit
 
@@ -108,6 +109,8 @@ A separate current revalidation may display newly computed warnings, but must di
 ## 5. Top-level age-group calculation
 
 Age-group scaling is resolved outside the recipe domain from the cooking-unit/menu-plan context.
+
+Every published portion-based revision uses the platform-wide standard portion with factor `1.0`. A tenant or camp draft may be authored for a configured stage, but publication first converts its entered reference servings to standard reference servings. The stage identity, display name and factor are snapshotted as authoring metadata; later stage-factor changes do not alter the revision.
 
 The recipe engine receives a top-level demand. For a portion-based recipe, conceptually:
 

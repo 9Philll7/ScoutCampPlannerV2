@@ -4,12 +4,20 @@ namespace ScoutCampPlanner.Platform.Application.Authorization;
 
 public enum AuthorizationScope
 {
+    Platform,
     Tenant,
     Camp,
 }
 
 public static class Permissions
 {
+    public static class Platform
+    {
+        public const string ReadCentralRecipes = "recipes.central.read";
+        public const string ReviewCentralRecipeChanges = "recipes.central.changes.review";
+        public const string PermanentlyDeleteCentralRecipes = "recipes.central.delete";
+    }
+
     public static class Tenant
     {
         public const string View = "tenant.view";
@@ -39,6 +47,7 @@ public static class Permissions
 
 public static class Roles
 {
+    public const string PlatformAdmin = "PlatformAdmin";
     public const string TenantOwner = "TenantOwner";
     public const string TenantAdmin = "TenantAdmin";
     public const string TenantMember = "TenantMember";
@@ -55,7 +64,14 @@ public sealed record RoleDefinition(
 
 public static class AuthorizationCatalogue
 {
-    public const int DefinitionVersion = 1;
+    public const int DefinitionVersion = 2;
+
+    private static readonly FrozenSet<string> PlatformPermissions = new[]
+    {
+        Permissions.Platform.ReadCentralRecipes,
+        Permissions.Platform.ReviewCentralRecipeChanges,
+        Permissions.Platform.PermanentlyDeleteCentralRecipes,
+    }.ToFrozenSet(StringComparer.Ordinal);
 
     private static readonly FrozenSet<string> TenantPermissions = new[]
     {
@@ -86,6 +102,7 @@ public static class AuthorizationCatalogue
     private static readonly FrozenDictionary<string, RoleDefinition> Definitions =
         new RoleDefinition[]
         {
+            Define(Roles.PlatformAdmin, AuthorizationScope.Platform, PlatformPermissions),
             Define(Roles.TenantOwner, AuthorizationScope.Tenant, TenantPermissions),
             Define(Roles.TenantAdmin, AuthorizationScope.Tenant,
                 Permissions.Tenant.View,
@@ -104,6 +121,8 @@ public static class AuthorizationCatalogue
         }.ToFrozenDictionary(definition => definition.Identifier, StringComparer.Ordinal);
 
     public static IReadOnlySet<string> AllTenantPermissions => TenantPermissions;
+
+    public static IReadOnlySet<string> AllPlatformPermissions => PlatformPermissions;
 
     public static IReadOnlySet<string> AllCampPermissions => CampPermissions;
 

@@ -59,6 +59,20 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Platform
                     b.ToTable("CampRoleAssignments", (string)null);
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.PlatformRoleAssignment", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RoleIdentifier")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("UserId", "RoleIdentifier");
+
+                    b.ToTable("PlatformRoleAssignments", (string)null);
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.Tenant", b =>
                 {
                     b.Property<Guid>("Id")
@@ -386,6 +400,15 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Platform
                     b.HasOne("ScoutCampPlanner.Platform.Domain.CampMembership", null)
                         .WithMany()
                         .HasForeignKey("MembershipId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.PlatformRoleAssignment", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Platform.Domain.UserAccount", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

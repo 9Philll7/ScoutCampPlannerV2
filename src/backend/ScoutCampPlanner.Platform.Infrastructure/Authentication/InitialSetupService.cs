@@ -62,6 +62,7 @@ public sealed class InitialSetupService(
                     new Tenant(tenantId, tenantName), user,
                     new TenantMembership(membershipId, userId, tenantId),
                     new TenantRoleAssignment(membershipId, Roles.TenantOwner),
+                    new PlatformRoleAssignment(userId, Roles.PlatformAdmin),
                     new PasswordCredential(userId, verifier, timeProvider.GetUtcNow()));
             }, cancellationToken);
             return InitialSetupResult.Completed(userId, tenantId);

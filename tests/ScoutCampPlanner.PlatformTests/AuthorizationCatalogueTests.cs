@@ -8,10 +8,12 @@ public sealed class AuthorizationCatalogueTests
     [Fact]
     public void CatalogueContainsTheDocumentedStableIdentifiers()
     {
-        Assert.Equal(1, AuthorizationCatalogue.DefinitionVersion);
+        Assert.Equal(2, AuthorizationCatalogue.DefinitionVersion);
+        Assert.Equal(3, AuthorizationCatalogue.AllPlatformPermissions.Count);
         Assert.Equal(10, AuthorizationCatalogue.AllTenantPermissions.Count);
         Assert.Equal(8, AuthorizationCatalogue.AllCampPermissions.Count);
-        Assert.Equal(7, AuthorizationCatalogue.AllRoles.Count);
+        Assert.Equal(8, AuthorizationCatalogue.AllRoles.Count);
+        Assert.Contains(Permissions.Platform.ReviewCentralRecipeChanges, AuthorizationCatalogue.AllPlatformPermissions);
         Assert.Contains(Permissions.Tenant.ManageAuditLegalHold, AuthorizationCatalogue.AllTenantPermissions);
         Assert.Contains(Permissions.Camp.PrepareOfflineAccess, AuthorizationCatalogue.AllCampPermissions);
     }
@@ -19,6 +21,7 @@ public sealed class AuthorizationCatalogueTests
     [Fact]
     public void RoleMappingsMatchAdr011()
     {
+        AssertRole(Roles.PlatformAdmin, AuthorizationScope.Platform, AuthorizationCatalogue.AllPlatformPermissions);
         AssertRole(Roles.TenantOwner, AuthorizationScope.Tenant, AuthorizationCatalogue.AllTenantPermissions);
         AssertRole(Roles.TenantAdmin, AuthorizationScope.Tenant,
             Permissions.Tenant.View,
@@ -47,6 +50,15 @@ public sealed class AuthorizationCatalogueTests
             new[] { Permissions.Tenant.ExportAudit, Permissions.Tenant.ViewAudit, Permissions.Tenant.View },
             tenantPermissions.Order(StringComparer.Ordinal));
         Assert.DoesNotContain(Permissions.Camp.View, tenantPermissions);
+    }
+
+    [Fact]
+    public void PlatformPermissionsDoNotLeakFromTenantOrCampRoles()
+    {
+        Assert.Empty(AuthorizationCatalogue.ResolvePermissions(
+            AuthorizationScope.Platform, [Roles.TenantOwner, Roles.CampAdmin]));
+        Assert.Equal(AuthorizationCatalogue.AllPlatformPermissions,
+            AuthorizationCatalogue.ResolvePermissions(AuthorizationScope.Platform, [Roles.PlatformAdmin]));
     }
 
     [Fact]

@@ -11,6 +11,7 @@ using ScoutCampPlanner.Migrations.Sqlite;
 using ScoutCampPlanner.Platform.Domain;
 using ScoutCampPlanner.Platform.Infrastructure;
 using ScoutCampPlanner.Platform.Application.Auditing;
+using ScoutCampPlanner.Platform.Application.Authorization;
 using ScoutCampPlanner.Platform.Infrastructure.Auditing;
 using Xunit;
 
@@ -39,7 +40,7 @@ public sealed class DatabaseMigrationTests
         await MigrateToCurrentAsync(databases);
         await AssertBaselineDataAsync(databases, identities);
 
-        Assert.Equal(6, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_platform"));
+        Assert.Equal(7, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_platform"));
         Assert.Equal(8, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_camp"));
         Assert.Equal(5, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_catering"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_Camps_TenantId_Name'"));
@@ -59,6 +60,7 @@ public sealed class DatabaseMigrationTests
         Assert.Equal(3, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('AuditEvents', 'AuditJournalHeads', 'AuditSegments')"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'AuthenticationSessions'"));
         Assert.Equal(2, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('CampMemberships', 'CampRoleAssignments')"));
+        Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'PlatformRoleAssignments'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_AuditEvents_InstanceId_EventId'"));
 
         await MigrateToCurrentAsync(databases);
@@ -85,7 +87,7 @@ public sealed class DatabaseMigrationTests
         await MigrateToCurrentAsync(databases);
         await AssertBaselineDataAsync(databases, identities);
 
-        Assert.Equal(6, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM platform.\"__EFMigrationsHistory\""));
+        Assert.Equal(7, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM platform.\"__EFMigrationsHistory\""));
         Assert.Equal(8, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM camp.\"__EFMigrationsHistory\""));
         Assert.Equal(5, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM catering.\"__EFMigrationsHistory\""));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'camp' AND indexname = 'IX_Camps_TenantId_Name'"));
@@ -105,9 +107,31 @@ public sealed class DatabaseMigrationTests
         Assert.Equal(3, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'platform' AND table_name IN ('AuditEvents', 'AuditJournalHeads', 'AuditSegments')"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'platform' AND table_name = 'AuthenticationSessions'"));
         Assert.Equal(2, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'platform' AND table_name IN ('CampMemberships', 'CampRoleAssignments')"));
+        Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'platform' AND table_name = 'PlatformRoleAssignments'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'platform' AND indexname = 'IX_AuditEvents_InstanceId_EventId'"));
 
         await AssertConcurrentProductivePostgreSqlAuditAppendsAsync(connectionString, databases.Platform);
+    }
+
+    [Fact]
+    public async Task Sqlite_upgrade_assigns_platform_admin_only_to_the_single_existing_account()
+    {
+        SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_winsqlite3());
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var databases = CreateSqliteDatabases(connection);
+
+        await databases.Platform.Database.MigrateAsync("20260814221207_AddCampMemberships");
+        var account = new UserAccount(Guid.NewGuid(), "admin@example.test");
+        account.ActivateAfterInitialSetup();
+        databases.Platform.UserAccounts.Add(account);
+        await databases.Platform.SaveChangesAsync();
+
+        await databases.Platform.Database.MigrateAsync();
+
+        var assignment = await databases.Platform.PlatformRoleAssignments.SingleAsync();
+        Assert.Equal(account.Id, assignment.UserId);
+        Assert.Equal(Roles.PlatformAdmin, assignment.RoleIdentifier);
     }
 
     private static ModuleDatabases CreateSqliteDatabases(SqliteConnection connection) => new(

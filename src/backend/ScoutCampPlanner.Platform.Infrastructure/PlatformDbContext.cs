@@ -12,6 +12,7 @@ public sealed class PlatformDbContext(DbContextOptions<PlatformDbContext> option
     public DbSet<UserAccount> UserAccounts => Set<UserAccount>();
     public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
     public DbSet<TenantRoleAssignment> TenantRoleAssignments => Set<TenantRoleAssignment>();
+    public DbSet<PlatformRoleAssignment> PlatformRoleAssignments => Set<PlatformRoleAssignment>();
     public DbSet<CampMembership> CampMemberships => Set<CampMembership>();
     public DbSet<CampRoleAssignment> CampRoleAssignments => Set<CampRoleAssignment>();
     public DbSet<PasswordCredential> PasswordCredentials => Set<PasswordCredential>();
@@ -59,6 +60,13 @@ public sealed class PlatformDbContext(DbContextOptions<PlatformDbContext> option
             entity.HasIndex(x => x.MembershipId)
                 .IsUnique()
                 .HasFilter("\"RoleIdentifier\" IN ('TenantOwner', 'TenantAdmin', 'TenantMember')");
+        });
+        modelBuilder.Entity<PlatformRoleAssignment>(entity =>
+        {
+            entity.ToTable("PlatformRoleAssignments");
+            entity.HasKey(x => new { x.UserId, x.RoleIdentifier });
+            entity.Property(x => x.RoleIdentifier).HasMaxLength(100);
+            entity.HasOne<UserAccount>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<CampMembership>(entity =>
         {

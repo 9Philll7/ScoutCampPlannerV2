@@ -33,9 +33,15 @@ Used for meals that can be placed directly in a menu plan.
 Required reference data:
 
 - `reference_servings > 0`
-- `reference_age_group_id`
+- the platform-wide standard-portion reference with factor `1.0`
 
-All ingredient and subrecipe quantities describe the stated number of reference servings for the stated reference age group.
+All ingredient and subrecipe quantities describe the stated number of normalized standard reference servings.
+
+Tenant and camp drafts may use one of their configured stages as an authoring basis. The draft records the stage ID, stage name and the factor used for authoring. Publication normalizes the reference servings to standard portions before creating the immutable revision:
+
+`standard_reference_servings = entered_reference_servings * authoring_stage_factor`
+
+Ingredient and subrecipe quantities are not changed during this normalization. Published revisions in every scope therefore always use the standard-portion reference with factor `1.0`. The authoring-stage snapshot remains audit/lineage metadata and never changes published calculation semantics.
 
 Only portion-based recipes are eligible for direct menu-plan use.
 
@@ -249,7 +255,7 @@ Replacement recipes are re-evaluated for conflicts. Remaining or new conflicts c
 
 ### 12.1 Age-group factor
 
-The age-group factor originates later from cooking-unit/menu-plan context. It is applied only to the top-level portion-based recipe demand.
+The age-group factor originates later from cooking-unit/menu-plan context. Published recipe reference servings are always standard portions with factor `1.0`; the context factor is applied only to the top-level portion-based recipe demand.
 
 Nested recipes do not independently apply age-group factors.
 

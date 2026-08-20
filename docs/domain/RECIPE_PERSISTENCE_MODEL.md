@@ -23,7 +23,10 @@ Suggested columns:
 - `source` nullable text
 - `internal_notes` nullable text
 - `reference_servings` nullable decimal/integer
-- `reference_age_group_id` nullable FK
+- `reference_portion_kind` fixed to the platform standard portion for published semantics
+- `authoring_stage_id` nullable (tenant/camp draft only)
+- `authoring_stage_name` nullable snapshot
+- `authoring_stage_factor` nullable positive decimal snapshot
 - `reference_quantity` nullable decimal
 - `reference_unit_id` nullable FK
 - `default_age_group_scaling_applies` nullable boolean / defined only for portion recipes
@@ -40,6 +43,8 @@ Constraints:
 - `central` requires a null scope ID; `tenant` and `camp` require the ID of their owning scope
 - portion-based fields XOR quantity-based fields
 - positive references
+- central drafts cannot have authoring-stage metadata
+- tenant/camp authoring-stage metadata is either complete or entirely absent
 
 ### Recipe lineage
 
@@ -316,7 +321,8 @@ A revision snapshot should have an explicit schema contract resembling:
     "recipeType": "portion_based",
     "reference": {
       "servings": 10,
-      "ageGroupId": "..."
+      "portionKind": "standard",
+      "factor": 1.0
     },
     "defaultAgeGroupScalingApplies": true,
     "tags": ["..."],
@@ -325,6 +331,8 @@ A revision snapshot should have an explicit schema contract resembling:
   }
 }
 ```
+
+For the implemented schema, the published snapshot reference identifies the standard portion with factor `1.0`. An optional authoring-context object may retain the tenant/camp stage ID, name and factor used before normalization, but calculation always uses the normalized `reference.servings` value.
 
 Each group, ingredient position, subrecipe position and replacement rule should contain a stable snapshot-local ID.
 
