@@ -17,6 +17,119 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.5");
 
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.Allergen", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedName")
+                        .IsUnique();
+
+                    b.ToTable("Allergens", (string)null);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.BaseIngredient", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OriginInformation")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ScopeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ScopeType")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ScopeId");
+
+                    b.HasIndex("ScopeType", "NormalizedName")
+                        .IsUnique()
+                        .HasFilter("\"ScopeId\" IS NULL");
+
+                    b.HasIndex("ScopeType", "ScopeId", "NormalizedName")
+                        .IsUnique()
+                        .HasFilter("\"ScopeId\" IS NOT NULL");
+
+                    b.ToTable("BaseIngredients", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_BaseIngredients_ScopeOwner", "(\"ScopeType\" = 0 AND \"ScopeId\" IS NULL) OR (\"ScopeType\" IN (1, 2) AND \"ScopeId\" IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.BaseIngredientAllergen", b =>
+                {
+                    b.Property<Guid>("BaseIngredientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("AllergenId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("BaseIngredientId", "AllergenId");
+
+                    b.HasIndex("AllergenId");
+
+                    b.ToTable("BaseIngredientAllergens", (string)null);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.BaseIngredientDietaryRequirement", b =>
+                {
+                    b.Property<Guid>("BaseIngredientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("DietaryRequirementId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("BaseIngredientId", "DietaryRequirementId");
+
+                    b.HasIndex("DietaryRequirementId");
+
+                    b.ToTable("BaseIngredientDietaryRequirements", (string)null);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.BaseIngredientIntolerance", b =>
+                {
+                    b.Property<Guid>("BaseIngredientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("IntoleranceId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("BaseIngredientId", "IntoleranceId");
+
+                    b.HasIndex("IntoleranceId");
+
+                    b.ToTable("BaseIngredientIntolerances", (string)null);
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CampMeal", b =>
                 {
                     b.Property<Guid>("Id")
@@ -109,6 +222,103 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.ToTable("CampStageFoodFactors", (string)null);
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.DietaryRequirement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedName")
+                        .IsUnique();
+
+                    b.ToTable("DietaryRequirements", (string)null);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.IngredientUnitConversion", b =>
+                {
+                    b.Property<Guid>("BaseIngredientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UnitId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("ReferenceQuantityPerUnit")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("BaseIngredientId", "UnitId");
+
+                    b.HasIndex("UnitId");
+
+                    b.ToTable("IngredientUnitConversions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_IngredientUnitConversions_Factor_Positive", "\"ReferenceQuantityPerUnit\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.IngredientVariant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("BaseIngredientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BaseIngredientId", "NormalizedName")
+                        .IsUnique();
+
+                    b.ToTable("IngredientVariants", (string)null);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.Intolerance", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedName")
+                        .IsUnique();
+
+                    b.ToTable("Intolerances", (string)null);
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.MealPlan", b =>
                 {
                     b.Property<Guid>("Id")
@@ -128,6 +338,48 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.HasIndex("CampId");
 
                     b.ToTable("MealPlans", (string)null);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.MeasurementUnit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("BaseUnitFactor")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Dimension")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Symbol")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedName")
+                        .IsUnique();
+
+                    b.HasIndex("Dimension", "Symbol")
+                        .IsUnique();
+
+                    b.ToTable("MeasurementUnits", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_MeasurementUnits_BaseUnitFactor_Positive", "\"BaseUnitFactor\" > 0");
+                        });
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.TenantStageFoodFactor", b =>
@@ -159,6 +411,75 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .IsUnique();
 
                     b.ToTable("TenantStageFoodFactors", (string)null);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.BaseIngredientAllergen", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.Allergen", null)
+                        .WithMany()
+                        .HasForeignKey("AllergenId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.BaseIngredient", null)
+                        .WithMany()
+                        .HasForeignKey("BaseIngredientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.BaseIngredientDietaryRequirement", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.BaseIngredient", null)
+                        .WithMany()
+                        .HasForeignKey("BaseIngredientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.DietaryRequirement", null)
+                        .WithMany()
+                        .HasForeignKey("DietaryRequirementId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.BaseIngredientIntolerance", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.BaseIngredient", null)
+                        .WithMany()
+                        .HasForeignKey("BaseIngredientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.Intolerance", null)
+                        .WithMany()
+                        .HasForeignKey("IntoleranceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.IngredientUnitConversion", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.BaseIngredient", null)
+                        .WithMany()
+                        .HasForeignKey("BaseIngredientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.MeasurementUnit", null)
+                        .WithMany()
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.IngredientVariant", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.BaseIngredient", null)
+                        .WithMany()
+                        .HasForeignKey("BaseIngredientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }
