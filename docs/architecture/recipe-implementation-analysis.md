@@ -15,7 +15,7 @@ Repository analysis completed before recipe implementation. This document record
 
 ## Missing recipe prerequisites
 
-### Ingredient and conflict domain
+### Ingredient and conflict domain (resolved)
 
 No implemented types or persistence exist for:
 
@@ -26,7 +26,7 @@ No implemented types or persistence exist for:
 - dietary requirements
 - conflict evaluation
 
-The recipe brief requires these to remain authoritative outside individual recipe positions. Recipe implementation must not replace them with free-text identifiers or recipe-owned catalogs.
+ADR-018 resolves their ownership: units and conflict catalogs are platform-wide, while base ingredients use central, tenant, and camp scopes. Ingredient variants and ingredient-specific conversions remain owned by their base ingredient. Recipe implementation must not replace these catalogs with free-text identifiers or recipe-owned catalogs.
 
 ### Reference age groups (resolved)
 

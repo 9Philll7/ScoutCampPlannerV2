@@ -15,6 +15,7 @@
     <Project Path="src/backend/ScoutCampPlanner.Package/ScoutCampPlanner.Package.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/ScoutCampPlanner.CateringTests/ScoutCampPlanner.CateringTests.csproj" />
     <Project Path="tests/ScoutCampPlanner.PlatformTests/ScoutCampPlanner.PlatformTests.csproj" />
     <Project Path="tests/ScoutCampPlanner.ArchitectureTests/ScoutCampPlanner.ArchitectureTests.csproj" />
     <Project Path="tests/ScoutCampPlanner.DatabaseMigrationTests/ScoutCampPlanner.DatabaseMigrationTests.csproj" />
