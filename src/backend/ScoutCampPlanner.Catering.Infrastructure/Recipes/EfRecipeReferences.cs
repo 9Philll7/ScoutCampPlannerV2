@@ -7,7 +7,8 @@ namespace ScoutCampPlanner.Catering.Infrastructure.Recipes;
 public sealed class EfRecipeReferences(CateringDbContext database) :
     IRecipeValidationReferences,
     IRecipeSnapshotReferences,
-    IRecipeSnapshotSource
+    IRecipeSnapshotSource,
+    IRecipeRevisionSource
 {
     public IngredientDescriptor? FindIngredient(Guid ingredientId) => database.BaseIngredients.AsNoTracking()
         .Where(value => value.Id == ingredientId)
@@ -116,6 +117,15 @@ public sealed class EfRecipeReferences(CateringDbContext database) :
     public RecipeSnapshot GetRevision(Guid revisionId) =>
         RecipeSnapshotBuilder.Deserialize(database.Set<RecipeRevisionRecord>().AsNoTracking()
             .Where(value => value.Id == revisionId).Select(value => value.SnapshotJson).Single());
+
+    public RecipeRevisionSnapshot GetRevisionSnapshot(Guid revisionId)
+    {
+        var revision = database.Set<RecipeRevisionRecord>().AsNoTracking()
+            .Where(value => value.Id == revisionId)
+            .Select(value => new { value.RecipeId, value.SnapshotJson })
+            .Single();
+        return new RecipeRevisionSnapshot(revision.RecipeId, RecipeSnapshotBuilder.Deserialize(revision.SnapshotJson));
+    }
 
     private static void AddEdge(Dictionary<Guid, HashSet<Guid>> edges, Guid source, Guid target)
     {

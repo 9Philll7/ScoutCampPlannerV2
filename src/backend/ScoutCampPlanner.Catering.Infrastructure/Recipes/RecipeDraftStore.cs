@@ -25,6 +25,31 @@ public sealed class RecipeDraftStore(CateringDbContext database) : IRecipeDraftS
         return draft;
     }
 
+    public async Task<RecipeDraft> CreateDerivedAsync(
+        RecipeDraft draft,
+        RecipeDraftLineage lineage,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+        ArgumentNullException.ThrowIfNull(lineage);
+        var record = new RecipeRecord
+        {
+            Id = draft.Id,
+            CreatedBy = actorUserId,
+            CreatedAtUtc = timestampUtc,
+            DerivedFromRecipeId = lineage.SourceRecipeId,
+            DerivedFromRevisionId = lineage.SourceRevisionId,
+        };
+        CopyDraft(record, draft, actorUserId, timestampUtc, version: 0);
+        database.Set<RecipeRecord>().Add(record);
+        AddGraph(draft);
+        await database.SaveChangesAsync(cancellationToken);
+        draft.SetPersistedVersion(0);
+        return draft;
+    }
+
     public async Task<RecipeDraftSaveResult> SaveAsync(
         RecipeDraft draft,
         long expectedVersion,

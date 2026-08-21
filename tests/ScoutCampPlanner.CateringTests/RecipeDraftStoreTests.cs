@@ -92,6 +92,31 @@ public sealed class RecipeDraftStoreTests
         Assert.Equal("Gespeicherte Änderung", conflict.CurrentDraft.Name);
     }
 
+    [Fact]
+    public async Task Derived_draft_persists_source_lineage()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Guid sourceRecipeId = Guid.NewGuid();
+        Guid sourceRevisionId = Guid.NewGuid();
+        var source = new RecipeDraft(
+            sourceRecipeId, RecipeScopeType.Central, null, RecipeType.PortionBased, "Quelle");
+        await fixture.Store.CreateAsync(
+            source, Guid.NewGuid(), DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+        var derived = new RecipeDraft(
+            Guid.NewGuid(), RecipeScopeType.Central, null, RecipeType.PortionBased, "Kopie");
+
+        await fixture.Store.CreateDerivedAsync(
+            derived, new RecipeDraftLineage(sourceRecipeId, sourceRevisionId),
+            Guid.NewGuid(), DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+
+        await using var command = fixture.Database.Database.GetDbConnection().CreateCommand();
+        command.CommandText =
+            "SELECT DerivedFromRecipeId || '|' || DerivedFromRevisionId FROM Recipes WHERE Id = $id";
+        command.Parameters.Add(new SqliteParameter("$id", derived.Id));
+        string lineage = Assert.IsType<string>(await command.ExecuteScalarAsync(TestContext.Current.CancellationToken));
+        Assert.Equal($"{sourceRecipeId}|{sourceRevisionId}", lineage, ignoreCase: true);
+    }
+
     private sealed class DatabaseFixture(
         SqliteConnection connection,
         CateringDbContext database,
