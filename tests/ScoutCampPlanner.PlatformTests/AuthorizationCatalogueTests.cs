@@ -8,10 +8,10 @@ public sealed class AuthorizationCatalogueTests
     [Fact]
     public void CatalogueContainsTheDocumentedStableIdentifiers()
     {
-        Assert.Equal(3, AuthorizationCatalogue.DefinitionVersion);
-        Assert.Equal(3, AuthorizationCatalogue.AllPlatformPermissions.Count);
-        Assert.Equal(17, AuthorizationCatalogue.AllTenantPermissions.Count);
-        Assert.Equal(16, AuthorizationCatalogue.AllCampPermissions.Count);
+        Assert.Equal(4, AuthorizationCatalogue.DefinitionVersion);
+        Assert.Equal(4, AuthorizationCatalogue.AllPlatformPermissions.Count);
+        Assert.Equal(18, AuthorizationCatalogue.AllTenantPermissions.Count);
+        Assert.Equal(17, AuthorizationCatalogue.AllCampPermissions.Count);
         Assert.Equal(8, AuthorizationCatalogue.AllRoles.Count);
         Assert.Contains(Permissions.Platform.ReviewCentralRecipeChanges, AuthorizationCatalogue.AllPlatformPermissions);
         Assert.Contains(Permissions.Tenant.ManageAuditLegalHold, AuthorizationCatalogue.AllTenantPermissions);
@@ -19,6 +19,9 @@ public sealed class AuthorizationCatalogueTests
         Assert.Contains(Permissions.Recipes.SubmitCentralChange, AuthorizationCatalogue.AllTenantPermissions);
         Assert.Contains(Permissions.Recipes.ManageCampNotes, AuthorizationCatalogue.AllCampPermissions);
         Assert.DoesNotContain(Permissions.Recipes.ManageCampNotes, AuthorizationCatalogue.AllTenantPermissions);
+        Assert.Contains(Permissions.Ingredients.Manage, AuthorizationCatalogue.AllTenantPermissions);
+        Assert.Contains(Permissions.Ingredients.Manage, AuthorizationCatalogue.AllCampPermissions);
+        Assert.Contains(Permissions.Platform.ManageCentralIngredients, AuthorizationCatalogue.AllPlatformPermissions);
     }
 
     [Fact]
@@ -39,7 +42,8 @@ public sealed class AuthorizationCatalogueTests
             Permissions.Recipes.Archive,
             Permissions.Recipes.ResetToDraft,
             Permissions.Recipes.ManageLibrary,
-            Permissions.Recipes.SubmitCentralChange);
+            Permissions.Recipes.SubmitCentralChange,
+            Permissions.Ingredients.Manage);
         AssertRole(Roles.TenantMember, AuthorizationScope.Tenant,
             Permissions.Tenant.View,
             Permissions.Recipes.Read);
@@ -52,7 +56,8 @@ public sealed class AuthorizationCatalogueTests
             Permissions.Camp.Edit,
             Permissions.Recipes.Read,
             Permissions.Recipes.Edit,
-            Permissions.Recipes.ManageCampNotes);
+            Permissions.Recipes.ManageCampNotes,
+            Permissions.Ingredients.Manage);
         AssertRole(Roles.CampViewer, AuthorizationScope.Camp,
             Permissions.Camp.View,
             Permissions.Recipes.Read);

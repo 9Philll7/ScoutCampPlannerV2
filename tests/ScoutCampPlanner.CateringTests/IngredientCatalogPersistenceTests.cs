@@ -106,6 +106,31 @@ public sealed class IngredientCatalogPersistenceTests
         Assert.Contains(camp, value => value.Name == "Lagerzutat");
     }
 
+    [Fact]
+    public async Task Camp_ingredient_creation_persists_variants_and_rejects_duplicate_name()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Guid campId = Guid.NewGuid();
+        var store = new IngredientManagementStore(fixture.Database);
+        var request = new ScoutCampPlanner.Catering.Application.Ingredients.CreateIngredientRequest(
+            "  Lagerkäse  ", "  Aus der Region  ", ["Mild", "Würzig"]);
+
+        var created = await store.CreateAsync(
+            Guid.NewGuid(), IngredientScopeType.Camp, campId, request,
+            TestContext.Current.CancellationToken);
+        var duplicate = await store.CreateAsync(
+            Guid.NewGuid(), IngredientScopeType.Camp, campId,
+            request with { Name = "LAGERKÄSE" }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(ScoutCampPlanner.Catering.Application.Ingredients.IngredientMutationStatus.Created,
+            created.Status);
+        Assert.Equal("Lagerkäse", created.Ingredient!.Name);
+        Assert.Equal("Aus der Region", created.Ingredient.OriginInformation);
+        Assert.Equal(2, created.Ingredient.Variants.Count);
+        Assert.Equal(ScoutCampPlanner.Catering.Application.Ingredients.IngredientMutationStatus.DuplicateName,
+            duplicate.Status);
+    }
+
     private sealed class DatabaseFixture(SqliteConnection connection, CateringDbContext database) : IAsyncDisposable
     {
         public CateringDbContext Database { get; } = database;

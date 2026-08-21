@@ -137,6 +137,11 @@ export class CampApiService {
       { withCredentials: true });
   }
 
+  createCampIngredient(campId: string, request: { name: string; originInformation: string | null; variants: string[] }) {
+    return this.http.post<IngredientCatalogEntry>(`${this.baseUrl}/api/camps/${campId}/ingredients`, request,
+      { withCredentials: true });
+  }
+
   updateMealTypes(campId: string, names: string[]) {
     return this.http.put<void>(`${this.baseUrl}/api/camps/${campId}/meal-types`, { names }, { withCredentials: true });
   }

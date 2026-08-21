@@ -23,11 +23,17 @@ public static class Permissions
         public const string SubmitCentralChange = "recipes.central.changes.submit";
     }
 
+    public static class Ingredients
+    {
+        public const string Manage = "ingredients.manage";
+    }
+
     public static class Platform
     {
         public const string ReadCentralRecipes = "recipes.central.read";
         public const string ReviewCentralRecipeChanges = "recipes.central.changes.review";
         public const string PermanentlyDeleteCentralRecipes = "recipes.central.delete";
+        public const string ManageCentralIngredients = "ingredients.central.manage";
     }
 
     public static class Tenant
@@ -76,13 +82,14 @@ public sealed record RoleDefinition(
 
 public static class AuthorizationCatalogue
 {
-    public const int DefinitionVersion = 3;
+    public const int DefinitionVersion = 4;
 
     private static readonly FrozenSet<string> PlatformPermissions = new[]
     {
         Permissions.Platform.ReadCentralRecipes,
         Permissions.Platform.ReviewCentralRecipeChanges,
         Permissions.Platform.PermanentlyDeleteCentralRecipes,
+        Permissions.Platform.ManageCentralIngredients,
     }.ToFrozenSet(StringComparer.Ordinal);
 
     private static readonly FrozenSet<string> TenantPermissions = new[]
@@ -104,6 +111,7 @@ public static class AuthorizationCatalogue
         Permissions.Recipes.ResetToDraft,
         Permissions.Recipes.ManageLibrary,
         Permissions.Recipes.SubmitCentralChange,
+        Permissions.Ingredients.Manage,
     }.ToFrozenSet(StringComparer.Ordinal);
 
     private static readonly FrozenSet<string> CampPermissions = new[]
@@ -124,6 +132,7 @@ public static class AuthorizationCatalogue
         Permissions.Recipes.ManageLibrary,
         Permissions.Recipes.ManageCampNotes,
         Permissions.Recipes.SubmitCentralChange,
+        Permissions.Ingredients.Manage,
     }.ToFrozenSet(StringComparer.Ordinal);
 
     private static readonly FrozenDictionary<string, RoleDefinition> Definitions =
@@ -144,7 +153,8 @@ public static class AuthorizationCatalogue
                 Permissions.Recipes.Archive,
                 Permissions.Recipes.ResetToDraft,
                 Permissions.Recipes.ManageLibrary,
-                Permissions.Recipes.SubmitCentralChange),
+                Permissions.Recipes.SubmitCentralChange,
+                Permissions.Ingredients.Manage),
             Define(Roles.TenantMember, AuthorizationScope.Tenant,
                 Permissions.Tenant.View,
                 Permissions.Recipes.Read),
@@ -157,7 +167,8 @@ public static class AuthorizationCatalogue
                 Permissions.Camp.Edit,
                 Permissions.Recipes.Read,
                 Permissions.Recipes.Edit,
-                Permissions.Recipes.ManageCampNotes),
+                Permissions.Recipes.ManageCampNotes,
+                Permissions.Ingredients.Manage),
             Define(Roles.CampViewer, AuthorizationScope.Camp,
                 Permissions.Camp.View,
                 Permissions.Recipes.Read),

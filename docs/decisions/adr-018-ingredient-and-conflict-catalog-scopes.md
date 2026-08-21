@@ -31,3 +31,5 @@ Offline packages contain every ingredient, variant, unit and conflict entry requ
 - Platform-wide conflict identifiers remain stable across recipe scopes.
 - Scope visibility needs explicit validation when a recipe is saved or published.
 - Package schemas must include the transitive master-data closure of transferred recipe revisions.
+
+Mutation permissions and search priority are defined separately by [ADR-020](adr-020-ingredient-management-permissions-and-search.md).

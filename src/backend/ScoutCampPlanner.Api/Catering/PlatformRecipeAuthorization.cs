@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ScoutCampPlanner.Catering.Application.Recipes;
+using ScoutCampPlanner.Catering.Application.Ingredients;
 using ScoutCampPlanner.Platform.Application.Authorization;
 using ScoutCampPlanner.Platform.Infrastructure;
 using ScoutCampPlanner.Platform.Domain;
@@ -10,7 +11,8 @@ public sealed class PlatformRecipeAuthorization(PlatformDbContext database) :
     IRecipePermanentDeleteAuthorization,
     IRecipeChangeSubmissionAuthorization,
     ICampRecipeNoteAuthorization,
-    IRecipeCatalogAuthorization
+    IRecipeCatalogAuthorization,
+    IIngredientManagementAuthorization
 {
     public async Task<bool> CanPermanentlyDeleteCentralRecipesAsync(
         Guid actorUserId,
@@ -93,6 +95,24 @@ public sealed class PlatformRecipeAuthorization(PlatformDbContext database) :
     public Task<bool> CanReadCampAsync(
         Guid actorUserId, Guid campId, CancellationToken cancellationToken = default) =>
         HasCampPermissionAsync(actorUserId, campId, Permissions.Recipes.Read, cancellationToken);
+
+    public async Task<bool> CanManageCentralAsync(
+        Guid actorUserId, CancellationToken cancellationToken = default)
+    {
+        string[] roles = await database.PlatformRoleAssignments.AsNoTracking()
+            .Where(value => value.UserId == actorUserId)
+            .Select(value => value.RoleIdentifier).ToArrayAsync(cancellationToken);
+        return AuthorizationCatalogue.ResolvePermissions(AuthorizationScope.Platform, roles)
+            .Contains(Permissions.Platform.ManageCentralIngredients);
+    }
+
+    public Task<bool> CanManageTenantAsync(
+        Guid actorUserId, Guid tenantId, CancellationToken cancellationToken = default) =>
+        HasTenantPermissionAsync(actorUserId, tenantId, Permissions.Ingredients.Manage, cancellationToken);
+
+    public Task<bool> CanManageCampAsync(
+        Guid actorUserId, Guid campId, CancellationToken cancellationToken = default) =>
+        HasCampPermissionAsync(actorUserId, campId, Permissions.Ingredients.Manage, cancellationToken);
 
     private async Task<bool> HasTenantPermissionAsync(
         Guid actorUserId, Guid tenantId, string permission, CancellationToken cancellationToken)

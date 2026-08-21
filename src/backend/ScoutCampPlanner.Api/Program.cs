@@ -120,6 +120,10 @@ builder.Services.AddScoped<RecipeCatalogService>();
 builder.Services.AddScoped<IIngredientCatalogStore, IngredientCatalogStore>();
 builder.Services.AddScoped<ICampTenantResolver, CampTenantResolver>();
 builder.Services.AddScoped<IngredientCatalogService>();
+builder.Services.AddScoped<IIngredientManagementStore, IngredientManagementStore>();
+builder.Services.AddScoped<IIngredientManagementAuthorization>(services =>
+    services.GetRequiredService<PlatformRecipeAuthorization>());
+builder.Services.AddScoped<IngredientManagementService>();
 builder.Services.AddSingleton<IPasswordPolicy, PasswordPolicy>();
 builder.Services.AddSingleton<IPasswordVerifier>(
     _ => new Argon2idPasswordVerifier(Argon2idOperatingMode.Server));
@@ -622,6 +626,24 @@ app.MapGet("/api/camps/{campId:guid}/ingredients", async (
     IngredientCatalogResult result = await ingredients.ListCampAsync(
         campId, Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken);
     return result.IsAuthorized ? Results.Ok(result.Entries.Select(ToIngredientResponse)) : Results.Forbid();
+}).RequireAuthorization();
+app.MapPost("/api/camps/{campId:guid}/ingredients", async (
+    Guid campId, CreateIngredientRequest request, ClaimsPrincipal principal,
+    IngredientManagementService ingredients, CancellationToken cancellationToken) =>
+{
+    IngredientMutationResult result = await ingredients.CreateCampAsync(
+        campId, request, Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken);
+    return result.Status switch
+    {
+        IngredientMutationStatus.Created => Results.Created(
+            $"/api/camps/{campId}/ingredients/{result.Ingredient!.Id}", ToIngredientResponse(result.Ingredient)),
+        IngredientMutationStatus.Forbidden => Results.Forbid(),
+        IngredientMutationStatus.DuplicateName => Results.Conflict(new { code = "duplicate_ingredient_name" }),
+        _ => Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["ingredient"] = ["Name, Herkunft oder Varianten sind ungültig."],
+        }),
+    };
 }).RequireAuthorization();
 app.MapPost("/api/camps/{campId:guid}/offline-package", async (
     Guid campId, ClaimsPrincipal principal, CampManagementService management,
