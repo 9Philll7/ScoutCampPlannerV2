@@ -207,6 +207,50 @@ public sealed class RecipeLibraryStoreTests
             (await fixture.Submissions.SubmitAsync(
                 Guid.NewGuid(), localRevision, fixture.UserId, fixture.Now.AddMinutes(3),
                 TestContext.Current.CancellationToken)).Status);
+
+        RecipeSubmissionReviewResult accepted = await fixture.Submissions.AcceptAsync(
+            comparison.SubmissionId, fixture.UserId, fixture.Now.AddMinutes(4),
+            acknowledgeWarnings: true, "Lokale Verbesserung übernommen",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(RecipeSubmissionReviewStatus.Accepted, accepted.Status);
+        Assert.Equal(3, accepted.ResultingRevision!.RevisionNumber);
+        Assert.Equal("Verbesserung", (await fixture.Drafts.FindAsync(
+            comparison.CentralRecipeId, TestContext.Current.CancellationToken))!.Name);
+        Assert.Empty(await fixture.Submissions.ListPendingAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(RecipeSubmissionReviewStatus.AlreadyReviewed,
+            (await fixture.Submissions.RejectAsync(
+                comparison.SubmissionId, fixture.UserId, fixture.Now.AddMinutes(5),
+                TestContext.Current.CancellationToken)).Status);
+    }
+
+    [Fact]
+    public async Task Pending_submission_can_be_rejected_without_creating_a_central_revision()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Guid centralRevision = await fixture.PublishAsync(RecipeScopeType.Central, null, "Zentral");
+        RecipeLibraryMutationResult entry = await fixture.Libraries.AddCentralRevisionToTenantAsync(
+            Guid.NewGuid(), fixture.TenantId, centralRevision, fixture.UserId, fixture.Now,
+            TestContext.Current.CancellationToken);
+        Guid localRecipeId = Guid.NewGuid();
+        await fixture.Libraries.ConvertTenantEntryToLocalRecipeAsync(
+            entry.EntryId!.Value, localRecipeId, "Nicht übernehmen", fixture.UserId,
+            fixture.Now.AddMinutes(1), TestContext.Current.CancellationToken);
+        Guid localRevision = await fixture.PublishCurrentAsync(localRecipeId);
+        RecipeSubmissionResult submitted = await fixture.Submissions.SubmitAsync(
+            Guid.NewGuid(), localRevision, fixture.UserId, fixture.Now.AddMinutes(2),
+            TestContext.Current.CancellationToken);
+
+        RecipeSubmissionReviewResult rejected = await fixture.Submissions.RejectAsync(
+            submitted.SubmissionId!.Value, fixture.UserId, fixture.Now.AddMinutes(3),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(RecipeSubmissionReviewStatus.Rejected, rejected.Status);
+        Assert.Empty(await fixture.Submissions.ListPendingAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(RecipeSubmissionReviewStatus.AlreadyReviewed,
+            (await fixture.Submissions.AcceptAsync(
+                submitted.SubmissionId.Value, fixture.UserId, fixture.Now.AddMinutes(4), true,
+                cancellationToken: TestContext.Current.CancellationToken)).Status);
     }
 
     private sealed class DatabaseFixture(
@@ -236,13 +280,14 @@ public sealed class RecipeLibraryStoreTests
             await database.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
             var drafts = new RecipeDraftStore(database);
             var references = new EfRecipeReferences(database);
+            var publisher = new RecipePublisher(
+                database, drafts, new RecipePublicationValidator(references),
+                new RecipeSnapshotBuilder(references));
             return new DatabaseFixture(
                 connection, database, drafts,
-                new RecipePublisher(
-                    database, drafts, new RecipePublicationValidator(references),
-                    new RecipeSnapshotBuilder(references)),
+                publisher,
                 new RecipeLibraryStore(database, drafts),
-                new RecipeChangeSubmissionStore(database));
+                new RecipeChangeSubmissionStore(database, drafts, publisher));
         }
 
         public async Task<Guid> PublishAsync(RecipeScopeType scope, Guid? scopeId, string name)

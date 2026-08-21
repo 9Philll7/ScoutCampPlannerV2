@@ -42,7 +42,9 @@ Authorization supports platform, tenant and camp scopes. ADR-017 defines platfor
 
 ### Central distribution infrastructure
 
-No central catalog synchronization service exists. The initial implementation can provide domain/application interfaces, exact revision references and package support without inventing automatic synchronization. Remote distribution and proposal review UI should remain a later explicit slice.
+The local central-distribution foundation is implemented: exact upstream revision references, explicit update checks and adoption, editable tenant/camp derivations, and central change submissions with a three-way comparison are persisted. Authorized platform reviewers can reject a pending submission or accept it as a newly validated immutable central revision. Acceptance also aligns the mutable central draft and commits the draft replacement, publication, audit fields, and submission status in one database transaction. A central copy discards any tenant/camp authoring-stage label and retains the normalized standard portion.
+
+No remote catalog synchronization service or proposal-review UI exists. Distribution between separate installations and the visual review workflow remain later explicit slices; automatic synchronization and semantic merging are not introduced.
 
 ## Proposed implementation boundary
 

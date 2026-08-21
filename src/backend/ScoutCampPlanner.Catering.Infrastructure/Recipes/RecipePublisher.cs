@@ -37,7 +37,9 @@ public sealed class RecipePublisher(
 
         RecipeSnapshot snapshot = snapshots.Build(draft);
         string snapshotJson = RecipeSnapshotBuilder.Serialize(snapshot);
-        await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = database.Database.CurrentTransaction is null
+            ? await database.Database.BeginTransactionAsync(cancellationToken)
+            : null;
         RecipeRecord? record = await database.Set<RecipeRecord>()
             .SingleOrDefaultAsync(value => value.Id == recipeId, cancellationToken);
         if (record is null)
@@ -46,7 +48,7 @@ public sealed class RecipePublisher(
             return Result(RecipePublicationStatus.Archived, currentDraft: draft);
         if (record.DraftVersion != expectedVersion)
         {
-            await transaction.RollbackAsync(cancellationToken);
+            if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
             database.ChangeTracker.Clear();
             return Result(
                 RecipePublicationStatus.VersionConflict,
@@ -79,11 +81,11 @@ public sealed class RecipePublisher(
         try
         {
             await database.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException)
         {
-            await transaction.RollbackAsync(cancellationToken);
+            if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
             database.ChangeTracker.Clear();
             return Result(
                 RecipePublicationStatus.VersionConflict,

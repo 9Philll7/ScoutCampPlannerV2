@@ -77,14 +77,16 @@ public sealed class RecipeDraftStore(CateringDbContext database) : IRecipeDraftS
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(draft);
-        await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = database.Database.CurrentTransaction is null
+            ? await database.Database.BeginTransactionAsync(cancellationToken)
+            : null;
         RecipeRecord? record = await database.Set<RecipeRecord>()
             .SingleOrDefaultAsync(value => value.Id == draft.Id, cancellationToken);
         if (record is null)
             return new RecipeDraftSaveResult(RecipeDraftSaveStatus.NotFound, null);
         if (record.DraftVersion != expectedVersion)
         {
-            await transaction.RollbackAsync(cancellationToken);
+            if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
             database.ChangeTracker.Clear();
             return new RecipeDraftSaveResult(
                 RecipeDraftSaveStatus.VersionConflict,
@@ -98,13 +100,13 @@ public sealed class RecipeDraftStore(CateringDbContext database) : IRecipeDraftS
             await database.SaveChangesAsync(cancellationToken);
             AddGraph(draft);
             await database.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
             draft.SetPersistedVersion(expectedVersion + 1);
             return new RecipeDraftSaveResult(RecipeDraftSaveStatus.Saved, draft);
         }
         catch (DbUpdateConcurrencyException)
         {
-            await transaction.RollbackAsync(cancellationToken);
+            if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
             database.ChangeTracker.Clear();
             return new RecipeDraftSaveResult(
                 RecipeDraftSaveStatus.VersionConflict,

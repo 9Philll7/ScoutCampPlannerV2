@@ -92,6 +92,11 @@ builder.Services.AddScoped<RecipeDraftStore>();
 builder.Services.AddScoped<IRecipeDraftStore>(services => services.GetRequiredService<RecipeDraftStore>());
 builder.Services.AddScoped<EfRecipeReferences>();
 builder.Services.AddScoped<IRecipeRevisionSource>(services => services.GetRequiredService<EfRecipeReferences>());
+builder.Services.AddScoped<IRecipeValidationReferences>(services => services.GetRequiredService<EfRecipeReferences>());
+builder.Services.AddScoped<IRecipeSnapshotReferences>(services => services.GetRequiredService<EfRecipeReferences>());
+builder.Services.AddScoped<RecipePublicationValidator>();
+builder.Services.AddScoped<RecipeSnapshotBuilder>();
+builder.Services.AddScoped<RecipePublisher>();
 builder.Services.AddScoped<PlatformRecipeAuthorization>();
 builder.Services.AddScoped<IRecipePermanentDeleteAuthorization>(services =>
     services.GetRequiredService<PlatformRecipeAuthorization>());

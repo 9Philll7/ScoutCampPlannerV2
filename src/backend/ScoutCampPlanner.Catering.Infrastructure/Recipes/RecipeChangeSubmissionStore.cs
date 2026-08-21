@@ -4,7 +4,10 @@ using ScoutCampPlanner.Catering.Domain;
 
 namespace ScoutCampPlanner.Catering.Infrastructure.Recipes;
 
-public sealed class RecipeChangeSubmissionStore(CateringDbContext database) : IRecipeChangeSubmissionStore
+public sealed class RecipeChangeSubmissionStore(
+    CateringDbContext database,
+    RecipeDraftStore drafts,
+    RecipePublisher publisher) : IRecipeChangeSubmissionStore
 {
     public async Task<RecipeSubmissionCandidate?> FindCandidateAsync(
         Guid localRevisionId,
@@ -85,4 +88,94 @@ public sealed class RecipeChangeSubmissionStore(CateringDbContext database) : IR
                 value.SubmittedBy, value.SubmittedAtUtc);
         }).ToArray();
     }
+
+    public async Task<RecipeSubmissionReviewResult> AcceptAsync(
+        Guid submissionId,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        bool acknowledgeWarnings,
+        string? changeNote = null,
+        CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
+        CentralRecipeChangeSubmissionRecord? submission = await database
+            .Set<CentralRecipeChangeSubmissionRecord>()
+            .SingleOrDefaultAsync(value => value.Id == submissionId, cancellationToken);
+        if (submission is null)
+            return Review(RecipeSubmissionReviewStatus.NotFound);
+        if (submission.Status != (int)CentralRecipeChangeSubmissionStatus.Pending)
+            return Review(RecipeSubmissionReviewStatus.AlreadyReviewed);
+
+        RecipeRevisionRecord? submittedRevision = await database.Set<RecipeRevisionRecord>().AsNoTracking()
+            .SingleOrDefaultAsync(value => value.Id == submission.SubmittedLocalRecipeRevisionId, cancellationToken);
+        RecipeDraft? current = await drafts.FindAsync(submission.CentralRecipeId, cancellationToken);
+        if (submittedRevision is null || current is null)
+            return Review(RecipeSubmissionReviewStatus.NotFound);
+
+        RecipeSnapshot submittedSnapshot = RecipeSnapshotBuilder.Deserialize(submittedRevision.SnapshotJson);
+        RecipeDraft acceptedDraft = RecipeDraftCopy.FromSnapshot(
+            current.Id, RecipeScopeType.Central, null, current.Status, submittedSnapshot, submittedSnapshot.Name);
+
+        RecipeDraftSaveResult saved = await drafts.SaveAsync(
+            acceptedDraft, current.DraftVersion, actorUserId, timestampUtc, cancellationToken);
+        if (saved.Status != RecipeDraftSaveStatus.Saved)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            database.ChangeTracker.Clear();
+            return Review(saved.Status == RecipeDraftSaveStatus.VersionConflict
+                ? RecipeSubmissionReviewStatus.VersionConflict
+                : RecipeSubmissionReviewStatus.NotFound);
+        }
+
+        RecipePublicationResult published = await publisher.PublishAsync(
+            current.Id, saved.CurrentDraft!.DraftVersion, actorUserId, timestampUtc,
+            acknowledgeWarnings, changeNote: changeNote, cancellationToken: cancellationToken);
+        if (published.Status != RecipePublicationStatus.Published)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            database.ChangeTracker.Clear();
+            return published.Status switch
+            {
+                RecipePublicationStatus.ValidationFailed =>
+                    Review(RecipeSubmissionReviewStatus.ValidationFailed, published.Validation),
+                RecipePublicationStatus.WarningAcknowledgementRequired =>
+                    Review(RecipeSubmissionReviewStatus.WarningAcknowledgementRequired, published.Validation),
+                RecipePublicationStatus.VersionConflict => Review(RecipeSubmissionReviewStatus.VersionConflict),
+                _ => Review(RecipeSubmissionReviewStatus.NotFound),
+            };
+        }
+
+        submission.Status = (int)CentralRecipeChangeSubmissionStatus.Accepted;
+        submission.ReviewedBy = actorUserId;
+        submission.ReviewedAtUtc = timestampUtc;
+        submission.ResultingCentralRevisionId = published.Revision!.Id;
+        await database.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return Review(RecipeSubmissionReviewStatus.Accepted, published.Validation, published.Revision);
+    }
+
+    public async Task<RecipeSubmissionReviewResult> RejectAsync(
+        Guid submissionId,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default)
+    {
+        CentralRecipeChangeSubmissionRecord? submission = await database
+            .Set<CentralRecipeChangeSubmissionRecord>()
+            .SingleOrDefaultAsync(value => value.Id == submissionId, cancellationToken);
+        if (submission is null)
+            return Review(RecipeSubmissionReviewStatus.NotFound);
+        if (submission.Status != (int)CentralRecipeChangeSubmissionStatus.Pending)
+            return Review(RecipeSubmissionReviewStatus.AlreadyReviewed);
+        submission.Status = (int)CentralRecipeChangeSubmissionStatus.Rejected;
+        submission.ReviewedBy = actorUserId;
+        submission.ReviewedAtUtc = timestampUtc;
+        await database.SaveChangesAsync(cancellationToken);
+        return Review(RecipeSubmissionReviewStatus.Rejected);
+    }
+
+    private static RecipeSubmissionReviewResult Review(
+        RecipeSubmissionReviewStatus status,
+        RecipeValidationResult? validation = null,
+        RecipeRevision? revision = null) => new(status, validation, revision);
 }

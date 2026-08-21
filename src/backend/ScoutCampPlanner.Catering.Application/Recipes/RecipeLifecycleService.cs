@@ -144,12 +144,14 @@ public static class RecipeDraftCopy
         draft.SetDetails(source.Description, source.Source, source.InternalNotes);
         if (source.RecipeType == RecipeType.PortionBased)
         {
-            AuthoringStageSnapshot? stage = source.AuthoringStage is null
+            AuthoringStageSnapshot? stage = scopeType == RecipeScopeType.Central || source.AuthoringStage is null
                 ? null
                 : new AuthoringStageSnapshot(
                     source.AuthoringStage.StageId, source.AuthoringStage.StageName, source.AuthoringStage.Factor);
             draft.ConfigurePortionReference(
-                source.AuthoringStage?.EnteredServings ?? source.Reference.StandardServings,
+                scopeType == RecipeScopeType.Central
+                    ? source.Reference.StandardServings
+                    : source.AuthoringStage?.EnteredServings ?? source.Reference.StandardServings,
                 source.DefaultAgeGroupScalingApplies,
                 stage);
         }
