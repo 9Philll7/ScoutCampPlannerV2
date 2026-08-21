@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using System.Data.Common;
 using ScoutCampPlanner.Catering.Application.Recipes;
 using ScoutCampPlanner.Catering.Domain;
 using ScoutCampPlanner.Catering.Infrastructure;
@@ -64,6 +65,70 @@ public sealed class RecipeLibraryStoreTests
         Assert.Contains(entries, value => value.SourceId == tenantRevision && value.UpstreamScope == RecipeScopeType.Tenant);
     }
 
+    [Fact]
+    public async Task Tenant_upstream_entry_converts_to_independent_tenant_draft()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Guid centralRevision = await fixture.PublishAsync(RecipeScopeType.Central, null, "Zentral");
+        RecipeLibraryMutationResult added = await fixture.Libraries.AddCentralRevisionToTenantAsync(
+            Guid.NewGuid(), fixture.TenantId, centralRevision, fixture.UserId, fixture.Now,
+            TestContext.Current.CancellationToken);
+        Guid localRecipeId = Guid.NewGuid();
+
+        RecipeLibraryMutationResult converted = await fixture.Libraries.ConvertTenantEntryToLocalRecipeAsync(
+            added.EntryId!.Value, localRecipeId, "Mandantenkopie", fixture.UserId, fixture.Now.AddMinutes(1),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(RecipeLibraryMutationStatus.Converted, converted.Status);
+        TenantRecipeLibraryEntry entry = Assert.Single(await fixture.Libraries.ListTenantEntriesAsync(
+            fixture.TenantId, TestContext.Current.CancellationToken));
+        Assert.Equal(RecipeLibraryEntryType.LocalRecipe, entry.Type);
+        Assert.Equal(localRecipeId, entry.SourceId);
+        RecipeDraft local = Assert.IsType<RecipeDraft>(await fixture.Drafts.FindAsync(
+            localRecipeId, TestContext.Current.CancellationToken));
+        Assert.Equal(RecipeScopeType.Tenant, local.ScopeType);
+        Assert.Equal("Mandantenkopie", local.Name);
+        Assert.Equal(RecipeStatus.Draft, local.Status);
+        (Guid? centralRecipe, Guid? centralSourceRevision, Guid? tenantRecipe, Guid? tenantSourceRevision) =
+            await fixture.ReadLineageAsync(localRecipeId);
+        Assert.NotNull(centralRecipe);
+        Assert.Equal(centralRevision, centralSourceRevision);
+        Assert.Null(tenantRecipe);
+        Assert.Null(tenantSourceRevision);
+    }
+
+    [Fact]
+    public async Task Camp_upstream_entry_converts_to_independent_camp_draft()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Guid tenantRevision = await fixture.PublishAsync(RecipeScopeType.Tenant, fixture.TenantId, "Mandant");
+        RecipeLibraryMutationResult added = await fixture.Libraries.AddUpstreamRevisionToCampAsync(
+            Guid.NewGuid(), fixture.CampId, tenantRevision, fixture.UserId, fixture.Now,
+            TestContext.Current.CancellationToken);
+        Guid localRecipeId = Guid.NewGuid();
+
+        RecipeLibraryMutationResult converted = await fixture.Libraries.ConvertCampEntryToLocalRecipeAsync(
+            added.EntryId!.Value, localRecipeId, "Lagerkopie", fixture.UserId, fixture.Now.AddMinutes(1),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(RecipeLibraryMutationStatus.Converted, converted.Status);
+        CampRecipeLibraryEntry entry = Assert.Single(await fixture.Libraries.ListCampEntriesAsync(
+            fixture.CampId, TestContext.Current.CancellationToken));
+        Assert.Equal(RecipeLibraryEntryType.LocalRecipe, entry.Type);
+        Assert.Equal(localRecipeId, entry.SourceId);
+        Assert.Null(entry.UpstreamScope);
+        RecipeDraft local = Assert.IsType<RecipeDraft>(await fixture.Drafts.FindAsync(
+            localRecipeId, TestContext.Current.CancellationToken));
+        Assert.Equal(RecipeScopeType.Camp, local.ScopeType);
+        Assert.Equal(fixture.CampId, local.ScopeId);
+        (Guid? centralRecipe, Guid? centralRevision, Guid? tenantRecipe, Guid? tenantSourceRevision) =
+            await fixture.ReadLineageAsync(localRecipeId);
+        Assert.Null(centralRecipe);
+        Assert.Null(centralRevision);
+        Assert.NotNull(tenantRecipe);
+        Assert.Equal(tenantRevision, tenantSourceRevision);
+    }
+
     private sealed class DatabaseFixture(
         SqliteConnection connection,
         CateringDbContext database,
@@ -76,6 +141,7 @@ public sealed class RecipeLibraryStoreTests
         public Guid CampId { get; } = Guid.NewGuid();
         public DateTimeOffset Now { get; } = DateTimeOffset.UtcNow;
         public RecipeLibraryStore Libraries { get; } = libraries;
+        public RecipeDraftStore Drafts { get; } = drafts;
 
         public static async Task<DatabaseFixture> CreateAsync()
         {
@@ -92,7 +158,7 @@ public sealed class RecipeLibraryStoreTests
                 new RecipePublisher(
                     database, drafts, new RecipePublicationValidator(references),
                     new RecipeSnapshotBuilder(references)),
-                new RecipeLibraryStore(database));
+                new RecipeLibraryStore(database, drafts));
         }
 
         public async Task<Guid> PublishAsync(RecipeScopeType scope, Guid? scopeId, string name)
@@ -116,12 +182,28 @@ public sealed class RecipeLibraryStoreTests
             draft.ConfigurePortionReference(10m, true);
             draft.AddIngredientPosition(new RecipeIngredientPosition(
                 Guid.NewGuid(), draft.Id, null, ingredientId, 1_000m, unitId, 0));
-            await drafts.CreateAsync(draft, UserId, Now, TestContext.Current.CancellationToken);
+            await Drafts.CreateAsync(draft, UserId, Now, TestContext.Current.CancellationToken);
             RecipePublicationResult result = await publisher.PublishAsync(
                 draft.Id, 0, UserId, Now, acknowledgeWarnings: true,
                 cancellationToken: TestContext.Current.CancellationToken);
             return result.Revision!.Id;
         }
+
+        public async Task<(Guid? CentralRecipe, Guid? CentralRevision, Guid? TenantRecipe, Guid? TenantRevision)>
+            ReadLineageAsync(Guid recipeId)
+        {
+            await using var command = database.Database.GetDbConnection().CreateCommand();
+            command.CommandText =
+                "SELECT CentralSourceRecipeId, CentralSourceRevisionId, TenantSourceRecipeId, " +
+                "TenantSourceRevisionId FROM Recipes WHERE Id = $id";
+            command.Parameters.Add(new SqliteParameter("$id", recipeId));
+            await using var reader = await command.ExecuteReaderAsync(TestContext.Current.CancellationToken);
+            Assert.True(await reader.ReadAsync(TestContext.Current.CancellationToken));
+            return (ReadGuid(reader, 0), ReadGuid(reader, 1), ReadGuid(reader, 2), ReadGuid(reader, 3));
+        }
+
+        private static Guid? ReadGuid(DbDataReader reader, int ordinal) =>
+            reader.IsDBNull(ordinal) ? null : reader.GetGuid(ordinal);
 
         public async ValueTask DisposeAsync()
         {

@@ -2,7 +2,10 @@ using ScoutCampPlanner.Catering.Domain;
 
 namespace ScoutCampPlanner.Catering.Application.Recipes;
 
-public sealed record RecipeRevisionSnapshot(Guid RecipeId, RecipeSnapshot Snapshot);
+public sealed record RecipeRevisionSnapshot(
+    Guid RecipeId,
+    RecipeSnapshot Snapshot,
+    RecipeScopeType? ScopeType = null);
 
 public interface IRecipeRevisionSource
 {
@@ -113,7 +116,7 @@ public sealed class RecipeLifecycleService(
         RecipeDraft duplicate = RecipeDraftCopy.FromSnapshot(
             newRecipeId, destinationScope, destinationScopeId, RecipeStatus.Draft, source.Snapshot, newName);
         return drafts.CreateDerivedAsync(
-            duplicate, new RecipeDraftLineage(source.RecipeId, sourceRevisionId),
+            duplicate, new RecipeDraftLineage(source.RecipeId, sourceRevisionId, source.ScopeType),
             Required(actorUserId, nameof(actorUserId)), timestampUtc, cancellationToken);
     }
 
@@ -126,7 +129,7 @@ public sealed class RecipeLifecycleService(
     }
 }
 
-internal static class RecipeDraftCopy
+public static class RecipeDraftCopy
 {
     public static RecipeDraft FromSnapshot(
         Guid recipeId,

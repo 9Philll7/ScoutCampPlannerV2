@@ -29,6 +29,8 @@ public enum RecipeLibraryMutationStatus
     NotFound,
     InvalidSourceScope,
     AlreadyExists,
+    Converted,
+    AlreadyLocal,
 }
 
 public sealed record RecipeLibraryMutationResult(
@@ -56,6 +58,20 @@ public interface IRecipeLibraryStore
         CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CampRecipeLibraryEntry>> ListCampEntriesAsync(
         Guid campId,
+        CancellationToken cancellationToken = default);
+    Task<RecipeLibraryMutationResult> ConvertTenantEntryToLocalRecipeAsync(
+        Guid entryId,
+        Guid newRecipeId,
+        string newName,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default);
+    Task<RecipeLibraryMutationResult> ConvertCampEntryToLocalRecipeAsync(
+        Guid entryId,
+        Guid newRecipeId,
+        string newName,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
         CancellationToken cancellationToken = default);
 }
 
@@ -90,6 +106,28 @@ public sealed class RecipeLibraryService(IRecipeLibraryStore store)
         Guid campId,
         CancellationToken cancellationToken = default) =>
         store.ListCampEntriesAsync(Required(campId, nameof(campId)), cancellationToken);
+
+    public Task<RecipeLibraryMutationResult> ConvertTenantEntryToLocalRecipeAsync(
+        Guid entryId,
+        Guid newRecipeId,
+        string newName,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default) =>
+        store.ConvertTenantEntryToLocalRecipeAsync(
+            Required(entryId, nameof(entryId)), Required(newRecipeId, nameof(newRecipeId)), newName,
+            Required(actorUserId, nameof(actorUserId)), timestampUtc, cancellationToken);
+
+    public Task<RecipeLibraryMutationResult> ConvertCampEntryToLocalRecipeAsync(
+        Guid entryId,
+        Guid newRecipeId,
+        string newName,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default) =>
+        store.ConvertCampEntryToLocalRecipeAsync(
+            Required(entryId, nameof(entryId)), Required(newRecipeId, nameof(newRecipeId)), newName,
+            Required(actorUserId, nameof(actorUserId)), timestampUtc, cancellationToken);
 
     private static Guid Required(Guid value, string parameterName) =>
         value == Guid.Empty ? throw new ArgumentException("ID is required.", parameterName) : value;

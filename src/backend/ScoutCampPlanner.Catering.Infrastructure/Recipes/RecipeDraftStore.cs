@@ -41,6 +41,10 @@ public sealed class RecipeDraftStore(CateringDbContext database) : IRecipeDraftS
             CreatedAtUtc = timestampUtc,
             DerivedFromRecipeId = lineage.SourceRecipeId,
             DerivedFromRevisionId = lineage.SourceRevisionId,
+            CentralSourceRecipeId = lineage.SourceScope == RecipeScopeType.Central ? lineage.SourceRecipeId : null,
+            CentralSourceRevisionId = lineage.SourceScope == RecipeScopeType.Central ? lineage.SourceRevisionId : null,
+            TenantSourceRecipeId = lineage.SourceScope == RecipeScopeType.Tenant ? lineage.SourceRecipeId : null,
+            TenantSourceRevisionId = lineage.SourceScope == RecipeScopeType.Tenant ? lineage.SourceRevisionId : null,
         };
         CopyDraft(record, draft, actorUserId, timestampUtc, version: 0);
         database.Set<RecipeRecord>().Add(record);

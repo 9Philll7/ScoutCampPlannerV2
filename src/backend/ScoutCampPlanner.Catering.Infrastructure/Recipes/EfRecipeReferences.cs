@@ -122,9 +122,12 @@ public sealed class EfRecipeReferences(CateringDbContext database) :
     {
         var revision = database.Set<RecipeRevisionRecord>().AsNoTracking()
             .Where(value => value.Id == revisionId)
-            .Select(value => new { value.RecipeId, value.SnapshotJson })
+            .Join(database.Set<RecipeRecord>().AsNoTracking(), revision => revision.RecipeId, recipe => recipe.Id,
+                (revision, recipe) => new { revision.RecipeId, revision.SnapshotJson, recipe.ScopeType })
             .Single();
-        return new RecipeRevisionSnapshot(revision.RecipeId, RecipeSnapshotBuilder.Deserialize(revision.SnapshotJson));
+        return new RecipeRevisionSnapshot(
+            revision.RecipeId, RecipeSnapshotBuilder.Deserialize(revision.SnapshotJson),
+            (RecipeScopeType)revision.ScopeType);
     }
 
     private static void AddEdge(Dictionary<Guid, HashSet<Guid>> edges, Guid source, Guid target)

@@ -11,7 +11,10 @@ public enum RecipeDraftSaveStatus
 
 public sealed record RecipeDraftSaveResult(RecipeDraftSaveStatus Status, RecipeDraft? CurrentDraft);
 
-public sealed record RecipeDraftLineage(Guid SourceRecipeId, Guid SourceRevisionId);
+public sealed record RecipeDraftLineage(
+    Guid SourceRecipeId,
+    Guid SourceRevisionId,
+    RecipeScopeType? SourceScope = null);
 
 public enum RecipeLifecycleStatus
 {

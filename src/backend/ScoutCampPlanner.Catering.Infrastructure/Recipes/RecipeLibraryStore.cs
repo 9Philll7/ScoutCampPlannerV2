@@ -4,7 +4,9 @@ using ScoutCampPlanner.Catering.Domain;
 
 namespace ScoutCampPlanner.Catering.Infrastructure.Recipes;
 
-public sealed class RecipeLibraryStore(CateringDbContext database) : IRecipeLibraryStore
+public sealed class RecipeLibraryStore(
+    CateringDbContext database,
+    RecipeDraftStore drafts) : IRecipeLibraryStore
 {
     public async Task<RecipeLibraryMutationResult> AddCentralRevisionToTenantAsync(
         Guid entryId,
@@ -103,4 +105,77 @@ public sealed class RecipeLibraryStore(CateringDbContext database) : IRecipeLibr
             join recipe in database.Set<RecipeRecord>().AsNoTracking() on revision.RecipeId equals recipe.Id
             where revision.Id == revisionId
             select (RecipeScopeType?)recipe.ScopeType).SingleOrDefaultAsync(cancellationToken);
+
+    public async Task<RecipeLibraryMutationResult> ConvertTenantEntryToLocalRecipeAsync(
+        Guid entryId,
+        Guid newRecipeId,
+        string newName,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
+        TenantRecipeEntryRecord? entry = await database.Set<TenantRecipeEntryRecord>()
+            .SingleOrDefaultAsync(value => value.Id == entryId, cancellationToken);
+        if (entry is null) return new RecipeLibraryMutationResult(RecipeLibraryMutationStatus.NotFound);
+        if (!entry.CentralRecipeRevisionId.HasValue)
+            return new RecipeLibraryMutationResult(RecipeLibraryMutationStatus.AlreadyLocal, entry.Id);
+
+        RecipeRevisionSnapshot source = GetRevision(entry.CentralRecipeRevisionId.Value);
+        RecipeDraft draft = RecipeDraftCopy.FromSnapshot(
+            newRecipeId, RecipeScopeType.Tenant, entry.TenantId, RecipeStatus.Draft, source.Snapshot, newName);
+        await drafts.CreateDerivedAsync(
+            draft, new RecipeDraftLineage(source.RecipeId, entry.CentralRecipeRevisionId.Value, RecipeScopeType.Central),
+            actorUserId, timestampUtc, cancellationToken);
+        entry.CentralRecipeRevisionId = null;
+        entry.TenantRecipeId = newRecipeId;
+        entry.UpdatedBy = actorUserId;
+        entry.UpdatedAtUtc = timestampUtc;
+        await database.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return new RecipeLibraryMutationResult(RecipeLibraryMutationStatus.Converted, entry.Id);
+    }
+
+    public async Task<RecipeLibraryMutationResult> ConvertCampEntryToLocalRecipeAsync(
+        Guid entryId,
+        Guid newRecipeId,
+        string newName,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
+        CampRecipeEntryRecord? entry = await database.Set<CampRecipeEntryRecord>()
+            .SingleOrDefaultAsync(value => value.Id == entryId, cancellationToken);
+        if (entry is null) return new RecipeLibraryMutationResult(RecipeLibraryMutationStatus.NotFound);
+        if (!entry.UpstreamRecipeRevisionId.HasValue)
+            return new RecipeLibraryMutationResult(RecipeLibraryMutationStatus.AlreadyLocal, entry.Id);
+
+        Guid sourceRevisionId = entry.UpstreamRecipeRevisionId.Value;
+        RecipeRevisionSnapshot source = GetRevision(sourceRevisionId);
+        RecipeScopeType sourceScope = source.ScopeType ?? throw new InvalidOperationException("Source scope is missing.");
+        RecipeDraft draft = RecipeDraftCopy.FromSnapshot(
+            newRecipeId, RecipeScopeType.Camp, entry.CampId, RecipeStatus.Draft, source.Snapshot, newName);
+        await drafts.CreateDerivedAsync(
+            draft, new RecipeDraftLineage(source.RecipeId, sourceRevisionId, sourceScope),
+            actorUserId, timestampUtc, cancellationToken);
+        entry.UpstreamRecipeRevisionId = null;
+        entry.CampRecipeId = newRecipeId;
+        entry.UpdatedBy = actorUserId;
+        entry.UpdatedAtUtc = timestampUtc;
+        await database.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return new RecipeLibraryMutationResult(RecipeLibraryMutationStatus.Converted, entry.Id);
+    }
+
+    private RecipeRevisionSnapshot GetRevision(Guid revisionId)
+    {
+        var source = (from revision in database.Set<RecipeRevisionRecord>().AsNoTracking()
+            join recipe in database.Set<RecipeRecord>().AsNoTracking() on revision.RecipeId equals recipe.Id
+            where revision.Id == revisionId
+            select new { revision.RecipeId, revision.SnapshotJson, recipe.ScopeType }).Single();
+        return new RecipeRevisionSnapshot(
+            source.RecipeId, RecipeSnapshotBuilder.Deserialize(source.SnapshotJson),
+            (RecipeScopeType)source.ScopeType);
+    }
 }
