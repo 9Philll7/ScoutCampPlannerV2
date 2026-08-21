@@ -196,6 +196,11 @@ public sealed class RecipeDraftStore(CateringDbContext database) : IRecipeDraftS
             .AnyAsync(value => value.Id != recipeId &&
                 (value.DerivedFromRecipeId == recipeId || value.CentralSourceRecipeId == recipeId ||
                  value.TenantSourceRecipeId == recipeId), cancellationToken);
+        recipeReferenced = recipeReferenced ||
+            await database.Set<TenantRecipeEntryRecord>().AsNoTracking()
+                .AnyAsync(value => value.TenantRecipeId == recipeId, cancellationToken) ||
+            await database.Set<CampRecipeEntryRecord>().AsNoTracking()
+                .AnyAsync(value => value.CampRecipeId == recipeId, cancellationToken);
         if (recipeReferenced || await HasExternalRevisionReferenceAsync(recipeId, revisionIds, cancellationToken))
         {
             await transaction.RollbackAsync(cancellationToken);
@@ -232,6 +237,14 @@ public sealed class RecipeDraftStore(CateringDbContext database) : IRecipeDraftS
             await database.Set<RecipeRevisionRecord>().AsNoTracking()
                 .AnyAsync(value => value.RecipeId != recipeId && value.RestoredFromRevisionId.HasValue &&
                                    revisionIds.Contains(value.RestoredFromRevisionId.Value), cancellationToken))
+            return true;
+
+        if (await database.Set<TenantRecipeEntryRecord>().AsNoTracking()
+                .AnyAsync(value => value.CentralRecipeRevisionId.HasValue &&
+                                   revisionIds.Contains(value.CentralRecipeRevisionId.Value), cancellationToken) ||
+            await database.Set<CampRecipeEntryRecord>().AsNoTracking()
+                .AnyAsync(value => value.UpstreamRecipeRevisionId.HasValue &&
+                                   revisionIds.Contains(value.UpstreamRecipeRevisionId.Value), cancellationToken))
             return true;
 
         return await database.Set<RecipeRevisionRecord>().AsNoTracking()

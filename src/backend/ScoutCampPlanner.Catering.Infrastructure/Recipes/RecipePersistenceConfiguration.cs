@@ -11,6 +11,43 @@ internal static class RecipePersistenceConfiguration
         ConfigureRecipe(modelBuilder.Entity<RecipeRecord>());
         ConfigureDraftGraph(modelBuilder);
         ConfigureRevisions(modelBuilder, isNpgsql);
+        ConfigureLibraries(modelBuilder);
+    }
+
+    private static void ConfigureLibraries(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<TenantRecipeEntryRecord>(entity =>
+        {
+            entity.ToTable("TenantRecipeEntries", table => table.HasCheckConstraint(
+                "CK_TenantRecipeEntries_Source",
+                "(\"CentralRecipeRevisionId\" IS NOT NULL AND \"TenantRecipeId\" IS NULL) OR " +
+                "(\"CentralRecipeRevisionId\" IS NULL AND \"TenantRecipeId\" IS NOT NULL)"));
+            entity.HasKey(value => value.Id);
+            entity.HasIndex(value => new { value.TenantId, value.CentralRecipeRevisionId }).IsUnique()
+                .HasFilter("\"CentralRecipeRevisionId\" IS NOT NULL");
+            entity.HasIndex(value => new { value.TenantId, value.TenantRecipeId }).IsUnique()
+                .HasFilter("\"TenantRecipeId\" IS NOT NULL");
+            entity.HasOne<RecipeRevisionRecord>().WithMany().HasForeignKey(value => value.CentralRecipeRevisionId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<RecipeRecord>().WithMany().HasForeignKey(value => value.TenantRecipeId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<CampRecipeEntryRecord>(entity =>
+        {
+            entity.ToTable("CampRecipeEntries", table => table.HasCheckConstraint(
+                "CK_CampRecipeEntries_Source",
+                "(\"UpstreamRecipeRevisionId\" IS NOT NULL AND \"CampRecipeId\" IS NULL) OR " +
+                "(\"UpstreamRecipeRevisionId\" IS NULL AND \"CampRecipeId\" IS NOT NULL)"));
+            entity.HasKey(value => value.Id);
+            entity.HasIndex(value => new { value.CampId, value.UpstreamRecipeRevisionId }).IsUnique()
+                .HasFilter("\"UpstreamRecipeRevisionId\" IS NOT NULL");
+            entity.HasIndex(value => new { value.CampId, value.CampRecipeId }).IsUnique()
+                .HasFilter("\"CampRecipeId\" IS NOT NULL");
+            entity.HasOne<RecipeRevisionRecord>().WithMany().HasForeignKey(value => value.UpstreamRecipeRevisionId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<RecipeRecord>().WithMany().HasForeignKey(value => value.CampRecipeId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
     }
 
     private static void ConfigureRecipe(EntityTypeBuilder<RecipeRecord> entity)

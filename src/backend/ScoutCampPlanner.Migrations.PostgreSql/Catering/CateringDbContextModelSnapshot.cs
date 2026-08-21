@@ -419,6 +419,53 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                     b.ToTable("TenantStageFoodFactors", "catering");
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.CampRecipeEntryRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CampId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CampRecipeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("UpstreamRecipeRevisionId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampRecipeId");
+
+                    b.HasIndex("UpstreamRecipeRevisionId");
+
+                    b.HasIndex("CampId", "CampRecipeId")
+                        .IsUnique()
+                        .HasFilter("\"CampRecipeId\" IS NOT NULL");
+
+                    b.HasIndex("CampId", "UpstreamRecipeRevisionId")
+                        .IsUnique()
+                        .HasFilter("\"UpstreamRecipeRevisionId\" IS NOT NULL");
+
+                    b.ToTable("CampRecipeEntries", "catering", t =>
+                        {
+                            t.HasCheckConstraint("CK_CampRecipeEntries_Source", "(\"UpstreamRecipeRevisionId\" IS NOT NULL AND \"CampRecipeId\" IS NULL) OR (\"UpstreamRecipeRevisionId\" IS NULL AND \"CampRecipeId\" IS NOT NULL)");
+                        });
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeDraftTagRecord", b =>
                 {
                     b.Property<Guid>("RecipeId")
@@ -966,6 +1013,53 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                     b.ToTable("RecipeSubrecipeReplacements", "catering");
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.TenantRecipeEntryRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CentralRecipeRevisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("TenantRecipeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CentralRecipeRevisionId");
+
+                    b.HasIndex("TenantRecipeId");
+
+                    b.HasIndex("TenantId", "CentralRecipeRevisionId")
+                        .IsUnique()
+                        .HasFilter("\"CentralRecipeRevisionId\" IS NOT NULL");
+
+                    b.HasIndex("TenantId", "TenantRecipeId")
+                        .IsUnique()
+                        .HasFilter("\"TenantRecipeId\" IS NOT NULL");
+
+                    b.ToTable("TenantRecipeEntries", "catering", t =>
+                        {
+                            t.HasCheckConstraint("CK_TenantRecipeEntries_Source", "(\"CentralRecipeRevisionId\" IS NOT NULL AND \"TenantRecipeId\" IS NULL) OR (\"CentralRecipeRevisionId\" IS NULL AND \"TenantRecipeId\" IS NOT NULL)");
+                        });
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.BaseIngredientAllergen", b =>
                 {
                     b.HasOne("ScoutCampPlanner.Catering.Domain.Allergen", null)
@@ -1033,6 +1127,19 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                         .HasForeignKey("BaseIngredientId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.CampRecipeEntryRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRecord", null)
+                        .WithMany()
+                        .HasForeignKey("CampRecipeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRevisionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("UpstreamRecipeRevisionId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeDraftTagRecord", b =>
@@ -1263,6 +1370,19 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                         .HasForeignKey("SubrecipePositionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.TenantRecipeEntryRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRevisionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("CentralRecipeRevisionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRecord", null)
+                        .WithMany()
+                        .HasForeignKey("TenantRecipeId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 #pragma warning restore 612, 618
         }

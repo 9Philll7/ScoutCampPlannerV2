@@ -125,6 +125,30 @@ internal sealed class RecipeRevisionWarningRecord
     public DateTimeOffset AcknowledgedAtUtc { get; set; }
 }
 
+internal sealed class TenantRecipeEntryRecord
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid? CentralRecipeRevisionId { get; set; }
+    public Guid? TenantRecipeId { get; set; }
+    public Guid CreatedBy { get; set; }
+    public DateTimeOffset CreatedAtUtc { get; set; }
+    public Guid UpdatedBy { get; set; }
+    public DateTimeOffset UpdatedAtUtc { get; set; }
+}
+
+internal sealed class CampRecipeEntryRecord
+{
+    public Guid Id { get; set; }
+    public Guid CampId { get; set; }
+    public Guid? UpstreamRecipeRevisionId { get; set; }
+    public Guid? CampRecipeId { get; set; }
+    public Guid CreatedBy { get; set; }
+    public DateTimeOffset CreatedAtUtc { get; set; }
+    public Guid UpdatedBy { get; set; }
+    public DateTimeOffset UpdatedAtUtc { get; set; }
+}
+
 internal sealed class RecipeIngredientReplacementAllergenRecord
 {
     public Guid ReplacementId { get; set; }
