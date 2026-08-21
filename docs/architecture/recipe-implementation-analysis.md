@@ -46,6 +46,8 @@ The local central-distribution foundation is implemented: exact upstream revisio
 
 No remote catalog synchronization service or proposal-review UI exists. Distribution between separate installations and the visual review workflow remain later explicit slices; automatic synchronization and semantic merging are not introduced.
 
+The API exposes read-only catalog endpoints for the central catalog, tenant libraries, and camp libraries. Their response model resolves exact upstream revisions and local recipes into a common UI-facing projection while retaining recipe, revision, scope, status, and library-entry identities. Access is checked through the accepted platform-, tenant-, or camp-scoped recipe-read permissions. Recipe mutations are not exposed through these read endpoints.
+
 ### Local camp notes
 
 Camp recipe entries own multiple independently editable local notes. Notes retain creation and update audit data, use soft deletion, survive explicit upstream-revision adoption, and are neither revisioned nor included in central change submissions. Reading requires camp recipe-read access; mutations require the separate camp-scoped `recipes.notes.manage` permission. HTTP endpoints and UI remain a later integration slice.

@@ -294,6 +294,40 @@ public sealed class RecipeLibraryStoreTests
         Assert.Equal(fixture.Now.AddMinutes(3), remaining.UpdatedAtUtc);
     }
 
+    [Fact]
+    public async Task Catalog_queries_resolve_revision_and_local_recipe_details()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Guid centralRevision = await fixture.PublishAsync(RecipeScopeType.Central, null, "Zentrales Rezept");
+        RecipeLibraryMutationResult tenantEntry = await fixture.Libraries.AddCentralRevisionToTenantAsync(
+            Guid.NewGuid(), fixture.TenantId, centralRevision, fixture.UserId, fixture.Now,
+            TestContext.Current.CancellationToken);
+        await fixture.Libraries.AddUpstreamRevisionToCampAsync(
+            Guid.NewGuid(), fixture.CampId, centralRevision, fixture.UserId, fixture.Now,
+            TestContext.Current.CancellationToken);
+        Guid tenantRecipeId = Guid.NewGuid();
+        await fixture.Libraries.ConvertTenantEntryToLocalRecipeAsync(
+            tenantEntry.EntryId!.Value, tenantRecipeId, "Lokale Bearbeitung", fixture.UserId,
+            fixture.Now.AddMinutes(1), TestContext.Current.CancellationToken);
+
+        RecipeCatalogEntry central = Assert.Single(await fixture.Catalog.ListCentralAsync(
+            TestContext.Current.CancellationToken));
+        RecipeCatalogEntry tenant = Assert.Single(await fixture.Catalog.ListTenantAsync(
+            fixture.TenantId, TestContext.Current.CancellationToken));
+        RecipeCatalogEntry camp = Assert.Single(await fixture.Catalog.ListCampAsync(
+            fixture.CampId, TestContext.Current.CancellationToken));
+
+        Assert.Equal("Zentrales Rezept", central.Name);
+        Assert.Equal(centralRevision, central.RevisionId);
+        Assert.False(central.IsLocal);
+        Assert.Equal("Lokale Bearbeitung", tenant.Name);
+        Assert.Equal(tenantRecipeId, tenant.RecipeId);
+        Assert.Null(tenant.RevisionId);
+        Assert.True(tenant.IsLocal);
+        Assert.Equal(RecipeScopeType.Central, camp.Scope);
+        Assert.Equal(centralRevision, camp.RevisionId);
+    }
+
     private sealed class DatabaseFixture(
         SqliteConnection connection,
         CateringDbContext database,
@@ -301,7 +335,8 @@ public sealed class RecipeLibraryStoreTests
         RecipePublisher publisher,
         RecipeLibraryStore libraries,
         RecipeChangeSubmissionStore submissions,
-        CampRecipeNoteStore notes) : IAsyncDisposable
+        CampRecipeNoteStore notes,
+        RecipeCatalogStore catalog) : IAsyncDisposable
     {
         private readonly Dictionary<Guid, Guid> revisionRecipes = [];
         public Guid UserId { get; } = Guid.NewGuid();
@@ -312,6 +347,7 @@ public sealed class RecipeLibraryStoreTests
         public RecipeDraftStore Drafts { get; } = drafts;
         public RecipeChangeSubmissionStore Submissions { get; } = submissions;
         public CampRecipeNoteStore Notes { get; } = notes;
+        public RecipeCatalogStore Catalog { get; } = catalog;
 
         public static async Task<DatabaseFixture> CreateAsync()
         {
@@ -331,7 +367,8 @@ public sealed class RecipeLibraryStoreTests
                 publisher,
                 new RecipeLibraryStore(database, drafts),
                 new RecipeChangeSubmissionStore(database, drafts, publisher),
-                new CampRecipeNoteStore(database));
+                new CampRecipeNoteStore(database),
+                new RecipeCatalogStore(database));
         }
 
         public async Task<Guid> PublishAsync(RecipeScopeType scope, Guid? scopeId, string name)

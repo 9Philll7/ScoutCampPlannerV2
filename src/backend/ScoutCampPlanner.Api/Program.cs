@@ -104,6 +104,8 @@ builder.Services.AddScoped<IRecipeChangeSubmissionAuthorization>(services =>
     services.GetRequiredService<PlatformRecipeAuthorization>());
 builder.Services.AddScoped<ICampRecipeNoteAuthorization>(services =>
     services.GetRequiredService<PlatformRecipeAuthorization>());
+builder.Services.AddScoped<IRecipeCatalogAuthorization>(services =>
+    services.GetRequiredService<PlatformRecipeAuthorization>());
 builder.Services.AddScoped<RecipeLifecycleService>();
 builder.Services.AddScoped<IRecipeLibraryStore, RecipeLibraryStore>();
 builder.Services.AddScoped<RecipeLibraryService>();
@@ -111,6 +113,8 @@ builder.Services.AddScoped<IRecipeChangeSubmissionStore, RecipeChangeSubmissionS
 builder.Services.AddScoped<RecipeChangeSubmissionService>();
 builder.Services.AddScoped<ICampRecipeNoteStore, CampRecipeNoteStore>();
 builder.Services.AddScoped<CampRecipeNoteService>();
+builder.Services.AddScoped<IRecipeCatalogStore, RecipeCatalogStore>();
+builder.Services.AddScoped<RecipeCatalogService>();
 builder.Services.AddSingleton<IPasswordPolicy, PasswordPolicy>();
 builder.Services.AddSingleton<IPasswordVerifier>(
     _ => new Argon2idPasswordVerifier(Argon2idOperatingMode.Server));
@@ -568,6 +572,29 @@ app.MapPut("/api/camps/{campId:guid}/structure/{nodeId:guid}/parent", async (
 }).RequireAuthorization();
 app.MapGet("/api/camps", () => Results.BadRequest(new { code = "tenant_context_required" }))
     .RequireAuthorization();
+app.MapGet("/api/recipes/central", async (
+    ClaimsPrincipal principal, RecipeCatalogService recipes, CancellationToken cancellationToken) =>
+{
+    RecipeCatalogResult result = await recipes.ListCentralAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken);
+    return result.IsAuthorized ? Results.Ok(result.Entries) : Results.Forbid();
+}).RequireAuthorization();
+app.MapGet("/api/tenants/{tenantId:guid}/recipes", async (
+    Guid tenantId, ClaimsPrincipal principal, RecipeCatalogService recipes,
+    CancellationToken cancellationToken) =>
+{
+    RecipeCatalogResult result = await recipes.ListTenantAsync(
+        tenantId, Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken);
+    return result.IsAuthorized ? Results.Ok(result.Entries) : Results.Forbid();
+}).RequireAuthorization();
+app.MapGet("/api/camps/{campId:guid}/recipes", async (
+    Guid campId, ClaimsPrincipal principal, RecipeCatalogService recipes,
+    CancellationToken cancellationToken) =>
+{
+    RecipeCatalogResult result = await recipes.ListCampAsync(
+        campId, Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken);
+    return result.IsAuthorized ? Results.Ok(result.Entries) : Results.Forbid();
+}).RequireAuthorization();
 app.MapPost("/api/camps/{campId:guid}/offline-package", async (
     Guid campId, ClaimsPrincipal principal, CampManagementService management,
     CampPackageService packages, CancellationToken cancellationToken) =>
