@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
@@ -15,7 +15,7 @@ import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { concatMap, forkJoin } from 'rxjs';
 import { AuthenticationApiService, AuthenticatedUser } from './features/authentication/authentication-api.service';
-import { CampAdministratorOption, CampApiService, CampMeal, CampMealType, CampPlanningSummary, CampStageFoodFactor, CampSummary, ParticipantEstimate, StructureConfiguration, StructureNodeSummary, TenantOption, TenantStageFoodFactor, WeightedStageTotal } from './features/camp/camp-api.service';
+import { CampAdministratorOption, CampApiService, CampMeal, CampMealType, CampPlanningSummary, CampStageFoodFactor, CampSummary, IngredientCatalogEntry, IngredientConflictType, IngredientScope, MeasurementDimension, ParticipantEstimate, StructureConfiguration, StructureNodeSummary, TenantOption, TenantStageFoodFactor, WeightedStageTotal } from './features/camp/camp-api.service';
 import { SetupApiService } from './features/setup/setup-api.service';
 import { ActionIconComponent } from './shared/action-icon.component';
 
@@ -605,6 +605,48 @@ type CampSection = 'general' | 'structure' | 'catering';
                         </tbody></table>
                       } @else { <p>Noch keine Verpflegungseinheiten vorhanden.</p> }
                     </section>
+                    <section class="settings-section">
+                      <div class="section-heading"><div><p class="eyebrow">Zutatenkatalog</p><h3>Verfügbare Zutaten</h3></div>
+                        <span class="catalog-count">{{ filteredIngredients().length }} von {{ ingredients().length }}</span>
+                      </div>
+                      <p class="context-info">Hier erscheinen zentrale Zutaten sowie Zutaten deiner Organisation und dieses Lagers.</p>
+                      <mat-form-field appearance="outline" class="catalog-search"><mat-label>Zutaten durchsuchen</mat-label>
+                        <input matInput [ngModel]="ingredientSearch()" (ngModelChange)="ingredientSearch.set($event)"
+                          name="ingredientSearch" autocomplete="off">
+                      </mat-form-field>
+                      @if (ingredientsLoading()) {
+                        <div class="inline-loading"><mat-spinner diameter="28"/><span>Zutaten werden geladen …</span></div>
+                      } @else {
+                        <div class="ingredient-grid">
+                          @for (ingredient of filteredIngredients(); track ingredient.id) {
+                            <article class="ingredient-card">
+                              <header><div><span class="scope-badge" [class]="'scope-badge scope-' + ingredient.scope.toLowerCase()">
+                                {{ ingredientScopeLabel(ingredient.scope) }}</span><h4>{{ ingredient.name }}</h4></div></header>
+                              @if (ingredient.originInformation) { <p class="ingredient-origin">{{ ingredient.originInformation }}</p> }
+                              <div class="ingredient-detail"><strong>Einheiten</strong>
+                                @if (ingredient.units.length) {
+                                  <div class="chip-list">@for (unit of ingredient.units; track unit.unitId) {
+                                    <span class="detail-chip" [matTooltip]="measurementDimensionLabel(unit.dimension)">{{ unit.name }} ({{ unit.symbol }})</span>
+                                  }</div>
+                                } @else { <span class="muted">Keine Einheit hinterlegt</span> }
+                              </div>
+                              @if (ingredient.variants.length) {
+                                <div class="ingredient-detail"><strong>Varianten</strong><div class="chip-list">
+                                  @for (variant of ingredient.variants; track variant.id) { <span class="detail-chip">{{ variant.name }}</span> }
+                                </div></div>
+                              }
+                              @if (ingredient.conflicts.length) {
+                                <div class="ingredient-detail"><strong>Hinweise</strong><div class="chip-list">
+                                  @for (conflict of ingredient.conflicts; track conflict.type + conflict.id) {
+                                    <span class="detail-chip conflict-chip">{{ conflictTypeLabel(conflict.type) }}: {{ conflict.name }}</span>
+                                  }
+                                </div></div>
+                              }
+                            </article>
+                          } @empty { <p class="stage-empty">Keine passenden Zutaten vorhanden.</p> }
+                        </div>
+                      }
+                    </section>
                   }
                 }
               </mat-card-content>
@@ -691,6 +733,16 @@ export class AppComponent {
   readonly weightedFoodTotals = signal<WeightedStageTotal[]>([]);
   readonly mealTypes = signal<CampMealType[]>([]);
   readonly meals = signal<CampMeal[]>([]);
+  readonly ingredients = signal<IngredientCatalogEntry[]>([]);
+  readonly ingredientsLoading = signal(false);
+  readonly ingredientSearch = signal('');
+  readonly filteredIngredients = computed(() => {
+    const search = this.ingredientSearch().trim().toLocaleLowerCase('de');
+    if (!search) return this.ingredients();
+    return this.ingredients().filter(value => [value.name, value.originInformation ?? '',
+      ...value.variants.map(item => item.name), ...value.conflicts.map(item => item.name)]
+      .some(text => text.toLocaleLowerCase('de').includes(search)));
+  });
   private persistedMealTypeNames: string[] = [];
 
   constructor() { this.initialize(); }
@@ -822,6 +874,7 @@ export class AppComponent {
     this.campSection.set('catering');
     this.loadWeightedFoodSummary(camp.id);
     this.loadMealPlan(camp.id);
+    this.loadIngredients(camp.id);
   }
 
   closeCamp() {
@@ -832,6 +885,7 @@ export class AppComponent {
     this.collapsedStructureNodeIds.set(new Set());
     this.creatingStructureParent.set(null); this.planningDetailsVisible.set(false);
     if (this.structureCampId()) this.structureCampId.set(null);
+    this.ingredients.set([]); this.ingredientSearch.set('');
     this.error.set(null);
     this.notice.set(null);
   }
@@ -1196,6 +1250,27 @@ export class AppComponent {
       this.mealTypes.set(plan.mealTypes); this.meals.set(plan.meals);
       this.persistedMealTypeNames = plan.mealTypes.map(value => value.name);
     }, error: () => this.error.set('Der Mahlzeitenplan konnte nicht geladen werden.') });
+  }
+
+  private loadIngredients(campId: string) {
+    this.ingredientsLoading.set(true);
+    this.campApi.getCampIngredients(campId).subscribe({
+      next: ingredients => { this.ingredients.set(ingredients); this.ingredientsLoading.set(false); },
+      error: () => { this.ingredients.set([]); this.ingredientsLoading.set(false);
+        this.error.set('Der Zutatenkatalog konnte nicht geladen werden.'); }
+    });
+  }
+
+  ingredientScopeLabel(scope: IngredientScope) {
+    return scope === 'Central' ? 'Zentral' : scope === 'Tenant' ? 'Organisation' : 'Lager';
+  }
+
+  conflictTypeLabel(type: IngredientConflictType) {
+    return type === 'Allergen' ? 'Allergen' : type === 'Intolerance' ? 'Unverträglichkeit' : 'Ernährungsform';
+  }
+
+  measurementDimensionLabel(dimension: MeasurementDimension) {
+    return dimension === 'Mass' ? 'Masse' : dimension === 'Volume' ? 'Volumen' : 'Stück';
   }
 
   mealDates() { return [...new Set(this.meals().map(value => value.date))].sort(); }

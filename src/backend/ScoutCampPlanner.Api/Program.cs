@@ -605,7 +605,7 @@ app.MapGet("/api/ingredients/central", async (
 {
     IngredientCatalogResult result = await ingredients.ListCentralAsync(
         Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken);
-    return result.IsAuthorized ? Results.Ok(result.Entries) : Results.Forbid();
+    return result.IsAuthorized ? Results.Ok(result.Entries.Select(ToIngredientResponse)) : Results.Forbid();
 }).RequireAuthorization();
 app.MapGet("/api/tenants/{tenantId:guid}/ingredients", async (
     Guid tenantId, ClaimsPrincipal principal, IngredientCatalogService ingredients,
@@ -613,7 +613,7 @@ app.MapGet("/api/tenants/{tenantId:guid}/ingredients", async (
 {
     IngredientCatalogResult result = await ingredients.ListTenantAsync(
         tenantId, Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken);
-    return result.IsAuthorized ? Results.Ok(result.Entries) : Results.Forbid();
+    return result.IsAuthorized ? Results.Ok(result.Entries.Select(ToIngredientResponse)) : Results.Forbid();
 }).RequireAuthorization();
 app.MapGet("/api/camps/{campId:guid}/ingredients", async (
     Guid campId, ClaimsPrincipal principal, IngredientCatalogService ingredients,
@@ -621,7 +621,7 @@ app.MapGet("/api/camps/{campId:guid}/ingredients", async (
 {
     IngredientCatalogResult result = await ingredients.ListCampAsync(
         campId, Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken);
-    return result.IsAuthorized ? Results.Ok(result.Entries) : Results.Forbid();
+    return result.IsAuthorized ? Results.Ok(result.Entries.Select(ToIngredientResponse)) : Results.Forbid();
 }).RequireAuthorization();
 app.MapPost("/api/camps/{campId:guid}/offline-package", async (
     Guid campId, ClaimsPrincipal principal, CampManagementService management,
@@ -652,6 +652,31 @@ app.MapPost("/api/packages/import-return", async (HttpRequest request, CampPacka
 }).RequireAuthorization();
 
 app.Run();
+
+static object ToIngredientResponse(IngredientCatalogEntry entry) => new
+{
+    entry.Id,
+    entry.Name,
+    Scope = entry.Scope.ToString(),
+    entry.ScopeId,
+    entry.OriginInformation,
+    entry.Variants,
+    Units = entry.Units.Select(unit => new
+    {
+        unit.UnitId,
+        unit.Name,
+        unit.Symbol,
+        Dimension = unit.Dimension.ToString(),
+        unit.BaseUnitFactor,
+        unit.ReferenceQuantityPerUnit,
+    }),
+    Conflicts = entry.Conflicts.Select(conflict => new
+    {
+        Type = conflict.Type.ToString(),
+        conflict.Id,
+        conflict.Name,
+    }),
+};
 
 static void Configure(DbContextOptionsBuilder options, DbConnection connection, string provider, string module)
 {

@@ -31,6 +31,20 @@ export interface WeightedStageTotal extends CampStageFoodFactor {
 export interface CampMealType { id: string; name: string; sortOrder: number; }
 export interface CampMeal { id: string; mealTypeId: string; mealTypeName: string; date: string; isActive: boolean; }
 export interface CampMealPlan { mealTypes: CampMealType[]; meals: CampMeal[]; }
+export type IngredientScope = 'Central' | 'Tenant' | 'Camp';
+export type MeasurementDimension = 'Mass' | 'Volume' | 'Count';
+export type IngredientConflictType = 'Allergen' | 'Intolerance' | 'DietaryRequirement';
+export interface IngredientCatalogEntry {
+  id: string;
+  name: string;
+  scope: IngredientScope;
+  scopeId: string | null;
+  originInformation: string | null;
+  variants: { id: string; name: string }[];
+  units: { unitId: string; name: string; symbol: string; dimension: MeasurementDimension;
+    baseUnitFactor: number; referenceQuantityPerUnit: number }[];
+  conflicts: { type: IngredientConflictType; id: string; name: string }[];
+}
 export interface CreateCampRequest {
   name: string;
   startDate: string;
@@ -116,6 +130,11 @@ export class CampApiService {
 
   getMealPlan(campId: string) {
     return this.http.get<CampMealPlan>(`${this.baseUrl}/api/camps/${campId}/meal-plan`, { withCredentials: true });
+  }
+
+  getCampIngredients(campId: string) {
+    return this.http.get<IngredientCatalogEntry[]>(`${this.baseUrl}/api/camps/${campId}/ingredients`,
+      { withCredentials: true });
   }
 
   updateMealTypes(campId: string, names: string[]) {
