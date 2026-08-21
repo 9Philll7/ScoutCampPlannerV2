@@ -19,6 +19,7 @@ public enum RecipeLifecycleStatus
     NotFound,
     VersionConflict,
     InvalidStatus,
+    ReferenceBlocked,
 }
 
 public sealed record RecipeLifecycleResult(RecipeLifecycleStatus Status, RecipeDraft? CurrentDraft);
@@ -50,6 +51,12 @@ public interface IRecipeDraftStore
         DateTimeOffset timestampUtc,
         CancellationToken cancellationToken = default);
     Task<RecipeLifecycleResult> ReactivateAsync(
+        Guid recipeId,
+        long expectedVersion,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default);
+    Task<RecipeLifecycleResult> ResetToDraftAsync(
         Guid recipeId,
         long expectedVersion,
         Guid actorUserId,

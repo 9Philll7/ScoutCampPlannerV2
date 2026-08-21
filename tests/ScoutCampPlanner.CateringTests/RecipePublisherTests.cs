@@ -137,6 +137,53 @@ public sealed class RecipePublisherTests
         Assert.Equal(3, reactivated.CurrentDraft.DraftVersion);
         Assert.Single(await fixture.Database.Set<RecipeRevisionRecord>().ToArrayAsync(
             TestContext.Current.CancellationToken));
+
+        RecipeLifecycleResult reset = await fixture.Store.ResetToDraftAsync(
+            draft.Id, 3, fixture.UserId, fixture.Now.AddMinutes(3), TestContext.Current.CancellationToken);
+        RecipePublicationResult republished = await fixture.Publisher.PublishAsync(
+            draft.Id, 4, fixture.UserId, fixture.Now.AddMinutes(4), acknowledgeWarnings: true,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(RecipeStatus.Draft, reset.CurrentDraft!.Status);
+        Assert.Equal(RecipePublicationStatus.Published, republished.Status);
+        Assert.Equal(1, republished.Revision!.RevisionNumber);
+    }
+
+    [Fact]
+    public async Task Reset_to_draft_is_blocked_when_revision_has_a_derived_recipe()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Guid ingredientId = Guid.NewGuid();
+        Guid unitId = Guid.NewGuid();
+        fixture.Database.AddRange(
+            new BaseIngredient(ingredientId, IngredientScopeType.Tenant, fixture.TenantId, "Nudeln"),
+            new MeasurementUnit(unitId, "Gramm", "g", MeasurementDimension.Mass, 1m),
+            new IngredientUnitConversion(ingredientId, unitId, 1m));
+        await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+        var source = new RecipeDraft(
+            Guid.NewGuid(), RecipeScopeType.Tenant, fixture.TenantId, RecipeType.PortionBased, "Nudelgericht");
+        source.SetDetails("Beschreibung", "Quelle", null);
+        source.ConfigurePortionReference(10m, true);
+        source.AddIngredientPosition(new RecipeIngredientPosition(
+            Guid.NewGuid(), source.Id, null, ingredientId, 1_000m, unitId, 0));
+        await fixture.Store.CreateAsync(
+            source, fixture.UserId, fixture.Now, TestContext.Current.CancellationToken);
+        RecipePublicationResult published = await fixture.Publisher.PublishAsync(
+            source.Id, 0, fixture.UserId, fixture.Now, acknowledgeWarnings: true,
+            cancellationToken: TestContext.Current.CancellationToken);
+        var derived = new RecipeDraft(
+            Guid.NewGuid(), RecipeScopeType.Tenant, fixture.TenantId, RecipeType.PortionBased, "Nudelvariante");
+        await fixture.Store.CreateDerivedAsync(
+            derived, new RecipeDraftLineage(source.Id, published.Revision!.Id), fixture.UserId,
+            fixture.Now.AddMinutes(1), TestContext.Current.CancellationToken);
+
+        RecipeLifecycleResult result = await fixture.Store.ResetToDraftAsync(
+            source.Id, 1, fixture.UserId, fixture.Now.AddMinutes(2), TestContext.Current.CancellationToken);
+
+        Assert.Equal(RecipeLifecycleStatus.ReferenceBlocked, result.Status);
+        Assert.Equal(RecipeStatus.Active, result.CurrentDraft!.Status);
+        Assert.Single(await fixture.Database.Set<RecipeRevisionRecord>().ToArrayAsync(
+            TestContext.Current.CancellationToken));
     }
 
     private sealed class DatabaseFixture(

@@ -39,6 +39,19 @@ public sealed class RecipeLifecycleService(
             Required(actorUserId, nameof(actorUserId)), timestampUtc, cancellationToken);
     }
 
+    public Task<RecipeLifecycleResult> ResetToDraftAsync(
+        Guid recipeId,
+        long expectedVersion,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default)
+    {
+        Version(expectedVersion);
+        return drafts.ResetToDraftAsync(
+            Required(recipeId, nameof(recipeId)), expectedVersion,
+            Required(actorUserId, nameof(actorUserId)), timestampUtc, cancellationToken);
+    }
+
     public async Task<RecipeDraftSaveResult> RestoreRevisionAsync(
         Guid recipeId,
         Guid revisionId,

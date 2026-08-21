@@ -152,5 +152,10 @@ public sealed class RecipeLifecycleServiceTests
             Guid recipeId, long expectedVersion, Guid actorUserId, DateTimeOffset timestampUtc,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(new RecipeLifecycleResult(RecipeLifecycleStatus.Changed, current));
+
+        public Task<RecipeLifecycleResult> ResetToDraftAsync(
+            Guid recipeId, long expectedVersion, Guid actorUserId, DateTimeOffset timestampUtc,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new RecipeLifecycleResult(RecipeLifecycleStatus.Changed, current));
     }
 }

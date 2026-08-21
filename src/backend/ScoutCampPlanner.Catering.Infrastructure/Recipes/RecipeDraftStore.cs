@@ -111,6 +111,94 @@ public sealed class RecipeDraftStore(CateringDbContext database) : IRecipeDraftS
         ChangeLifecycleAsync(
             recipeId, expectedVersion, actorUserId, timestampUtc, reactivate: true, cancellationToken);
 
+    public async Task<RecipeLifecycleResult> ResetToDraftAsync(
+        Guid recipeId,
+        long expectedVersion,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
+        RecipeRecord? record = await database.Set<RecipeRecord>()
+            .SingleOrDefaultAsync(value => value.Id == recipeId, cancellationToken);
+        if (record is null)
+            return new RecipeLifecycleResult(RecipeLifecycleStatus.NotFound, null);
+        if (record.DraftVersion != expectedVersion)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            database.ChangeTracker.Clear();
+            return new RecipeLifecycleResult(
+                RecipeLifecycleStatus.VersionConflict, await LoadAsync(recipeId, cancellationToken));
+        }
+        if (record.Status != (int)RecipeStatus.Active)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            database.ChangeTracker.Clear();
+            return new RecipeLifecycleResult(
+                RecipeLifecycleStatus.InvalidStatus, await LoadAsync(recipeId, cancellationToken));
+        }
+
+        Guid[] revisionIds = await database.Set<RecipeRevisionRecord>().AsNoTracking()
+            .Where(value => value.RecipeId == recipeId).Select(value => value.Id).ToArrayAsync(cancellationToken);
+        if (await HasExternalRevisionReferenceAsync(recipeId, revisionIds, cancellationToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            database.ChangeTracker.Clear();
+            return new RecipeLifecycleResult(
+                RecipeLifecycleStatus.ReferenceBlocked, await LoadAsync(recipeId, cancellationToken));
+        }
+
+        RecipeRevisionRecord[] revisions = await database.Set<RecipeRevisionRecord>()
+            .Where(value => value.RecipeId == recipeId).ToArrayAsync(cancellationToken);
+        database.RemoveRange(revisions);
+        record.Status = (int)RecipeStatus.Draft;
+        record.DraftVersion = expectedVersion + 1;
+        record.UpdatedBy = actorUserId;
+        record.UpdatedAtUtc = timestampUtc;
+        try
+        {
+            await database.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            database.ChangeTracker.Clear();
+            return new RecipeLifecycleResult(
+                RecipeLifecycleStatus.VersionConflict, await LoadAsync(recipeId, cancellationToken));
+        }
+        database.ChangeTracker.Clear();
+        return new RecipeLifecycleResult(
+            RecipeLifecycleStatus.Changed, await LoadAsync(recipeId, cancellationToken));
+    }
+
+    private async Task<bool> HasExternalRevisionReferenceAsync(
+        Guid recipeId,
+        Guid[] revisionIds,
+        CancellationToken cancellationToken)
+    {
+        if (revisionIds.Length == 0) return false;
+        if (await database.Set<RecipeSubrecipePositionRecord>().AsNoTracking()
+                .AnyAsync(value => value.RecipeId != recipeId && value.RecipeRevisionId.HasValue &&
+                                   revisionIds.Contains(value.RecipeRevisionId.Value), cancellationToken) ||
+            await database.Set<RecipeSubrecipeReplacementRecord>().AsNoTracking()
+                .AnyAsync(value => value.ReplacementRecipeRevisionId.HasValue &&
+                                   revisionIds.Contains(value.ReplacementRecipeRevisionId.Value), cancellationToken) ||
+            await database.Set<RecipeRecord>().AsNoTracking()
+                .AnyAsync(value => value.Id != recipeId &&
+                    ((value.DerivedFromRevisionId.HasValue && revisionIds.Contains(value.DerivedFromRevisionId.Value)) ||
+                     (value.CentralSourceRevisionId.HasValue && revisionIds.Contains(value.CentralSourceRevisionId.Value)) ||
+                     (value.TenantSourceRevisionId.HasValue && revisionIds.Contains(value.TenantSourceRevisionId.Value))),
+                    cancellationToken) ||
+            await database.Set<RecipeRevisionRecord>().AsNoTracking()
+                .AnyAsync(value => value.RecipeId != recipeId && value.RestoredFromRevisionId.HasValue &&
+                                   revisionIds.Contains(value.RestoredFromRevisionId.Value), cancellationToken))
+            return true;
+
+        return await database.Set<RecipeRevisionRecord>().AsNoTracking()
+            .AnyAsync(value => value.RecipeId == recipeId && value.CentralSubmissionId.HasValue, cancellationToken);
+    }
+
     private async Task<RecipeLifecycleResult> ChangeLifecycleAsync(
         Guid recipeId,
         long expectedVersion,
