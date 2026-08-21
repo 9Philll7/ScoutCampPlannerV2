@@ -33,3 +33,5 @@ Offline packages contain every ingredient, variant, unit and conflict entry requ
 - Package schemas must include the transitive master-data closure of transferred recipe revisions.
 
 Mutation permissions and search priority are defined separately by [ADR-020](adr-020-ingredient-management-permissions-and-search.md).
+
+The revision model, calculated dietary suitability, and explicit recipe variant selection subsequently defined by [ADR-021](adr-021-revisioned-base-ingredients.md) refine the catalog model without changing the three ownership scopes decided here.

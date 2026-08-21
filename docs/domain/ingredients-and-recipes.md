@@ -24,11 +24,11 @@ Base ingredients contain:
 
 Base ingredients are scope-aware. They may belong to the central catalog, one tenant, or one camp. Central recipes use central ingredients only. Tenant recipes may additionally use ingredients owned by their tenant. Camp recipes may additionally use ingredients owned by their tenant or camp.
 
-Measurement units and the allergen, intolerance, and dietary-requirement catalogs are platform-wide master data. The units usable for a concrete base ingredient and ingredient-specific conversions are owned by that ingredient. Scope visibility is validated by application logic; Catering does not create database foreign keys into Platform or Camp infrastructure.
+Measurement units and the allergen, intolerance, origin-property, and dietary-requirement identifier catalogs are platform-wide master data. The units usable for a concrete base ingredient and ingredient-specific conversions are owned by its revision. Vegan, vegetarian, pescetarian, lactose-free, milk-free, and gluten-free suitability is calculated from revisioned ingredient properties rather than stored as a direct ingredient assignment. Scope visibility is validated by application logic; Catering does not create database foreign keys into Platform or Camp infrastructure.
 
 ## Variants
 
-Variants are owned by the ingredient domain and are treated as 1:1 interchangeable. Recipes reference base ingredients and do not manually select variants as alternatives.
+Variants are owned by the ingredient domain and are treated as the same basic ingredient with targeted property and conversion overrides. Recipe positions reference a concrete published ingredient revision and may select one of its variants through the stable `variant_key`. Without a variant key, the base form is used. This rule is defined by ADR-021 and supersedes the earlier implicit interchangeability rule.
 
 A recipe may define position-specific replacement ingredients for explicit allergen, intolerance, or dietary conflicts. Different replacement rules are not automatically combined.
 
