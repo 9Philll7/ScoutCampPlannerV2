@@ -24,6 +24,27 @@ public enum RecipeLifecycleStatus
 
 public sealed record RecipeLifecycleResult(RecipeLifecycleStatus Status, RecipeDraft? CurrentDraft);
 
+public enum RecipePermanentDeleteStatus
+{
+    Deleted,
+    NotFound,
+    Forbidden,
+    ScopeNotSupported,
+    VersionConflict,
+    ReferenceBlocked,
+}
+
+public sealed record RecipePermanentDeleteResult(
+    RecipePermanentDeleteStatus Status,
+    RecipeDraft? CurrentDraft = null);
+
+public interface IRecipePermanentDeleteAuthorization
+{
+    Task<bool> CanPermanentlyDeleteCentralRecipesAsync(
+        Guid actorUserId,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IRecipeDraftStore
 {
     Task<RecipeDraft?> FindAsync(Guid recipeId, CancellationToken cancellationToken = default);
@@ -61,5 +82,9 @@ public interface IRecipeDraftStore
         long expectedVersion,
         Guid actorUserId,
         DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default);
+    Task<RecipePermanentDeleteResult> DeletePermanentlyAsync(
+        Guid recipeId,
+        long expectedVersion,
         CancellationToken cancellationToken = default);
 }

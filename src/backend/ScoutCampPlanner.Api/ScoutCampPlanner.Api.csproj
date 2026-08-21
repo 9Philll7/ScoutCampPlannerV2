@@ -11,6 +11,7 @@
     <PackageReference Include="SQLitePCLRaw.provider.winsqlite3" />
     <ProjectReference Include="../ScoutCampPlanner.Platform.Infrastructure/ScoutCampPlanner.Platform.Infrastructure.csproj" />
     <ProjectReference Include="../ScoutCampPlanner.Camp.Infrastructure/ScoutCampPlanner.Camp.Infrastructure.csproj" />
+    <ProjectReference Include="../ScoutCampPlanner.Catering.Application/ScoutCampPlanner.Catering.Application.csproj" />
     <ProjectReference Include="../ScoutCampPlanner.Catering.Infrastructure/ScoutCampPlanner.Catering.Infrastructure.csproj" />
     <ProjectReference Include="../ScoutCampPlanner.Migrations.PostgreSql/ScoutCampPlanner.Migrations.PostgreSql.csproj" />
     <ProjectReference Include="../ScoutCampPlanner.Migrations.Sqlite/ScoutCampPlanner.Migrations.Sqlite.csproj" />

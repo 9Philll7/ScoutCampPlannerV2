@@ -115,6 +115,29 @@ public sealed class RecipeDraftStoreTests
         command.Parameters.Add(new SqliteParameter("$id", derived.Id));
         string lineage = Assert.IsType<string>(await command.ExecuteScalarAsync(TestContext.Current.CancellationToken));
         Assert.Equal($"{sourceRecipeId}|{sourceRevisionId}", lineage, ignoreCase: true);
+
+        RecipePermanentDeleteResult blocked = await fixture.Store.DeletePermanentlyAsync(
+            sourceRecipeId, 0, TestContext.Current.CancellationToken);
+        Assert.Equal(RecipePermanentDeleteStatus.ReferenceBlocked, blocked.Status);
+    }
+
+    [Fact]
+    public async Task Unreferenced_recipe_is_permanently_deleted_with_its_draft_graph()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Guid recipeId = Guid.NewGuid();
+        var draft = new RecipeDraft(
+            recipeId, RecipeScopeType.Central, null, RecipeType.PortionBased, "Löschbar");
+        draft.ReplaceTags(["Test"]);
+        draft.AddGroup(new RecipeIngredientGroup(Guid.NewGuid(), recipeId, "Gruppe", 0));
+        await fixture.Store.CreateAsync(
+            draft, Guid.NewGuid(), DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+
+        RecipePermanentDeleteResult result = await fixture.Store.DeletePermanentlyAsync(
+            recipeId, 0, TestContext.Current.CancellationToken);
+
+        Assert.Equal(RecipePermanentDeleteStatus.Deleted, result.Status);
+        Assert.Null(await fixture.Store.FindAsync(recipeId, TestContext.Current.CancellationToken));
     }
 
     [Fact]

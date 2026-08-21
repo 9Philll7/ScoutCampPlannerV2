@@ -11,6 +11,8 @@ using ScoutCampPlanner.Api.Camps;
 using ScoutCampPlanner.Api.Catering;
 using ScoutCampPlanner.Camp.Infrastructure;
 using ScoutCampPlanner.Catering.Infrastructure;
+using ScoutCampPlanner.Catering.Application.Recipes;
+using ScoutCampPlanner.Catering.Infrastructure.Recipes;
 using ScoutCampPlanner.Migrations.PostgreSql;
 using ScoutCampPlanner.Migrations.Sqlite;
 using ScoutCampPlanner.Package;
@@ -86,6 +88,12 @@ builder.Services.AddDbContext<CateringDbContext>((services, options) => Configur
 builder.Services.AddScoped<CampPackageService>();
 builder.Services.AddScoped<CampManagementService>();
 builder.Services.AddScoped<CateringPlanningService>();
+builder.Services.AddScoped<RecipeDraftStore>();
+builder.Services.AddScoped<IRecipeDraftStore>(services => services.GetRequiredService<RecipeDraftStore>());
+builder.Services.AddScoped<EfRecipeReferences>();
+builder.Services.AddScoped<IRecipeRevisionSource>(services => services.GetRequiredService<EfRecipeReferences>());
+builder.Services.AddScoped<IRecipePermanentDeleteAuthorization, PlatformRecipeAuthorization>();
+builder.Services.AddScoped<RecipeLifecycleService>();
 builder.Services.AddSingleton<IPasswordPolicy, PasswordPolicy>();
 builder.Services.AddSingleton<IPasswordVerifier>(
     _ => new Argon2idPasswordVerifier(Argon2idOperatingMode.Server));

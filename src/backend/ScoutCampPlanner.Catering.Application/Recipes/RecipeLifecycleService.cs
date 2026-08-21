@@ -11,7 +11,8 @@ public interface IRecipeRevisionSource
 
 public sealed class RecipeLifecycleService(
     IRecipeDraftStore drafts,
-    IRecipeRevisionSource revisions)
+    IRecipeRevisionSource revisions,
+    IRecipePermanentDeleteAuthorization? deleteAuthorization = null)
 {
     public Task<RecipeLifecycleResult> ArchiveAsync(
         Guid recipeId,
@@ -50,6 +51,27 @@ public sealed class RecipeLifecycleService(
         return drafts.ResetToDraftAsync(
             Required(recipeId, nameof(recipeId)), expectedVersion,
             Required(actorUserId, nameof(actorUserId)), timestampUtc, cancellationToken);
+    }
+
+    public async Task<RecipePermanentDeleteResult> DeletePermanentlyAsync(
+        Guid recipeId,
+        long expectedVersion,
+        Guid actorUserId,
+        CancellationToken cancellationToken = default)
+    {
+        Required(recipeId, nameof(recipeId));
+        Required(actorUserId, nameof(actorUserId));
+        Version(expectedVersion);
+        if (deleteAuthorization is null ||
+            !await deleteAuthorization.CanPermanentlyDeleteCentralRecipesAsync(actorUserId, cancellationToken))
+            return new RecipePermanentDeleteResult(RecipePermanentDeleteStatus.Forbidden);
+
+        RecipeDraft? current = await drafts.FindAsync(recipeId, cancellationToken);
+        if (current is null)
+            return new RecipePermanentDeleteResult(RecipePermanentDeleteStatus.NotFound);
+        if (current.ScopeType != RecipeScopeType.Central)
+            return new RecipePermanentDeleteResult(RecipePermanentDeleteStatus.ScopeNotSupported, current);
+        return await drafts.DeletePermanentlyAsync(recipeId, expectedVersion, cancellationToken);
     }
 
     public async Task<RecipeDraftSaveResult> RestoreRevisionAsync(

@@ -172,6 +172,45 @@ public sealed class RecipeDraftStore(CateringDbContext database) : IRecipeDraftS
             RecipeLifecycleStatus.Changed, await LoadAsync(recipeId, cancellationToken));
     }
 
+    public async Task<RecipePermanentDeleteResult> DeletePermanentlyAsync(
+        Guid recipeId,
+        long expectedVersion,
+        CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
+        RecipeRecord? record = await database.Set<RecipeRecord>()
+            .SingleOrDefaultAsync(value => value.Id == recipeId, cancellationToken);
+        if (record is null)
+            return new RecipePermanentDeleteResult(RecipePermanentDeleteStatus.NotFound);
+        if (record.DraftVersion != expectedVersion)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            database.ChangeTracker.Clear();
+            return new RecipePermanentDeleteResult(
+                RecipePermanentDeleteStatus.VersionConflict, await LoadAsync(recipeId, cancellationToken));
+        }
+
+        Guid[] revisionIds = await database.Set<RecipeRevisionRecord>().AsNoTracking()
+            .Where(value => value.RecipeId == recipeId).Select(value => value.Id).ToArrayAsync(cancellationToken);
+        bool recipeReferenced = await database.Set<RecipeRecord>().AsNoTracking()
+            .AnyAsync(value => value.Id != recipeId &&
+                (value.DerivedFromRecipeId == recipeId || value.CentralSourceRecipeId == recipeId ||
+                 value.TenantSourceRecipeId == recipeId), cancellationToken);
+        if (recipeReferenced || await HasExternalRevisionReferenceAsync(recipeId, revisionIds, cancellationToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            database.ChangeTracker.Clear();
+            return new RecipePermanentDeleteResult(
+                RecipePermanentDeleteStatus.ReferenceBlocked, await LoadAsync(recipeId, cancellationToken));
+        }
+
+        database.Remove(record);
+        await database.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        database.ChangeTracker.Clear();
+        return new RecipePermanentDeleteResult(RecipePermanentDeleteStatus.Deleted);
+    }
+
     private async Task<bool> HasExternalRevisionReferenceAsync(
         Guid recipeId,
         Guid[] revisionIds,

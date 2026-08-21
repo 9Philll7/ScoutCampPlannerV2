@@ -81,6 +81,37 @@ public sealed class RecipeLifecycleServiceTests
             TestContext.Current.CancellationToken));
     }
 
+    [Fact]
+    public async Task Permanent_delete_requires_permission_and_central_scope()
+    {
+        Guid actorId = Guid.NewGuid();
+        var central = new RecipeDraft(
+            Guid.NewGuid(), RecipeScopeType.Central, null, RecipeType.PortionBased, "Zentral");
+        var deniedStore = new FakeStore(central);
+        var denied = new RecipeLifecycleService(
+            deniedStore, new FakeRevisionSource(Guid.NewGuid(), new RecipeRevisionSnapshot(central.Id, Snapshot(Guid.NewGuid()))),
+            new FakeDeleteAuthorization(false));
+
+        RecipePermanentDeleteResult deniedResult = await denied.DeletePermanentlyAsync(
+            central.Id, 0, actorId, TestContext.Current.CancellationToken);
+
+        Assert.Equal(RecipePermanentDeleteStatus.Forbidden, deniedResult.Status);
+        Assert.False(deniedStore.DeleteCalled);
+
+        var tenant = new RecipeDraft(
+            Guid.NewGuid(), RecipeScopeType.Tenant, Guid.NewGuid(), RecipeType.PortionBased, "Mandant");
+        var tenantStore = new FakeStore(tenant);
+        var authorized = new RecipeLifecycleService(
+            tenantStore, new FakeRevisionSource(Guid.NewGuid(), new RecipeRevisionSnapshot(tenant.Id, Snapshot(Guid.NewGuid()))),
+            new FakeDeleteAuthorization(true));
+
+        RecipePermanentDeleteResult tenantResult = await authorized.DeletePermanentlyAsync(
+            tenant.Id, 0, actorId, TestContext.Current.CancellationToken);
+
+        Assert.Equal(RecipePermanentDeleteStatus.ScopeNotSupported, tenantResult.Status);
+        Assert.False(tenantStore.DeleteCalled);
+    }
+
     private static RecipeSnapshot Snapshot(Guid nestedRevisionId)
     {
         var unit = new MeasurementUnitSnapshot(
@@ -113,11 +144,18 @@ public sealed class RecipeLifecycleServiceTests
         }
     }
 
+    private sealed class FakeDeleteAuthorization(bool allowed) : IRecipePermanentDeleteAuthorization
+    {
+        public Task<bool> CanPermanentlyDeleteCentralRecipesAsync(
+            Guid actorUserId, CancellationToken cancellationToken = default) => Task.FromResult(allowed);
+    }
+
     private sealed class FakeStore(RecipeDraft? current) : IRecipeDraftStore
     {
         public RecipeDraft? Saved { get; private set; }
         public long? ExpectedVersion { get; private set; }
         public RecipeDraftLineage? Lineage { get; private set; }
+        public bool DeleteCalled { get; private set; }
 
         public Task<RecipeDraft?> FindAsync(Guid recipeId, CancellationToken cancellationToken = default) =>
             Task.FromResult(current);
@@ -157,5 +195,12 @@ public sealed class RecipeLifecycleServiceTests
             Guid recipeId, long expectedVersion, Guid actorUserId, DateTimeOffset timestampUtc,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(new RecipeLifecycleResult(RecipeLifecycleStatus.Changed, current));
+
+        public Task<RecipePermanentDeleteResult> DeletePermanentlyAsync(
+            Guid recipeId, long expectedVersion, CancellationToken cancellationToken = default)
+        {
+            DeleteCalled = true;
+            return Task.FromResult(new RecipePermanentDeleteResult(RecipePermanentDeleteStatus.Deleted));
+        }
     }
 }
