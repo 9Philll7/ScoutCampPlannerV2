@@ -6,6 +6,23 @@ namespace ScoutCampPlanner.CateringTests;
 public sealed class RecipeDraftTests
 {
     [Fact]
+    public void Archive_and_reactivate_follow_revision_history()
+    {
+        var withoutRevision = new RecipeDraft(
+            Guid.NewGuid(), RecipeScopeType.Central, null, RecipeType.PortionBased, "Entwurf");
+        withoutRevision.Archive(1);
+        withoutRevision.Reactivate(hasPublishedRevisions: false, version: 2);
+        Assert.Equal(RecipeStatus.Draft, withoutRevision.Status);
+
+        var withRevision = new RecipeDraft(
+            Guid.NewGuid(), RecipeScopeType.Central, null, RecipeType.PortionBased, "Aktiv", RecipeStatus.Active);
+        withRevision.Archive(3);
+        withRevision.Reactivate(hasPublishedRevisions: true, version: 4);
+        Assert.Equal(RecipeStatus.Active, withRevision.Status);
+        Assert.Equal(4, withRevision.DraftVersion);
+    }
+
+    [Fact]
     public void Draft_may_start_incomplete()
     {
         var draft = new RecipeDraft(Guid.NewGuid(), RecipeScopeType.Central, null, RecipeType.PortionBased);

@@ -117,6 +117,37 @@ public sealed class RecipeDraftStoreTests
         Assert.Equal($"{sourceRecipeId}|{sourceRevisionId}", lineage, ignoreCase: true);
     }
 
+    [Fact]
+    public async Task Draft_archive_and_reactivation_are_versioned_and_audited()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Guid actorId = Guid.NewGuid();
+        DateTimeOffset archivedAt = DateTimeOffset.UtcNow;
+        var draft = new RecipeDraft(
+            Guid.NewGuid(), RecipeScopeType.Central, null, RecipeType.PortionBased, "Entwurf");
+        await fixture.Store.CreateAsync(
+            draft, actorId, archivedAt.AddMinutes(-1), TestContext.Current.CancellationToken);
+
+        RecipeLifecycleResult archived = await fixture.Store.ArchiveAsync(
+            draft.Id, 0, actorId, archivedAt, TestContext.Current.CancellationToken);
+        RecipeLifecycleResult stale = await fixture.Store.ReactivateAsync(
+            draft.Id, 0, actorId, archivedAt, TestContext.Current.CancellationToken);
+        RecipeLifecycleResult reactivated = await fixture.Store.ReactivateAsync(
+            draft.Id, 1, actorId, archivedAt.AddMinutes(1), TestContext.Current.CancellationToken);
+
+        Assert.Equal(RecipeStatus.Archived, archived.CurrentDraft!.Status);
+        Assert.Equal(RecipeLifecycleStatus.VersionConflict, stale.Status);
+        Assert.Equal(RecipeStatus.Draft, reactivated.CurrentDraft!.Status);
+        Assert.Equal(2, reactivated.CurrentDraft.DraftVersion);
+
+        await using var command = fixture.Database.Database.GetDbConnection().CreateCommand();
+        command.CommandText =
+            "SELECT ArchivedBy IS NOT NULL AND ArchivedAtUtc IS NOT NULL AND " +
+            "ReactivatedBy IS NOT NULL AND ReactivatedAtUtc IS NOT NULL FROM Recipes WHERE Id = $id";
+        command.Parameters.Add(new SqliteParameter("$id", draft.Id));
+        Assert.Equal(1L, await command.ExecuteScalarAsync(TestContext.Current.CancellationToken));
+    }
+
     private sealed class DatabaseFixture(
         SqliteConnection connection,
         CateringDbContext database,

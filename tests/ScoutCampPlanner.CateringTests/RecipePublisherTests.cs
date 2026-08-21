@@ -103,6 +103,42 @@ public sealed class RecipePublisherTests
             TestContext.Current.CancellationToken));
     }
 
+    [Fact]
+    public async Task Archived_published_recipe_reactivates_as_active_and_keeps_history()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Guid ingredientId = Guid.NewGuid();
+        Guid unitId = Guid.NewGuid();
+        fixture.Database.AddRange(
+            new BaseIngredient(ingredientId, IngredientScopeType.Tenant, fixture.TenantId, "Reis"),
+            new MeasurementUnit(unitId, "Gramm", "g", MeasurementDimension.Mass, 1m),
+            new IngredientUnitConversion(ingredientId, unitId, 1m));
+        await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+        var draft = new RecipeDraft(
+            Guid.NewGuid(), RecipeScopeType.Tenant, fixture.TenantId, RecipeType.PortionBased, "Reisgericht");
+        draft.SetDetails("Beschreibung", "Quelle", null);
+        draft.ConfigurePortionReference(10m, true);
+        draft.AddIngredientPosition(new RecipeIngredientPosition(
+            Guid.NewGuid(), draft.Id, null, ingredientId, 1_000m, unitId, 0));
+        await fixture.Store.CreateAsync(
+            draft, fixture.UserId, fixture.Now, TestContext.Current.CancellationToken);
+        RecipePublicationResult published = await fixture.Publisher.PublishAsync(
+            draft.Id, 0, fixture.UserId, fixture.Now, acknowledgeWarnings: true,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        RecipeLifecycleResult archived = await fixture.Store.ArchiveAsync(
+            draft.Id, 1, fixture.UserId, fixture.Now.AddMinutes(1), TestContext.Current.CancellationToken);
+        RecipeLifecycleResult reactivated = await fixture.Store.ReactivateAsync(
+            draft.Id, 2, fixture.UserId, fixture.Now.AddMinutes(2), TestContext.Current.CancellationToken);
+
+        Assert.Equal(RecipePublicationStatus.Published, published.Status);
+        Assert.Equal(RecipeStatus.Archived, archived.CurrentDraft!.Status);
+        Assert.Equal(RecipeStatus.Active, reactivated.CurrentDraft!.Status);
+        Assert.Equal(3, reactivated.CurrentDraft.DraftVersion);
+        Assert.Single(await fixture.Database.Set<RecipeRevisionRecord>().ToArrayAsync(
+            TestContext.Current.CancellationToken));
+    }
+
     private sealed class DatabaseFixture(
         SqliteConnection connection,
         CateringDbContext database,

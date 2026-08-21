@@ -140,6 +140,22 @@ public sealed class RecipeDraft
         Status = RecipeStatus.Active;
     }
 
+    public void Archive(long version)
+    {
+        if (Status == RecipeStatus.Archived)
+            throw new InvalidOperationException("Recipe is already archived.");
+        SetPersistedVersion(version);
+        Status = RecipeStatus.Archived;
+    }
+
+    public void Reactivate(bool hasPublishedRevisions, long version)
+    {
+        if (Status != RecipeStatus.Archived)
+            throw new InvalidOperationException("Only an archived recipe can be reactivated.");
+        SetPersistedVersion(version);
+        Status = hasPublishedRevisions ? RecipeStatus.Active : RecipeStatus.Draft;
+    }
+
     private void EnsureKnownGroup(Guid? groupId)
     {
         if (groupId.HasValue && groups.All(value => value.Id != groupId))

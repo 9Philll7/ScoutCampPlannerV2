@@ -13,6 +13,32 @@ public sealed class RecipeLifecycleService(
     IRecipeDraftStore drafts,
     IRecipeRevisionSource revisions)
 {
+    public Task<RecipeLifecycleResult> ArchiveAsync(
+        Guid recipeId,
+        long expectedVersion,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default)
+    {
+        Version(expectedVersion);
+        return drafts.ArchiveAsync(
+            Required(recipeId, nameof(recipeId)), expectedVersion,
+            Required(actorUserId, nameof(actorUserId)), timestampUtc, cancellationToken);
+    }
+
+    public Task<RecipeLifecycleResult> ReactivateAsync(
+        Guid recipeId,
+        long expectedVersion,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default)
+    {
+        Version(expectedVersion);
+        return drafts.ReactivateAsync(
+            Required(recipeId, nameof(recipeId)), expectedVersion,
+            Required(actorUserId, nameof(actorUserId)), timestampUtc, cancellationToken);
+    }
+
     public async Task<RecipeDraftSaveResult> RestoreRevisionAsync(
         Guid recipeId,
         Guid revisionId,
@@ -58,6 +84,11 @@ public sealed class RecipeLifecycleService(
 
     private static Guid Required(Guid value, string parameterName) =>
         value == Guid.Empty ? throw new ArgumentException("ID is required.", parameterName) : value;
+
+    private static void Version(long value)
+    {
+        if (value < 0) throw new ArgumentOutOfRangeException(nameof(value));
+    }
 }
 
 internal static class RecipeDraftCopy

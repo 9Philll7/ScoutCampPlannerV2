@@ -13,6 +13,16 @@ public sealed record RecipeDraftSaveResult(RecipeDraftSaveStatus Status, RecipeD
 
 public sealed record RecipeDraftLineage(Guid SourceRecipeId, Guid SourceRevisionId);
 
+public enum RecipeLifecycleStatus
+{
+    Changed,
+    NotFound,
+    VersionConflict,
+    InvalidStatus,
+}
+
+public sealed record RecipeLifecycleResult(RecipeLifecycleStatus Status, RecipeDraft? CurrentDraft);
+
 public interface IRecipeDraftStore
 {
     Task<RecipeDraft?> FindAsync(Guid recipeId, CancellationToken cancellationToken = default);
@@ -29,6 +39,18 @@ public interface IRecipeDraftStore
         CancellationToken cancellationToken = default);
     Task<RecipeDraftSaveResult> SaveAsync(
         RecipeDraft draft,
+        long expectedVersion,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default);
+    Task<RecipeLifecycleResult> ArchiveAsync(
+        Guid recipeId,
+        long expectedVersion,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default);
+    Task<RecipeLifecycleResult> ReactivateAsync(
+        Guid recipeId,
         long expectedVersion,
         Guid actorUserId,
         DateTimeOffset timestampUtc,

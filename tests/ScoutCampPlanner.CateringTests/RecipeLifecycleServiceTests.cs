@@ -142,5 +142,15 @@ public sealed class RecipeLifecycleServiceTests
             ExpectedVersion = expectedVersion;
             return Task.FromResult(new RecipeDraftSaveResult(RecipeDraftSaveStatus.Saved, draft));
         }
+
+        public Task<RecipeLifecycleResult> ArchiveAsync(
+            Guid recipeId, long expectedVersion, Guid actorUserId, DateTimeOffset timestampUtc,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new RecipeLifecycleResult(RecipeLifecycleStatus.Changed, current));
+
+        public Task<RecipeLifecycleResult> ReactivateAsync(
+            Guid recipeId, long expectedVersion, Guid actorUserId, DateTimeOffset timestampUtc,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new RecipeLifecycleResult(RecipeLifecycleStatus.Changed, current));
     }
 }

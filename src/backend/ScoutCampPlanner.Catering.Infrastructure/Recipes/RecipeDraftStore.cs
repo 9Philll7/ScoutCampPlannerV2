@@ -93,6 +93,89 @@ public sealed class RecipeDraftStore(CateringDbContext database) : IRecipeDraftS
         }
     }
 
+    public Task<RecipeLifecycleResult> ArchiveAsync(
+        Guid recipeId,
+        long expectedVersion,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default) =>
+        ChangeLifecycleAsync(
+            recipeId, expectedVersion, actorUserId, timestampUtc, reactivate: false, cancellationToken);
+
+    public Task<RecipeLifecycleResult> ReactivateAsync(
+        Guid recipeId,
+        long expectedVersion,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default) =>
+        ChangeLifecycleAsync(
+            recipeId, expectedVersion, actorUserId, timestampUtc, reactivate: true, cancellationToken);
+
+    private async Task<RecipeLifecycleResult> ChangeLifecycleAsync(
+        Guid recipeId,
+        long expectedVersion,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        bool reactivate,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
+        RecipeRecord? record = await database.Set<RecipeRecord>()
+            .SingleOrDefaultAsync(value => value.Id == recipeId, cancellationToken);
+        if (record is null)
+            return new RecipeLifecycleResult(RecipeLifecycleStatus.NotFound, null);
+        if (record.DraftVersion != expectedVersion)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            database.ChangeTracker.Clear();
+            return new RecipeLifecycleResult(
+                RecipeLifecycleStatus.VersionConflict, await LoadAsync(recipeId, cancellationToken));
+        }
+
+        bool isArchived = record.Status == (int)RecipeStatus.Archived;
+        if (reactivate != isArchived)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            database.ChangeTracker.Clear();
+            return new RecipeLifecycleResult(
+                RecipeLifecycleStatus.InvalidStatus, await LoadAsync(recipeId, cancellationToken));
+        }
+
+        if (reactivate)
+        {
+            bool hasRevisions = await database.Set<RecipeRevisionRecord>().AsNoTracking()
+                .AnyAsync(value => value.RecipeId == recipeId, cancellationToken);
+            record.Status = (int)(hasRevisions ? RecipeStatus.Active : RecipeStatus.Draft);
+            record.ReactivatedBy = actorUserId;
+            record.ReactivatedAtUtc = timestampUtc;
+        }
+        else
+        {
+            record.Status = (int)RecipeStatus.Archived;
+            record.ArchivedBy = actorUserId;
+            record.ArchivedAtUtc = timestampUtc;
+        }
+        record.DraftVersion = expectedVersion + 1;
+        record.UpdatedBy = actorUserId;
+        record.UpdatedAtUtc = timestampUtc;
+
+        try
+        {
+            await database.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            database.ChangeTracker.Clear();
+            return new RecipeLifecycleResult(
+                RecipeLifecycleStatus.VersionConflict, await LoadAsync(recipeId, cancellationToken));
+        }
+        database.ChangeTracker.Clear();
+        return new RecipeLifecycleResult(
+            RecipeLifecycleStatus.Changed, await LoadAsync(recipeId, cancellationToken));
+    }
+
     private async Task<RecipeDraft?> LoadAsync(Guid recipeId, CancellationToken cancellationToken)
     {
         RecipeRecord? record = await database.Set<RecipeRecord>().AsNoTracking()
