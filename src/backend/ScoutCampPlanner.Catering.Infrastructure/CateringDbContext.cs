@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ScoutCampPlanner.Catering.Domain;
+using ScoutCampPlanner.Catering.Infrastructure.Recipes;
 
 namespace ScoutCampPlanner.Catering.Infrastructure;
 
@@ -21,9 +22,24 @@ public sealed class CateringDbContext(DbContextOptions<CateringDbContext> option
     public DbSet<BaseIngredientIntolerance> BaseIngredientIntolerances => Set<BaseIngredientIntolerance>();
     public DbSet<BaseIngredientDietaryRequirement> BaseIngredientDietaryRequirements => Set<BaseIngredientDietaryRequirement>();
 
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        EnsurePublishedSnapshotsAreImmutable();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(
+        bool acceptAllChangesOnSuccess,
+        CancellationToken cancellationToken = default)
+    {
+        EnsurePublishedSnapshotsAreImmutable();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        if (Database.ProviderName?.Contains("Npgsql", StringComparison.Ordinal) == true)
+        bool isNpgsql = Database.ProviderName?.Contains("Npgsql", StringComparison.Ordinal) == true;
+        if (isNpgsql)
             modelBuilder.HasDefaultSchema("catering");
         modelBuilder.Entity<MealPlan>(entity =>
         {
@@ -137,6 +153,7 @@ public sealed class CateringDbContext(DbContextOptions<CateringDbContext> option
             entity.HasOne<BaseIngredient>().WithMany().HasForeignKey(x => x.BaseIngredientId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<DietaryRequirement>().WithMany().HasForeignKey(x => x.DietaryRequirementId).OnDelete(DeleteBehavior.Restrict);
         });
+        RecipePersistenceConfiguration.Configure(modelBuilder, isNpgsql);
     }
 
     private static void ConfigureConflictCatalog<TEntity>(
@@ -149,5 +166,12 @@ public sealed class CateringDbContext(DbContextOptions<CateringDbContext> option
         entity.Property<string>("Name").HasMaxLength(100);
         entity.Property<string>("NormalizedName").HasMaxLength(100);
         entity.HasIndex("NormalizedName").IsUnique();
+    }
+
+    private void EnsurePublishedSnapshotsAreImmutable()
+    {
+        if (ChangeTracker.Entries<RecipeRevisionRecord>().Any(value => value.State == EntityState.Modified) ||
+            ChangeTracker.Entries<RecipeRevisionWarningRecord>().Any(value => value.State == EntityState.Modified))
+            throw new InvalidOperationException("Published recipe revisions and warning snapshots are immutable.");
     }
 }

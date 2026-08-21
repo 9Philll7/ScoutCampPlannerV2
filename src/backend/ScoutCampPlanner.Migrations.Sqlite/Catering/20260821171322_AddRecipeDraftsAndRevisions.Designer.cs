@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ScoutCampPlanner.Catering.Infrastructure;
 
@@ -10,9 +11,11 @@ using ScoutCampPlanner.Catering.Infrastructure;
 namespace ScoutCampPlanner.Migrations.Sqlite.Catering
 {
     [DbContext(typeof(CateringDbContext))]
-    partial class CateringDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260821171322_AddRecipeDraftsAndRevisions")]
+    partial class AddRecipeDraftsAndRevisions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.5");
@@ -499,23 +502,11 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
 
                     b.HasIndex("UnitId");
 
-                    b.HasIndex("RecipeId", "BaseIngredientId")
-                        .IsUnique()
-                        .HasDatabaseName("IX_RecipeIngredientPositions_Ungrouped_BaseIngredientId")
-                        .HasFilter("\"GroupId\" IS NULL");
-
-                    b.HasIndex("RecipeId", "SortOrder")
-                        .IsUnique()
-                        .HasDatabaseName("IX_RecipeIngredientPositions_Ungrouped_SortOrder")
-                        .HasFilter("\"GroupId\" IS NULL");
-
                     b.HasIndex("RecipeId", "GroupId", "BaseIngredientId")
-                        .IsUnique()
-                        .HasFilter("\"GroupId\" IS NOT NULL");
+                        .IsUnique();
 
                     b.HasIndex("RecipeId", "GroupId", "SortOrder")
-                        .IsUnique()
-                        .HasFilter("\"GroupId\" IS NOT NULL");
+                        .IsUnique();
 
                     b.ToTable("RecipeIngredientPositions", (string)null);
                 });
@@ -860,23 +851,11 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
 
                     b.HasIndex("RequiredUnitId");
 
-                    b.HasIndex("RecipeId", "RecipeRevisionId")
-                        .IsUnique()
-                        .HasDatabaseName("IX_RecipeSubrecipePositions_Ungrouped_RecipeRevisionId")
-                        .HasFilter("\"GroupId\" IS NULL");
-
-                    b.HasIndex("RecipeId", "SortOrder")
-                        .IsUnique()
-                        .HasDatabaseName("IX_RecipeSubrecipePositions_Ungrouped_SortOrder")
-                        .HasFilter("\"GroupId\" IS NULL");
-
                     b.HasIndex("RecipeId", "GroupId", "RecipeRevisionId")
-                        .IsUnique()
-                        .HasFilter("\"GroupId\" IS NOT NULL");
+                        .IsUnique();
 
                     b.HasIndex("RecipeId", "GroupId", "SortOrder")
-                        .IsUnique()
-                        .HasFilter("\"GroupId\" IS NOT NULL");
+                        .IsUnique();
 
                     b.ToTable("RecipeSubrecipePositions", (string)null);
                 });

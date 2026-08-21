@@ -5,4 +5,7 @@
     <ProjectReference Include="../ScoutCampPlanner.Catering.Domain/ScoutCampPlanner.Catering.Domain.csproj" />
     <ProjectReference Include="../ScoutCampPlanner.Camp.Contracts/ScoutCampPlanner.Camp.Contracts.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="ScoutCampPlanner.CateringTests" />
+  </ItemGroup>
 </Project>

@@ -42,7 +42,7 @@ Constraints:
 - unique `(scope_type, scope_id-normalized, normalized_name)` using DB-appropriate handling for central null scope
 - `central` requires a null scope ID; `tenant` and `camp` require the ID of their owning scope
 - portion-based fields XOR quantity-based fields
-- positive references
+- positive references are publication rules; the mutable draft tables deliberately permit null or invalid values so incomplete drafts remain saveable
 - central drafts cannot have authoring-stage metadata
 - tenant/camp authoring-stage metadata is either complete or entirely absent
 
@@ -109,7 +109,7 @@ Recommended stepwise columns:
 - `step_size` nullable decimal
 - `quantity_per_step` nullable decimal
 
-For `linear` and `fixed`, stepwise fields must be null.
+For `linear` and `fixed`, stepwise fields must be null at publication. Draft persistence may retain temporarily invalid combinations so users can explicitly save incomplete work.
 
 Enforce base-ingredient uniqueness per `(recipe_id, group-or-ungrouped, base_ingredient_id)` with database-specific indexes or application validation.
 

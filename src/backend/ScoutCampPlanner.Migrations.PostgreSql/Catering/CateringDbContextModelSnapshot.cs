@@ -419,6 +419,553 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                     b.ToTable("TenantStageFoodFactors", "catering");
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeDraftTagRecord", b =>
+                {
+                    b.Property<Guid>("RecipeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Value")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("RecipeId", "Value");
+
+                    b.ToTable("RecipeDraftTags", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeGroupRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("RecipeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecipeId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("RecipeGroups", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeIngredientPositionRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AgeGroupScaling")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("BaseIngredientId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("GroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("Quantity")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<decimal?>("QuantityPerStep")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<Guid>("RecipeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ScalingMode")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("StepSize")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<Guid?>("UnitId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BaseIngredientId");
+
+                    b.HasIndex("GroupId");
+
+                    b.HasIndex("UnitId");
+
+                    b.HasIndex("RecipeId", "BaseIngredientId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_RecipeIngredientPositions_Ungrouped_BaseIngredientId")
+                        .HasFilter("\"GroupId\" IS NULL");
+
+                    b.HasIndex("RecipeId", "SortOrder")
+                        .IsUnique()
+                        .HasDatabaseName("IX_RecipeIngredientPositions_Ungrouped_SortOrder")
+                        .HasFilter("\"GroupId\" IS NULL");
+
+                    b.HasIndex("RecipeId", "GroupId", "BaseIngredientId")
+                        .IsUnique()
+                        .HasFilter("\"GroupId\" IS NOT NULL");
+
+                    b.HasIndex("RecipeId", "GroupId", "SortOrder")
+                        .IsUnique()
+                        .HasFilter("\"GroupId\" IS NOT NULL");
+
+                    b.ToTable("RecipeIngredientPositions", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeIngredientReplacementAllergenRecord", b =>
+                {
+                    b.Property<Guid>("ReplacementId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AllergenId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("ReplacementId", "AllergenId");
+
+                    b.HasIndex("AllergenId");
+
+                    b.ToTable("RecipeIngredientReplacementAllergens", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeIngredientReplacementDietaryRequirementRecord", b =>
+                {
+                    b.Property<Guid>("ReplacementId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DietaryRequirementId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("ReplacementId", "DietaryRequirementId");
+
+                    b.HasIndex("DietaryRequirementId");
+
+                    b.ToTable("RecipeIngredientReplacementDietaryRequirements", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeIngredientReplacementIntoleranceRecord", b =>
+                {
+                    b.Property<Guid>("ReplacementId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("IntoleranceId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("ReplacementId", "IntoleranceId");
+
+                    b.HasIndex("IntoleranceId");
+
+                    b.ToTable("RecipeIngredientReplacementIntolerances", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeIngredientReplacementRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("IngredientPositionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ReplacementBaseIngredientId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("ReplacementQuantity")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<Guid?>("ReplacementUnitId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IngredientPositionId");
+
+                    b.HasIndex("ReplacementBaseIngredientId");
+
+                    b.HasIndex("ReplacementUnitId");
+
+                    b.ToTable("RecipeIngredientReplacements", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ArchivedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ArchivedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("AuthoringStageFactor")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<Guid?>("AuthoringStageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AuthoringStageName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid?>("CentralSourceRecipeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CentralSourceRevisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool?>("DefaultAgeGroupScalingApplies")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("DerivedFromRecipeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("DerivedFromRevisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<long>("DraftVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("InternalNotes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset?>("ReactivatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ReactivatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("RecipeType")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("ReferenceQuantity")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<decimal?>("ReferenceServings")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<Guid?>("ReferenceUnitId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ScopeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ScopeType")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Source")
+                        .HasColumnType("text");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("TenantSourceRecipeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("TenantSourceRevisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DerivedFromRecipeId");
+
+                    b.HasIndex("ReferenceUnitId");
+
+                    b.HasIndex("ScopeId");
+
+                    b.HasIndex("ScopeType", "NormalizedName")
+                        .IsUnique()
+                        .HasFilter("\"ScopeId\" IS NULL");
+
+                    b.HasIndex("ScopeType", "ScopeId", "NormalizedName")
+                        .IsUnique()
+                        .HasFilter("\"ScopeId\" IS NOT NULL");
+
+                    b.ToTable("Recipes", "catering", t =>
+                        {
+                            t.HasCheckConstraint("CK_Recipes_ScopeOwner", "(\"ScopeType\" = 0 AND \"ScopeId\" IS NULL) OR (\"ScopeType\" IN (1, 2) AND \"ScopeId\" IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRevisionRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CentralSubmissionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ChangeNote")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTimeOffset>("PublishedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("PublishedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RecipeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("RestoredFromRevisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("RevisionNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("SnapshotSchemaVersion")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RestoredFromRevisionId");
+
+                    b.HasIndex("RecipeId", "RevisionNumber")
+                        .IsUnique();
+
+                    b.ToTable("RecipeRevisions", "catering", t =>
+                        {
+                            t.HasCheckConstraint("CK_RecipeRevisions_Number_Positive", "\"RevisionNumber\" > 0");
+
+                            t.HasCheckConstraint("CK_RecipeRevisions_SchemaVersion_Positive", "\"SnapshotSchemaVersion\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRevisionWarningRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("AcknowledgedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("AcknowledgedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ConflictId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("ConflictType")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ContextJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("RecipeRevisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("SnapshotPositionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("SnapshotReplacementId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("WarningCode")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecipeRevisionId");
+
+                    b.ToTable("RecipeRevisionWarnings", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeSubrecipePositionRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("GroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RecipeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("RecipeRevisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("RequiredQuantity")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<decimal?>("RequiredServings")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<Guid?>("RequiredUnitId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GroupId");
+
+                    b.HasIndex("RecipeRevisionId");
+
+                    b.HasIndex("RequiredUnitId");
+
+                    b.HasIndex("RecipeId", "RecipeRevisionId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_RecipeSubrecipePositions_Ungrouped_RecipeRevisionId")
+                        .HasFilter("\"GroupId\" IS NULL");
+
+                    b.HasIndex("RecipeId", "SortOrder")
+                        .IsUnique()
+                        .HasDatabaseName("IX_RecipeSubrecipePositions_Ungrouped_SortOrder")
+                        .HasFilter("\"GroupId\" IS NULL");
+
+                    b.HasIndex("RecipeId", "GroupId", "RecipeRevisionId")
+                        .IsUnique()
+                        .HasFilter("\"GroupId\" IS NOT NULL");
+
+                    b.HasIndex("RecipeId", "GroupId", "SortOrder")
+                        .IsUnique()
+                        .HasFilter("\"GroupId\" IS NOT NULL");
+
+                    b.ToTable("RecipeSubrecipePositions", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeSubrecipeReplacementAllergenRecord", b =>
+                {
+                    b.Property<Guid>("ReplacementId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AllergenId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("ReplacementId", "AllergenId");
+
+                    b.HasIndex("AllergenId");
+
+                    b.ToTable("RecipeSubrecipeReplacementAllergens", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeSubrecipeReplacementDietaryRequirementRecord", b =>
+                {
+                    b.Property<Guid>("ReplacementId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DietaryRequirementId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("ReplacementId", "DietaryRequirementId");
+
+                    b.HasIndex("DietaryRequirementId");
+
+                    b.ToTable("RecipeSubrecipeReplacementDietaryRequirements", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeSubrecipeReplacementIntoleranceRecord", b =>
+                {
+                    b.Property<Guid>("ReplacementId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("IntoleranceId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("ReplacementId", "IntoleranceId");
+
+                    b.HasIndex("IntoleranceId");
+
+                    b.ToTable("RecipeSubrecipeReplacementIntolerances", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeSubrecipeReplacementRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("ReplacementQuantity")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<Guid?>("ReplacementRecipeRevisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("ReplacementServings")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<Guid?>("ReplacementUnitId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SubrecipePositionId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReplacementRecipeRevisionId");
+
+                    b.HasIndex("ReplacementUnitId");
+
+                    b.HasIndex("SubrecipePositionId");
+
+                    b.ToTable("RecipeSubrecipeReplacements", "catering");
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.BaseIngredientAllergen", b =>
                 {
                     b.HasOne("ScoutCampPlanner.Catering.Domain.Allergen", null)
@@ -484,6 +1031,236 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                     b.HasOne("ScoutCampPlanner.Catering.Domain.BaseIngredient", null)
                         .WithMany()
                         .HasForeignKey("BaseIngredientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeDraftTagRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRecord", null)
+                        .WithMany()
+                        .HasForeignKey("RecipeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeGroupRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRecord", null)
+                        .WithMany()
+                        .HasForeignKey("RecipeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeIngredientPositionRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.BaseIngredient", null)
+                        .WithMany()
+                        .HasForeignKey("BaseIngredientId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeGroupRecord", null)
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRecord", null)
+                        .WithMany()
+                        .HasForeignKey("RecipeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.MeasurementUnit", null)
+                        .WithMany()
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeIngredientReplacementAllergenRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.Allergen", null)
+                        .WithMany()
+                        .HasForeignKey("AllergenId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeIngredientReplacementRecord", null)
+                        .WithMany()
+                        .HasForeignKey("ReplacementId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeIngredientReplacementDietaryRequirementRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.DietaryRequirement", null)
+                        .WithMany()
+                        .HasForeignKey("DietaryRequirementId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeIngredientReplacementRecord", null)
+                        .WithMany()
+                        .HasForeignKey("ReplacementId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeIngredientReplacementIntoleranceRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.Intolerance", null)
+                        .WithMany()
+                        .HasForeignKey("IntoleranceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeIngredientReplacementRecord", null)
+                        .WithMany()
+                        .HasForeignKey("ReplacementId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeIngredientReplacementRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeIngredientPositionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("IngredientPositionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.BaseIngredient", null)
+                        .WithMany()
+                        .HasForeignKey("ReplacementBaseIngredientId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.MeasurementUnit", null)
+                        .WithMany()
+                        .HasForeignKey("ReplacementUnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRecord", null)
+                        .WithMany()
+                        .HasForeignKey("DerivedFromRecipeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.MeasurementUnit", null)
+                        .WithMany()
+                        .HasForeignKey("ReferenceUnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRevisionRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRecord", null)
+                        .WithMany()
+                        .HasForeignKey("RecipeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRevisionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("RestoredFromRevisionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRevisionWarningRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRevisionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("RecipeRevisionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeSubrecipePositionRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeGroupRecord", null)
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRecord", null)
+                        .WithMany()
+                        .HasForeignKey("RecipeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRevisionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("RecipeRevisionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.MeasurementUnit", null)
+                        .WithMany()
+                        .HasForeignKey("RequiredUnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeSubrecipeReplacementAllergenRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.Allergen", null)
+                        .WithMany()
+                        .HasForeignKey("AllergenId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeSubrecipeReplacementRecord", null)
+                        .WithMany()
+                        .HasForeignKey("ReplacementId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeSubrecipeReplacementDietaryRequirementRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.DietaryRequirement", null)
+                        .WithMany()
+                        .HasForeignKey("DietaryRequirementId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeSubrecipeReplacementRecord", null)
+                        .WithMany()
+                        .HasForeignKey("ReplacementId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeSubrecipeReplacementIntoleranceRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.Intolerance", null)
+                        .WithMany()
+                        .HasForeignKey("IntoleranceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeSubrecipeReplacementRecord", null)
+                        .WithMany()
+                        .HasForeignKey("ReplacementId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeSubrecipeReplacementRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRevisionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("ReplacementRecipeRevisionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.MeasurementUnit", null)
+                        .WithMany()
+                        .HasForeignKey("ReplacementUnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeSubrecipePositionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("SubrecipePositionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
