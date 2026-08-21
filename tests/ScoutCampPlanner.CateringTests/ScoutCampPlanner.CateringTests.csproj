@@ -9,6 +9,7 @@
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <ProjectReference Include="../../src/backend/ScoutCampPlanner.Catering.Domain/ScoutCampPlanner.Catering.Domain.csproj" />
+    <ProjectReference Include="../../src/backend/ScoutCampPlanner.Catering.Application/ScoutCampPlanner.Catering.Application.csproj" />
     <ProjectReference Include="../../src/backend/ScoutCampPlanner.Catering.Infrastructure/ScoutCampPlanner.Catering.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

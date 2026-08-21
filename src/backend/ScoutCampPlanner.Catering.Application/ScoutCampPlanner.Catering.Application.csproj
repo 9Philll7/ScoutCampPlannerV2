@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../ScoutCampPlanner.Catering.Domain/ScoutCampPlanner.Catering.Domain.csproj" />
+  </ItemGroup>
+</Project>

@@ -36,9 +36,9 @@ The current Camp stages are configurable tenant templates with stable camp copie
 
 Authorization currently supports only tenant and camp scopes. The central recipe catalog requires platform-wide permissions for reading published catalog data, reviewing central submissions and permanent cleanup. Recipe code must define permissions independently of role names, but the owning platform scope and assignment mechanism still need an architecture decision.
 
-### Application-layer boundary
+### Application-layer boundary (resolved)
 
-Catering currently has Domain and Infrastructure projects while product use cases live in the API composition project. The recipe brief introduces substantial application behavior: optimistic concurrency, publication, validation, calculation and central/tenant/camp adoption. Continuing to place this logic in the API project would conflict with the documented application-layer responsibility. The first recipe use case should introduce `ScoutCampPlanner.Catering.Application` and keep HTTP mapping in the API project.
+`ScoutCampPlanner.Catering.Application` now owns recipe publication validation and its domain-facing reference interfaces. Further recipe use cases, optimistic concurrency, calculation, and central/tenant/camp adoption remain in this project; HTTP mapping stays in the API composition project.
 
 ### Central distribution infrastructure
 

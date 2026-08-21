@@ -36,14 +36,19 @@ public sealed class DomainDependencyTests
     [Fact]
     public void Platform_application_has_no_infrastructure_dependencies()
     {
-        var references = typeof(Platform.Application.Authentication.IPasswordPolicy).Assembly.GetReferencedAssemblies();
+        Assembly[] applicationAssemblies =
+        [
+            typeof(Platform.Application.Authentication.IPasswordPolicy).Assembly,
+            typeof(Catering.Application.Recipes.RecipePublicationValidator).Assembly,
+        ];
 
-        Assert.DoesNotContain(references, reference =>
-            reference.Name is not null &&
-            (reference.Name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal) ||
-             reference.Name.StartsWith("Konscious", StringComparison.Ordinal) ||
-             reference.Name.StartsWith("zxcvbn", StringComparison.Ordinal) ||
-             reference.Name.EndsWith(".Infrastructure", StringComparison.Ordinal)));
+        Assert.All(applicationAssemblies, assembly => Assert.DoesNotContain(
+            assembly.GetReferencedAssemblies(),
+            reference => reference.Name is not null &&
+                         (reference.Name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal) ||
+                          reference.Name.StartsWith("Konscious", StringComparison.Ordinal) ||
+                          reference.Name.StartsWith("zxcvbn", StringComparison.Ordinal) ||
+                          reference.Name.EndsWith(".Infrastructure", StringComparison.Ordinal))));
     }
 
     [Fact]

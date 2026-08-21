@@ -10,6 +10,7 @@
     <ProjectReference Include="../../src/backend/ScoutCampPlanner.Camp.Domain/ScoutCampPlanner.Camp.Domain.csproj" />
     <ProjectReference Include="../../src/backend/ScoutCampPlanner.Camp.Infrastructure/ScoutCampPlanner.Camp.Infrastructure.csproj" />
     <ProjectReference Include="../../src/backend/ScoutCampPlanner.Catering.Domain/ScoutCampPlanner.Catering.Domain.csproj" />
+    <ProjectReference Include="../../src/backend/ScoutCampPlanner.Catering.Application/ScoutCampPlanner.Catering.Application.csproj" />
     <ProjectReference Include="../../src/backend/ScoutCampPlanner.Catering.Infrastructure/ScoutCampPlanner.Catering.Infrastructure.csproj" />
   </ItemGroup>
 </Project>
