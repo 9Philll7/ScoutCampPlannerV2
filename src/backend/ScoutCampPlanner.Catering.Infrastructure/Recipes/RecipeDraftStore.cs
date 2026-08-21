@@ -72,10 +72,11 @@ public sealed class RecipeDraftStore(CateringDbContext database) : IRecipeDraftS
     {
         RecipeRecord? record = await database.Set<RecipeRecord>().AsNoTracking()
             .SingleOrDefaultAsync(value => value.Id == recipeId, cancellationToken);
-        if (record is null || record.Status != (int)RecipeStatus.Draft) return null;
+        if (record is null) return null;
 
         var draft = new RecipeDraft(
-            record.Id, (RecipeScopeType)record.ScopeType, record.ScopeId, (RecipeType)record.RecipeType, record.Name);
+            record.Id, (RecipeScopeType)record.ScopeType, record.ScopeId, (RecipeType)record.RecipeType,
+            record.Name, (RecipeStatus)record.Status);
         draft.SetDetails(record.Description, record.Source, record.InternalNotes);
         if ((RecipeType)record.RecipeType == RecipeType.PortionBased)
         {
@@ -344,7 +345,7 @@ public sealed class RecipeDraftStore(CateringDbContext database) : IRecipeDraftS
         target.ScopeId = source.ScopeId;
         target.Name = source.Name;
         target.NormalizedName = source.NormalizedName;
-        target.Status = (int)RecipeStatus.Draft;
+        target.Status = (int)source.Status;
         target.RecipeType = (int)source.RecipeType;
         target.Description = source.Description;
         target.Source = source.Source;

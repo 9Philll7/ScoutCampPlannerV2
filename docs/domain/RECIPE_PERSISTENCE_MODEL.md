@@ -336,6 +336,8 @@ For the implemented schema, the published snapshot reference identifies the stan
 
 Each group, ingredient position, subrecipe position and replacement rule should contain a stable snapshot-local ID.
 
+Ingredient positions and ingredient replacements also snapshot the ingredient name, its conflict references, the selected measurement unit and the ingredient-specific conversion factor. Quantity reference units snapshot their dimension and base-unit factor. This prevents later catalog or conversion changes from altering historical recipe calculation and conflict semantics.
+
 Do not embed mutable 'latest' pointers in the snapshot. All nested recipe dependencies must reference exact revision IDs.
 
 ## 15. Transaction boundaries

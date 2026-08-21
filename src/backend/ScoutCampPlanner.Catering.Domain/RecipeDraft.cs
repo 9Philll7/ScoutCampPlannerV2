@@ -7,14 +7,22 @@ public sealed class RecipeDraft
     private readonly List<RecipeSubrecipePosition> subrecipePositions = [];
     private readonly HashSet<string> tags = new(StringComparer.Ordinal);
 
-    public RecipeDraft(Guid id, RecipeScopeType scopeType, Guid? scopeId, RecipeType recipeType, string? name = null)
+    public RecipeDraft(
+        Guid id,
+        RecipeScopeType scopeType,
+        Guid? scopeId,
+        RecipeType recipeType,
+        string? name = null,
+        RecipeStatus status = RecipeStatus.Draft)
     {
         Id = id == Guid.Empty ? throw new ArgumentException("Recipe ID is required.", nameof(id)) : id;
         ValidateScope(scopeType, scopeId);
         if (!Enum.IsDefined(recipeType)) throw new ArgumentOutOfRangeException(nameof(recipeType));
+        if (!Enum.IsDefined(status)) throw new ArgumentOutOfRangeException(nameof(status));
         ScopeType = scopeType;
         ScopeId = scopeId;
         RecipeType = recipeType;
+        Status = status;
         SetName(name);
     }
 
@@ -122,6 +130,14 @@ public sealed class RecipeDraft
     {
         if (version < 0) throw new ArgumentOutOfRangeException(nameof(version));
         DraftVersion = version;
+    }
+
+    public void MarkPublished(long version)
+    {
+        if (Status == RecipeStatus.Archived)
+            throw new InvalidOperationException("An archived recipe cannot be published.");
+        SetPersistedVersion(version);
+        Status = RecipeStatus.Active;
     }
 
     private void EnsureKnownGroup(Guid? groupId)
