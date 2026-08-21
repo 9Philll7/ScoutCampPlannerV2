@@ -31,11 +31,20 @@ public enum RecipeLibraryMutationStatus
     AlreadyExists,
     Converted,
     AlreadyLocal,
+    Updated,
+    NoUpdate,
 }
 
 public sealed record RecipeLibraryMutationResult(
     RecipeLibraryMutationStatus Status,
     Guid? EntryId = null);
+
+public sealed record RecipeLibraryUpdate(
+    Guid EntryId,
+    Guid CurrentRevisionId,
+    Guid LatestRevisionId,
+    bool UpdateAvailable,
+    RecipeStatus SourceRecipeStatus);
 
 public interface IRecipeLibraryStore
 {
@@ -70,6 +79,22 @@ public interface IRecipeLibraryStore
         Guid entryId,
         Guid newRecipeId,
         string newName,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<RecipeLibraryUpdate>> CheckTenantUpdatesAsync(
+        Guid tenantId,
+        CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<RecipeLibraryUpdate>> CheckCampUpdatesAsync(
+        Guid campId,
+        CancellationToken cancellationToken = default);
+    Task<RecipeLibraryMutationResult> AdoptLatestTenantRevisionAsync(
+        Guid entryId,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default);
+    Task<RecipeLibraryMutationResult> AdoptLatestCampRevisionAsync(
+        Guid entryId,
         Guid actorUserId,
         DateTimeOffset timestampUtc,
         CancellationToken cancellationToken = default);
@@ -128,6 +153,34 @@ public sealed class RecipeLibraryService(IRecipeLibraryStore store)
         store.ConvertCampEntryToLocalRecipeAsync(
             Required(entryId, nameof(entryId)), Required(newRecipeId, nameof(newRecipeId)), newName,
             Required(actorUserId, nameof(actorUserId)), timestampUtc, cancellationToken);
+
+    public Task<IReadOnlyList<RecipeLibraryUpdate>> CheckTenantUpdatesAsync(
+        Guid tenantId,
+        CancellationToken cancellationToken = default) =>
+        store.CheckTenantUpdatesAsync(Required(tenantId, nameof(tenantId)), cancellationToken);
+
+    public Task<IReadOnlyList<RecipeLibraryUpdate>> CheckCampUpdatesAsync(
+        Guid campId,
+        CancellationToken cancellationToken = default) =>
+        store.CheckCampUpdatesAsync(Required(campId, nameof(campId)), cancellationToken);
+
+    public Task<RecipeLibraryMutationResult> AdoptLatestTenantRevisionAsync(
+        Guid entryId,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default) =>
+        store.AdoptLatestTenantRevisionAsync(
+            Required(entryId, nameof(entryId)), Required(actorUserId, nameof(actorUserId)),
+            timestampUtc, cancellationToken);
+
+    public Task<RecipeLibraryMutationResult> AdoptLatestCampRevisionAsync(
+        Guid entryId,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default) =>
+        store.AdoptLatestCampRevisionAsync(
+            Required(entryId, nameof(entryId)), Required(actorUserId, nameof(actorUserId)),
+            timestampUtc, cancellationToken);
 
     private static Guid Required(Guid value, string parameterName) =>
         value == Guid.Empty ? throw new ArgumentException("ID is required.", parameterName) : value;

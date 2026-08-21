@@ -127,6 +127,53 @@ public sealed class RecipeLibraryStoreTests
         Assert.Null(centralRevision);
         Assert.NotNull(tenantRecipe);
         Assert.Equal(tenantRevision, tenantSourceRevision);
+        Assert.Empty(await fixture.Libraries.CheckCampUpdatesAsync(
+            fixture.CampId, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Upstream_updates_are_reported_and_adopted_only_explicitly()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Guid revisionOne = await fixture.PublishAsync(RecipeScopeType.Central, null, "Zentral");
+        RecipeLibraryMutationResult tenantEntry = await fixture.Libraries.AddCentralRevisionToTenantAsync(
+            Guid.NewGuid(), fixture.TenantId, revisionOne, fixture.UserId, fixture.Now,
+            TestContext.Current.CancellationToken);
+        RecipeLibraryMutationResult campEntry = await fixture.Libraries.AddUpstreamRevisionToCampAsync(
+            Guid.NewGuid(), fixture.CampId, revisionOne, fixture.UserId, fixture.Now,
+            TestContext.Current.CancellationToken);
+        Guid revisionTwo = await fixture.PublishNextAsync(revisionOne);
+
+        RecipeLibraryUpdate tenantUpdate = Assert.Single(await fixture.Libraries.CheckTenantUpdatesAsync(
+            fixture.TenantId, TestContext.Current.CancellationToken));
+        RecipeLibraryUpdate campUpdate = Assert.Single(await fixture.Libraries.CheckCampUpdatesAsync(
+            fixture.CampId, TestContext.Current.CancellationToken));
+
+        Assert.True(tenantUpdate.UpdateAvailable);
+        Assert.Equal(revisionOne, tenantUpdate.CurrentRevisionId);
+        Assert.Equal(revisionTwo, tenantUpdate.LatestRevisionId);
+        Assert.True(campUpdate.UpdateAvailable);
+        Assert.Equal(revisionOne, (await fixture.Libraries.ListTenantEntriesAsync(
+            fixture.TenantId, TestContext.Current.CancellationToken)).Single().SourceId);
+
+        RecipeLibraryMutationResult adopted = await fixture.Libraries.AdoptLatestTenantRevisionAsync(
+            tenantEntry.EntryId!.Value, fixture.UserId, fixture.Now.AddMinutes(2),
+            TestContext.Current.CancellationToken);
+        RecipeLibraryMutationResult noUpdate = await fixture.Libraries.AdoptLatestTenantRevisionAsync(
+            tenantEntry.EntryId.Value, fixture.UserId, fixture.Now.AddMinutes(3),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(RecipeLibraryMutationStatus.Updated, adopted.Status);
+        Assert.Equal(RecipeLibraryMutationStatus.NoUpdate, noUpdate.Status);
+        Assert.Equal(revisionTwo, (await fixture.Libraries.ListTenantEntriesAsync(
+            fixture.TenantId, TestContext.Current.CancellationToken)).Single().SourceId);
+        Assert.Equal(revisionOne, (await fixture.Libraries.ListCampEntriesAsync(
+            fixture.CampId, TestContext.Current.CancellationToken)).Single().SourceId);
+
+        Assert.Equal(RecipeLibraryMutationStatus.Updated,
+            (await fixture.Libraries.AdoptLatestCampRevisionAsync(
+                campEntry.EntryId!.Value, fixture.UserId, fixture.Now.AddMinutes(4),
+                TestContext.Current.CancellationToken)).Status);
     }
 
     private sealed class DatabaseFixture(
@@ -136,6 +183,7 @@ public sealed class RecipeLibraryStoreTests
         RecipePublisher publisher,
         RecipeLibraryStore libraries) : IAsyncDisposable
     {
+        private readonly Dictionary<Guid, Guid> revisionRecipes = [];
         public Guid UserId { get; } = Guid.NewGuid();
         public Guid TenantId { get; } = Guid.NewGuid();
         public Guid CampId { get; } = Guid.NewGuid();
@@ -186,7 +234,20 @@ public sealed class RecipeLibraryStoreTests
             RecipePublicationResult result = await publisher.PublishAsync(
                 draft.Id, 0, UserId, Now, acknowledgeWarnings: true,
                 cancellationToken: TestContext.Current.CancellationToken);
+            revisionRecipes[result.Revision!.Id] = draft.Id;
             return result.Revision!.Id;
+        }
+
+        public async Task<Guid> PublishNextAsync(Guid currentRevisionId)
+        {
+            Guid recipeId = revisionRecipes[currentRevisionId];
+            RecipeDraft draft = Assert.IsType<RecipeDraft>(await Drafts.FindAsync(
+                recipeId, TestContext.Current.CancellationToken));
+            RecipePublicationResult result = await publisher.PublishAsync(
+                recipeId, draft.DraftVersion, UserId, Now.AddMinutes(1), acknowledgeWarnings: true,
+                cancellationToken: TestContext.Current.CancellationToken);
+            revisionRecipes[result.Revision!.Id] = recipeId;
+            return result.Revision.Id;
         }
 
         public async Task<(Guid? CentralRecipe, Guid? CentralRevision, Guid? TenantRecipe, Guid? TenantRevision)>

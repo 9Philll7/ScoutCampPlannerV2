@@ -178,4 +178,130 @@ public sealed class RecipeLibraryStore(
             source.RecipeId, RecipeSnapshotBuilder.Deserialize(source.SnapshotJson),
             (RecipeScopeType)source.ScopeType);
     }
+
+    public async Task<IReadOnlyList<RecipeLibraryUpdate>> CheckTenantUpdatesAsync(
+        Guid tenantId,
+        CancellationToken cancellationToken = default)
+    {
+        Guid[] entryIds = await database.Set<TenantRecipeEntryRecord>().AsNoTracking()
+            .Where(value => value.TenantId == tenantId && value.CentralRecipeRevisionId.HasValue)
+            .Select(value => value.Id).ToArrayAsync(cancellationToken);
+        return await LoadTenantUpdatesAsync(entryIds, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<RecipeLibraryUpdate>> CheckCampUpdatesAsync(
+        Guid campId,
+        CancellationToken cancellationToken = default)
+    {
+        Guid[] entryIds = await database.Set<CampRecipeEntryRecord>().AsNoTracking()
+            .Where(value => value.CampId == campId && value.UpstreamRecipeRevisionId.HasValue)
+            .Select(value => value.Id).ToArrayAsync(cancellationToken);
+        return await LoadCampUpdatesAsync(entryIds, cancellationToken);
+    }
+
+    public async Task<RecipeLibraryMutationResult> AdoptLatestTenantRevisionAsync(
+        Guid entryId,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default)
+    {
+        TenantRecipeEntryRecord? entry = await database.Set<TenantRecipeEntryRecord>()
+            .SingleOrDefaultAsync(value => value.Id == entryId, cancellationToken);
+        if (entry is null) return new RecipeLibraryMutationResult(RecipeLibraryMutationStatus.NotFound);
+        if (!entry.CentralRecipeRevisionId.HasValue)
+            return new RecipeLibraryMutationResult(RecipeLibraryMutationStatus.AlreadyLocal, entry.Id);
+        RecipeLibraryUpdate update = (await LoadTenantUpdatesAsync([entryId], cancellationToken)).Single();
+        if (!update.UpdateAvailable)
+            return new RecipeLibraryMutationResult(RecipeLibraryMutationStatus.NoUpdate, entry.Id);
+        entry.CentralRecipeRevisionId = update.LatestRevisionId;
+        entry.UpdatedBy = actorUserId;
+        entry.UpdatedAtUtc = timestampUtc;
+        await database.SaveChangesAsync(cancellationToken);
+        return new RecipeLibraryMutationResult(RecipeLibraryMutationStatus.Updated, entry.Id);
+    }
+
+    public async Task<RecipeLibraryMutationResult> AdoptLatestCampRevisionAsync(
+        Guid entryId,
+        Guid actorUserId,
+        DateTimeOffset timestampUtc,
+        CancellationToken cancellationToken = default)
+    {
+        CampRecipeEntryRecord? entry = await database.Set<CampRecipeEntryRecord>()
+            .SingleOrDefaultAsync(value => value.Id == entryId, cancellationToken);
+        if (entry is null) return new RecipeLibraryMutationResult(RecipeLibraryMutationStatus.NotFound);
+        if (!entry.UpstreamRecipeRevisionId.HasValue)
+            return new RecipeLibraryMutationResult(RecipeLibraryMutationStatus.AlreadyLocal, entry.Id);
+        RecipeLibraryUpdate update = (await LoadCampUpdatesAsync([entryId], cancellationToken)).Single();
+        if (!update.UpdateAvailable)
+            return new RecipeLibraryMutationResult(RecipeLibraryMutationStatus.NoUpdate, entry.Id);
+        entry.UpstreamRecipeRevisionId = update.LatestRevisionId;
+        entry.UpdatedBy = actorUserId;
+        entry.UpdatedAtUtc = timestampUtc;
+        await database.SaveChangesAsync(cancellationToken);
+        return new RecipeLibraryMutationResult(RecipeLibraryMutationStatus.Updated, entry.Id);
+    }
+
+    private async Task<IReadOnlyList<RecipeLibraryUpdate>> LoadTenantUpdatesAsync(
+        Guid[] entryIds,
+        CancellationToken cancellationToken)
+    {
+        if (entryIds.Length == 0) return [];
+        var sources = await (from entry in database.Set<TenantRecipeEntryRecord>().AsNoTracking()
+            join current in database.Set<RecipeRevisionRecord>().AsNoTracking()
+                on entry.CentralRecipeRevisionId equals current.Id
+            join recipe in database.Set<RecipeRecord>().AsNoTracking() on current.RecipeId equals recipe.Id
+            where entryIds.Contains(entry.Id)
+            select new { entry.Id, Current = current.Id, current.RecipeId, current.RevisionNumber, recipe.Status })
+            .ToArrayAsync(cancellationToken);
+        return await ResolveLatestAsync(sources.Select(value =>
+            new UpdateSource(value.Id, value.Current, value.RecipeId, value.RevisionNumber, value.Status)).ToArray(),
+            cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<RecipeLibraryUpdate>> LoadCampUpdatesAsync(
+        Guid[] entryIds,
+        CancellationToken cancellationToken)
+    {
+        if (entryIds.Length == 0) return [];
+        var sources = await (from entry in database.Set<CampRecipeEntryRecord>().AsNoTracking()
+            join current in database.Set<RecipeRevisionRecord>().AsNoTracking()
+                on entry.UpstreamRecipeRevisionId equals current.Id
+            join recipe in database.Set<RecipeRecord>().AsNoTracking() on current.RecipeId equals recipe.Id
+            where entryIds.Contains(entry.Id)
+            select new { entry.Id, Current = current.Id, current.RecipeId, current.RevisionNumber, recipe.Status })
+            .ToArrayAsync(cancellationToken);
+        return await ResolveLatestAsync(sources.Select(value =>
+            new UpdateSource(value.Id, value.Current, value.RecipeId, value.RevisionNumber, value.Status)).ToArray(),
+            cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<RecipeLibraryUpdate>> ResolveLatestAsync(
+        UpdateSource[] sources,
+        CancellationToken cancellationToken)
+    {
+        Guid[] recipeIds = sources.Select(value => value.RecipeId).Distinct().ToArray();
+        var revisions = await database.Set<RecipeRevisionRecord>().AsNoTracking()
+            .Where(value => recipeIds.Contains(value.RecipeId))
+            .Select(value => new { value.Id, value.RecipeId, value.RevisionNumber })
+            .ToArrayAsync(cancellationToken);
+        Dictionary<Guid, (Guid Id, int Number)> latest = revisions.GroupBy(value => value.RecipeId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderByDescending(value => value.RevisionNumber)
+                    .Select(value => (value.Id, value.RevisionNumber)).First());
+        return sources.OrderBy(value => value.EntryId).Select(value =>
+        {
+            (Guid id, int number) = latest[value.RecipeId];
+            return new RecipeLibraryUpdate(
+                value.EntryId, value.CurrentRevisionId, id, number > value.CurrentRevisionNumber,
+                (RecipeStatus)value.SourceStatus);
+        }).ToArray();
+    }
+
+    private sealed record UpdateSource(
+        Guid EntryId,
+        Guid CurrentRevisionId,
+        Guid RecipeId,
+        int CurrentRevisionNumber,
+        int SourceStatus);
 }
