@@ -149,6 +149,27 @@ internal sealed class CampRecipeEntryRecord
     public DateTimeOffset UpdatedAtUtc { get; set; }
 }
 
+internal enum CentralRecipeChangeSubmissionStatus
+{
+    Pending,
+    Accepted,
+    Rejected,
+}
+
+internal sealed class CentralRecipeChangeSubmissionRecord
+{
+    public Guid Id { get; set; }
+    public Guid CentralRecipeId { get; set; }
+    public Guid SourceCentralRevisionId { get; set; }
+    public Guid SubmittedLocalRecipeRevisionId { get; set; }
+    public int Status { get; set; }
+    public Guid SubmittedBy { get; set; }
+    public DateTimeOffset SubmittedAtUtc { get; set; }
+    public Guid? ReviewedBy { get; set; }
+    public DateTimeOffset? ReviewedAtUtc { get; set; }
+    public Guid? ResultingCentralRevisionId { get; set; }
+}
+
 internal sealed class RecipeIngredientReplacementAllergenRecord
 {
     public Guid ReplacementId { get; set; }

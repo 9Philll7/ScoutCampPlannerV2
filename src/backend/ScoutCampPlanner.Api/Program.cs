@@ -92,10 +92,16 @@ builder.Services.AddScoped<RecipeDraftStore>();
 builder.Services.AddScoped<IRecipeDraftStore>(services => services.GetRequiredService<RecipeDraftStore>());
 builder.Services.AddScoped<EfRecipeReferences>();
 builder.Services.AddScoped<IRecipeRevisionSource>(services => services.GetRequiredService<EfRecipeReferences>());
-builder.Services.AddScoped<IRecipePermanentDeleteAuthorization, PlatformRecipeAuthorization>();
+builder.Services.AddScoped<PlatformRecipeAuthorization>();
+builder.Services.AddScoped<IRecipePermanentDeleteAuthorization>(services =>
+    services.GetRequiredService<PlatformRecipeAuthorization>());
+builder.Services.AddScoped<IRecipeChangeSubmissionAuthorization>(services =>
+    services.GetRequiredService<PlatformRecipeAuthorization>());
 builder.Services.AddScoped<RecipeLifecycleService>();
 builder.Services.AddScoped<IRecipeLibraryStore, RecipeLibraryStore>();
 builder.Services.AddScoped<RecipeLibraryService>();
+builder.Services.AddScoped<IRecipeChangeSubmissionStore, RecipeChangeSubmissionStore>();
+builder.Services.AddScoped<RecipeChangeSubmissionService>();
 builder.Services.AddSingleton<IPasswordPolicy, PasswordPolicy>();
 builder.Services.AddSingleton<IPasswordVerifier>(
     _ => new Argon2idPasswordVerifier(Argon2idOperatingMode.Server));

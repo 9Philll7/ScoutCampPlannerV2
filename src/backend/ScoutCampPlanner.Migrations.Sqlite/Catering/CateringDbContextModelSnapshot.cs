@@ -460,6 +460,56 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         });
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.CentralRecipeChangeSubmissionRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CentralRecipeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ResultingCentralRevisionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("ReviewedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ReviewedBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SourceCentralRevisionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("SubmittedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SubmittedBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SubmittedLocalRecipeRevisionId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CentralRecipeId");
+
+                    b.HasIndex("ResultingCentralRevisionId");
+
+                    b.HasIndex("SourceCentralRevisionId");
+
+                    b.HasIndex("SubmittedLocalRecipeRevisionId")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "SubmittedAtUtc");
+
+                    b.ToTable("CentralRecipeChangeSubmissions", (string)null);
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeDraftTagRecord", b =>
                 {
                     b.Property<Guid>("RecipeId")
@@ -1134,6 +1184,32 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .WithMany()
                         .HasForeignKey("UpstreamRecipeRevisionId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.CentralRecipeChangeSubmissionRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRecord", null)
+                        .WithMany()
+                        .HasForeignKey("CentralRecipeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRevisionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("ResultingCentralRevisionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRevisionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("SourceCentralRevisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRevisionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("SubmittedLocalRecipeRevisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeDraftTagRecord", b =>

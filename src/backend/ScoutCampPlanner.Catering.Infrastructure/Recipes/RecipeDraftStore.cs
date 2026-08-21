@@ -34,6 +34,17 @@ public sealed class RecipeDraftStore(CateringDbContext database) : IRecipeDraftS
     {
         ArgumentNullException.ThrowIfNull(draft);
         ArgumentNullException.ThrowIfNull(lineage);
+        Guid? inheritedCentralRecipeId = null;
+        Guid? inheritedCentralRevisionId = null;
+        if (lineage.SourceScope == RecipeScopeType.Tenant)
+        {
+            var upstream = await database.Set<RecipeRecord>().AsNoTracking()
+                .Where(value => value.Id == lineage.SourceRecipeId)
+                .Select(value => new { value.CentralSourceRecipeId, value.CentralSourceRevisionId })
+                .SingleOrDefaultAsync(cancellationToken);
+            inheritedCentralRecipeId = upstream?.CentralSourceRecipeId;
+            inheritedCentralRevisionId = upstream?.CentralSourceRevisionId;
+        }
         var record = new RecipeRecord
         {
             Id = draft.Id,
@@ -41,8 +52,12 @@ public sealed class RecipeDraftStore(CateringDbContext database) : IRecipeDraftS
             CreatedAtUtc = timestampUtc,
             DerivedFromRecipeId = lineage.SourceRecipeId,
             DerivedFromRevisionId = lineage.SourceRevisionId,
-            CentralSourceRecipeId = lineage.SourceScope == RecipeScopeType.Central ? lineage.SourceRecipeId : null,
-            CentralSourceRevisionId = lineage.SourceScope == RecipeScopeType.Central ? lineage.SourceRevisionId : null,
+            CentralSourceRecipeId = lineage.SourceScope == RecipeScopeType.Central
+                ? lineage.SourceRecipeId
+                : inheritedCentralRecipeId,
+            CentralSourceRevisionId = lineage.SourceScope == RecipeScopeType.Central
+                ? lineage.SourceRevisionId
+                : inheritedCentralRevisionId,
             TenantSourceRecipeId = lineage.SourceScope == RecipeScopeType.Tenant ? lineage.SourceRecipeId : null,
             TenantSourceRevisionId = lineage.SourceScope == RecipeScopeType.Tenant ? lineage.SourceRevisionId : null,
         };

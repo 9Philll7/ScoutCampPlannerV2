@@ -12,6 +12,27 @@ internal static class RecipePersistenceConfiguration
         ConfigureDraftGraph(modelBuilder);
         ConfigureRevisions(modelBuilder, isNpgsql);
         ConfigureLibraries(modelBuilder);
+        ConfigureCentralChangeSubmissions(modelBuilder);
+    }
+
+    private static void ConfigureCentralChangeSubmissions(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<CentralRecipeChangeSubmissionRecord>(entity =>
+        {
+            entity.ToTable("CentralRecipeChangeSubmissions");
+            entity.HasKey(value => value.Id);
+            entity.Property(value => value.Status).IsConcurrencyToken();
+            entity.HasIndex(value => value.SubmittedLocalRecipeRevisionId).IsUnique();
+            entity.HasIndex(value => new { value.Status, value.SubmittedAtUtc });
+            entity.HasOne<RecipeRecord>().WithMany().HasForeignKey(value => value.CentralRecipeId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<RecipeRevisionRecord>().WithMany().HasForeignKey(value => value.SourceCentralRevisionId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<RecipeRevisionRecord>().WithMany().HasForeignKey(value => value.SubmittedLocalRecipeRevisionId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<RecipeRevisionRecord>().WithMany().HasForeignKey(value => value.ResultingCentralRevisionId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
     }
 
     private static void ConfigureLibraries(ModelBuilder modelBuilder)
