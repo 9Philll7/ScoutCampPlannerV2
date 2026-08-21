@@ -28,6 +28,8 @@ No implemented types or persistence exist for:
 
 ADR-018 resolves their ownership: units and conflict catalogs are platform-wide, while base ingredients use central, tenant, and camp scopes. Ingredient variants and ingredient-specific conversions remain owned by their base ingredient. Recipe implementation must not replace these catalogs with free-text identifiers or recipe-owned catalogs.
 
+Read-only ingredient-catalog endpoints now expose the visible central, tenant, and camp ingredients with variants, ingredient-specific units/conversions, and named conflict references. Tenant queries combine central and tenant-owned ingredients; camp queries additionally include ingredients of the owning tenant and camp. The Camp-to-Tenant lookup is provided through an Application contract implemented in the API composition layer, so Catering Infrastructure does not access Camp persistence directly. Ingredient mutations and their UI remain separate slices.
+
 ### Reference age groups (resolved)
 
 The current Camp stages are configurable tenant templates with stable camp copies and cannot identify central recipe semantics. Published revisions therefore always use a platform-wide standard portion with factor `1.0`. Tenant/camp drafts may retain a complete authoring-stage snapshot, but publication normalizes reference servings before creating the immutable revision.

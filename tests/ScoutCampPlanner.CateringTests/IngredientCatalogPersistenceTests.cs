@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using ScoutCampPlanner.Catering.Domain;
 using ScoutCampPlanner.Catering.Infrastructure;
+using ScoutCampPlanner.Catering.Infrastructure.Ingredients;
 using Xunit;
 
 namespace ScoutCampPlanner.CateringTests;
@@ -66,6 +67,43 @@ public sealed class IngredientCatalogPersistenceTests
 
         await Assert.ThrowsAsync<DbUpdateException>(() =>
             fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Catalog_query_returns_complete_graph_and_respects_visibility_scope()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Guid tenantId = Guid.NewGuid();
+        Guid otherTenantId = Guid.NewGuid();
+        Guid campId = Guid.NewGuid();
+        Guid centralId = Guid.NewGuid();
+        var unit = new MeasurementUnit(Guid.NewGuid(), "Gramm", "g", MeasurementDimension.Mass, 1m);
+        var allergen = new Allergen(Guid.NewGuid(), "Gluten");
+        fixture.Database.AddRange(
+            unit, allergen,
+            new BaseIngredient(centralId, IngredientScopeType.Central, null, "Mehl", "Regional"),
+            new BaseIngredient(Guid.NewGuid(), IngredientScopeType.Tenant, tenantId, "Hausgewürz"),
+            new BaseIngredient(Guid.NewGuid(), IngredientScopeType.Tenant, otherTenantId, "Fremd"),
+            new BaseIngredient(Guid.NewGuid(), IngredientScopeType.Camp, campId, "Lagerzutat"));
+        fixture.Database.AddRange(
+            new IngredientVariant(Guid.NewGuid(), centralId, "Dinkelmehl"),
+            new IngredientUnitConversion(centralId, unit.Id, 1m),
+            new BaseIngredientAllergen(centralId, allergen.Id));
+        await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+        var catalog = new IngredientCatalogStore(fixture.Database);
+
+        var central = await catalog.ListCentralAsync(TestContext.Current.CancellationToken);
+        var tenant = await catalog.ListTenantAsync(tenantId, TestContext.Current.CancellationToken);
+        var camp = await catalog.ListCampAsync(tenantId, campId, TestContext.Current.CancellationToken);
+
+        var flour = Assert.Single(central);
+        Assert.Equal("Dinkelmehl", Assert.Single(flour.Variants).Name);
+        Assert.Equal("g", Assert.Single(flour.Units).Symbol);
+        Assert.Equal("Gluten", Assert.Single(flour.Conflicts).Name);
+        Assert.Equal(2, tenant.Count);
+        Assert.Equal(3, camp.Count);
+        Assert.DoesNotContain(tenant, value => value.Name == "Fremd");
+        Assert.Contains(camp, value => value.Name == "Lagerzutat");
     }
 
     private sealed class DatabaseFixture(SqliteConnection connection, CateringDbContext database) : IAsyncDisposable

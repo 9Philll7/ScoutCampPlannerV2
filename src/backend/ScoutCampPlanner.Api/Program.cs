@@ -12,6 +12,8 @@ using ScoutCampPlanner.Api.Catering;
 using ScoutCampPlanner.Camp.Infrastructure;
 using ScoutCampPlanner.Catering.Infrastructure;
 using ScoutCampPlanner.Catering.Application.Recipes;
+using ScoutCampPlanner.Catering.Application.Ingredients;
+using ScoutCampPlanner.Catering.Infrastructure.Ingredients;
 using ScoutCampPlanner.Catering.Infrastructure.Recipes;
 using ScoutCampPlanner.Migrations.PostgreSql;
 using ScoutCampPlanner.Migrations.Sqlite;
@@ -115,6 +117,9 @@ builder.Services.AddScoped<ICampRecipeNoteStore, CampRecipeNoteStore>();
 builder.Services.AddScoped<CampRecipeNoteService>();
 builder.Services.AddScoped<IRecipeCatalogStore, RecipeCatalogStore>();
 builder.Services.AddScoped<RecipeCatalogService>();
+builder.Services.AddScoped<IIngredientCatalogStore, IngredientCatalogStore>();
+builder.Services.AddScoped<ICampTenantResolver, CampTenantResolver>();
+builder.Services.AddScoped<IngredientCatalogService>();
 builder.Services.AddSingleton<IPasswordPolicy, PasswordPolicy>();
 builder.Services.AddSingleton<IPasswordVerifier>(
     _ => new Argon2idPasswordVerifier(Argon2idOperatingMode.Server));
@@ -592,6 +597,29 @@ app.MapGet("/api/camps/{campId:guid}/recipes", async (
     CancellationToken cancellationToken) =>
 {
     RecipeCatalogResult result = await recipes.ListCampAsync(
+        campId, Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken);
+    return result.IsAuthorized ? Results.Ok(result.Entries) : Results.Forbid();
+}).RequireAuthorization();
+app.MapGet("/api/ingredients/central", async (
+    ClaimsPrincipal principal, IngredientCatalogService ingredients, CancellationToken cancellationToken) =>
+{
+    IngredientCatalogResult result = await ingredients.ListCentralAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken);
+    return result.IsAuthorized ? Results.Ok(result.Entries) : Results.Forbid();
+}).RequireAuthorization();
+app.MapGet("/api/tenants/{tenantId:guid}/ingredients", async (
+    Guid tenantId, ClaimsPrincipal principal, IngredientCatalogService ingredients,
+    CancellationToken cancellationToken) =>
+{
+    IngredientCatalogResult result = await ingredients.ListTenantAsync(
+        tenantId, Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken);
+    return result.IsAuthorized ? Results.Ok(result.Entries) : Results.Forbid();
+}).RequireAuthorization();
+app.MapGet("/api/camps/{campId:guid}/ingredients", async (
+    Guid campId, ClaimsPrincipal principal, IngredientCatalogService ingredients,
+    CancellationToken cancellationToken) =>
+{
+    IngredientCatalogResult result = await ingredients.ListCampAsync(
         campId, Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken);
     return result.IsAuthorized ? Results.Ok(result.Entries) : Results.Forbid();
 }).RequireAuthorization();
