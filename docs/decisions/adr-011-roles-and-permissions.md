@@ -179,10 +179,14 @@ Prepared offline access stores the effective, stable permission identifiers plus
 - Role or permission changes in the cloud take effect locally after the next successful security-state refresh.
 - Local role changes are not returned to the cloud.
 
+### Recipe permissions
+
+[ADR-019](adr-019-recipe-permissions.md) extends the catalogue with tenant- and camp-scoped recipe permissions and raises the role-definition version to 3. It does not change the role-assignment model or grant platform permissions to tenant or camp roles.
+
 ## Consequences
 
 - The first implementation needs the documented central permission catalogue and role-to-permission mapping in Platform.
 - Tenant and camp assignment use cases must preserve the last-owner invariant.
 - Authorization tests must cover every role, permission, scope, and denial across at least two tenants and camps.
 - Offline tests must verify snapshot scope, versioning, refresh, and denial of permissions not present in the snapshot.
-- Module-specific and health-data permissions remain unavailable until their associated domain and security decisions are made.
+- Further module-specific and health-data permissions remain unavailable until their associated domain and security decisions are made.

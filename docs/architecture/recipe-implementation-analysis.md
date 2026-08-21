@@ -34,7 +34,7 @@ The current Camp stages are configurable tenant templates with stable camp copie
 
 ### Platform-wide authorization
 
-Authorization currently supports only tenant and camp scopes. The central recipe catalog requires platform-wide permissions for reading published catalog data, reviewing central submissions and permanent cleanup. Recipe code must define permissions independently of role names, but the owning platform scope and assignment mechanism still need an architecture decision.
+Authorization supports platform, tenant and camp scopes. ADR-017 defines platform-wide permissions for reading the central catalog, reviewing central submissions and permanent cleanup. ADR-019 defines the tenant- and camp-scoped recipe permissions and their initial role mappings. Recipe code checks permissions independently of role names.
 
 ### Application-layer boundary (resolved)
 

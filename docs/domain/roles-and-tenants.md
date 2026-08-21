@@ -66,6 +66,19 @@ Initial camp permissions:
 - `camp.package.import`
 - `camp.audit.view`
 
+Recipe permissions are defined by [ADR-019](../decisions/adr-019-recipe-permissions.md). They are evaluated in the tenant or camp context and use the following stable identifiers:
+
+- `recipes.read`
+- `recipes.edit`
+- `recipes.publish`
+- `recipes.archive`
+- `recipes.reset-to-draft`
+- `recipes.library.manage`
+- `recipes.notes.manage` (camp scope only)
+- `recipes.central.changes.submit`
+
+`TenantOwner` and `TenantAdmin` receive all tenant-scoped recipe permissions except the camp-only notes permission; `TenantMember` receives read access. `CampAdmin` receives all camp-scoped recipe permissions, `CampEditor` receives read, edit and notes management, and `CampViewer` receives read access.
+
 ## Authentication modes
 
 Authentication modes are defined by [ADR-009](../decisions/adr-009-authentication-modes.md):

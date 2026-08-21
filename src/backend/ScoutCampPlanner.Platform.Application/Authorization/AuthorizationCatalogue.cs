@@ -11,6 +11,18 @@ public enum AuthorizationScope
 
 public static class Permissions
 {
+    public static class Recipes
+    {
+        public const string Read = "recipes.read";
+        public const string Edit = "recipes.edit";
+        public const string Publish = "recipes.publish";
+        public const string Archive = "recipes.archive";
+        public const string ResetToDraft = "recipes.reset-to-draft";
+        public const string ManageLibrary = "recipes.library.manage";
+        public const string ManageCampNotes = "recipes.notes.manage";
+        public const string SubmitCentralChange = "recipes.central.changes.submit";
+    }
+
     public static class Platform
     {
         public const string ReadCentralRecipes = "recipes.central.read";
@@ -64,7 +76,7 @@ public sealed record RoleDefinition(
 
 public static class AuthorizationCatalogue
 {
-    public const int DefinitionVersion = 2;
+    public const int DefinitionVersion = 3;
 
     private static readonly FrozenSet<string> PlatformPermissions = new[]
     {
@@ -85,6 +97,13 @@ public static class AuthorizationCatalogue
         Permissions.Tenant.ViewAudit,
         Permissions.Tenant.ExportAudit,
         Permissions.Tenant.ManageAuditLegalHold,
+        Permissions.Recipes.Read,
+        Permissions.Recipes.Edit,
+        Permissions.Recipes.Publish,
+        Permissions.Recipes.Archive,
+        Permissions.Recipes.ResetToDraft,
+        Permissions.Recipes.ManageLibrary,
+        Permissions.Recipes.SubmitCentralChange,
     }.ToFrozenSet(StringComparer.Ordinal);
 
     private static readonly FrozenSet<string> CampPermissions = new[]
@@ -97,6 +116,14 @@ public static class AuthorizationCatalogue
         Permissions.Camp.ExportPackage,
         Permissions.Camp.ImportPackage,
         Permissions.Camp.ViewAudit,
+        Permissions.Recipes.Read,
+        Permissions.Recipes.Edit,
+        Permissions.Recipes.Publish,
+        Permissions.Recipes.Archive,
+        Permissions.Recipes.ResetToDraft,
+        Permissions.Recipes.ManageLibrary,
+        Permissions.Recipes.ManageCampNotes,
+        Permissions.Recipes.SubmitCentralChange,
     }.ToFrozenSet(StringComparer.Ordinal);
 
     private static readonly FrozenDictionary<string, RoleDefinition> Definitions =
@@ -110,14 +137,30 @@ public static class AuthorizationCatalogue
                 Permissions.Tenant.ViewMembers,
                 Permissions.Tenant.ManageMembers,
                 Permissions.Tenant.CreateCamps,
-                Permissions.Tenant.AssignCampMembers),
-            Define(Roles.TenantMember, AuthorizationScope.Tenant, Permissions.Tenant.View),
+                Permissions.Tenant.AssignCampMembers,
+                Permissions.Recipes.Read,
+                Permissions.Recipes.Edit,
+                Permissions.Recipes.Publish,
+                Permissions.Recipes.Archive,
+                Permissions.Recipes.ResetToDraft,
+                Permissions.Recipes.ManageLibrary,
+                Permissions.Recipes.SubmitCentralChange),
+            Define(Roles.TenantMember, AuthorizationScope.Tenant,
+                Permissions.Tenant.View,
+                Permissions.Recipes.Read),
             Define(Roles.TenantAuditor, AuthorizationScope.Tenant,
                 Permissions.Tenant.ViewAudit,
                 Permissions.Tenant.ExportAudit),
             Define(Roles.CampAdmin, AuthorizationScope.Camp, CampPermissions),
-            Define(Roles.CampEditor, AuthorizationScope.Camp, Permissions.Camp.View, Permissions.Camp.Edit),
-            Define(Roles.CampViewer, AuthorizationScope.Camp, Permissions.Camp.View),
+            Define(Roles.CampEditor, AuthorizationScope.Camp,
+                Permissions.Camp.View,
+                Permissions.Camp.Edit,
+                Permissions.Recipes.Read,
+                Permissions.Recipes.Edit,
+                Permissions.Recipes.ManageCampNotes),
+            Define(Roles.CampViewer, AuthorizationScope.Camp,
+                Permissions.Camp.View,
+                Permissions.Recipes.Read),
         }.ToFrozenDictionary(definition => definition.Identifier, StringComparer.Ordinal);
 
     public static IReadOnlySet<string> AllTenantPermissions => TenantPermissions;

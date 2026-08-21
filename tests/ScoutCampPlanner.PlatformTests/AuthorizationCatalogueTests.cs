@@ -8,14 +8,17 @@ public sealed class AuthorizationCatalogueTests
     [Fact]
     public void CatalogueContainsTheDocumentedStableIdentifiers()
     {
-        Assert.Equal(2, AuthorizationCatalogue.DefinitionVersion);
+        Assert.Equal(3, AuthorizationCatalogue.DefinitionVersion);
         Assert.Equal(3, AuthorizationCatalogue.AllPlatformPermissions.Count);
-        Assert.Equal(10, AuthorizationCatalogue.AllTenantPermissions.Count);
-        Assert.Equal(8, AuthorizationCatalogue.AllCampPermissions.Count);
+        Assert.Equal(17, AuthorizationCatalogue.AllTenantPermissions.Count);
+        Assert.Equal(16, AuthorizationCatalogue.AllCampPermissions.Count);
         Assert.Equal(8, AuthorizationCatalogue.AllRoles.Count);
         Assert.Contains(Permissions.Platform.ReviewCentralRecipeChanges, AuthorizationCatalogue.AllPlatformPermissions);
         Assert.Contains(Permissions.Tenant.ManageAuditLegalHold, AuthorizationCatalogue.AllTenantPermissions);
         Assert.Contains(Permissions.Camp.PrepareOfflineAccess, AuthorizationCatalogue.AllCampPermissions);
+        Assert.Contains(Permissions.Recipes.SubmitCentralChange, AuthorizationCatalogue.AllTenantPermissions);
+        Assert.Contains(Permissions.Recipes.ManageCampNotes, AuthorizationCatalogue.AllCampPermissions);
+        Assert.DoesNotContain(Permissions.Recipes.ManageCampNotes, AuthorizationCatalogue.AllTenantPermissions);
     }
 
     [Fact]
@@ -29,14 +32,30 @@ public sealed class AuthorizationCatalogueTests
             Permissions.Tenant.ViewMembers,
             Permissions.Tenant.ManageMembers,
             Permissions.Tenant.CreateCamps,
-            Permissions.Tenant.AssignCampMembers);
-        AssertRole(Roles.TenantMember, AuthorizationScope.Tenant, Permissions.Tenant.View);
+            Permissions.Tenant.AssignCampMembers,
+            Permissions.Recipes.Read,
+            Permissions.Recipes.Edit,
+            Permissions.Recipes.Publish,
+            Permissions.Recipes.Archive,
+            Permissions.Recipes.ResetToDraft,
+            Permissions.Recipes.ManageLibrary,
+            Permissions.Recipes.SubmitCentralChange);
+        AssertRole(Roles.TenantMember, AuthorizationScope.Tenant,
+            Permissions.Tenant.View,
+            Permissions.Recipes.Read);
         AssertRole(Roles.TenantAuditor, AuthorizationScope.Tenant,
             Permissions.Tenant.ViewAudit,
             Permissions.Tenant.ExportAudit);
         AssertRole(Roles.CampAdmin, AuthorizationScope.Camp, AuthorizationCatalogue.AllCampPermissions);
-        AssertRole(Roles.CampEditor, AuthorizationScope.Camp, Permissions.Camp.View, Permissions.Camp.Edit);
-        AssertRole(Roles.CampViewer, AuthorizationScope.Camp, Permissions.Camp.View);
+        AssertRole(Roles.CampEditor, AuthorizationScope.Camp,
+            Permissions.Camp.View,
+            Permissions.Camp.Edit,
+            Permissions.Recipes.Read,
+            Permissions.Recipes.Edit,
+            Permissions.Recipes.ManageCampNotes);
+        AssertRole(Roles.CampViewer, AuthorizationScope.Camp,
+            Permissions.Camp.View,
+            Permissions.Recipes.Read);
     }
 
     [Fact]
@@ -47,7 +66,13 @@ public sealed class AuthorizationCatalogueTests
             [Roles.TenantMember, Roles.TenantAuditor, Roles.CampAdmin, "UnknownRole"]);
 
         Assert.Equal(
-            new[] { Permissions.Tenant.ExportAudit, Permissions.Tenant.ViewAudit, Permissions.Tenant.View },
+            new[]
+            {
+                Permissions.Recipes.Read,
+                Permissions.Tenant.ExportAudit,
+                Permissions.Tenant.ViewAudit,
+                Permissions.Tenant.View,
+            },
             tenantPermissions.Order(StringComparer.Ordinal));
         Assert.DoesNotContain(Permissions.Camp.View, tenantPermissions);
     }
