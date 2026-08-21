@@ -102,11 +102,15 @@ builder.Services.AddScoped<IRecipePermanentDeleteAuthorization>(services =>
     services.GetRequiredService<PlatformRecipeAuthorization>());
 builder.Services.AddScoped<IRecipeChangeSubmissionAuthorization>(services =>
     services.GetRequiredService<PlatformRecipeAuthorization>());
+builder.Services.AddScoped<ICampRecipeNoteAuthorization>(services =>
+    services.GetRequiredService<PlatformRecipeAuthorization>());
 builder.Services.AddScoped<RecipeLifecycleService>();
 builder.Services.AddScoped<IRecipeLibraryStore, RecipeLibraryStore>();
 builder.Services.AddScoped<RecipeLibraryService>();
 builder.Services.AddScoped<IRecipeChangeSubmissionStore, RecipeChangeSubmissionStore>();
 builder.Services.AddScoped<RecipeChangeSubmissionService>();
+builder.Services.AddScoped<ICampRecipeNoteStore, CampRecipeNoteStore>();
+builder.Services.AddScoped<CampRecipeNoteService>();
 builder.Services.AddSingleton<IPasswordPolicy, PasswordPolicy>();
 builder.Services.AddSingleton<IPasswordVerifier>(
     _ => new Argon2idPasswordVerifier(Argon2idOperatingMode.Server));

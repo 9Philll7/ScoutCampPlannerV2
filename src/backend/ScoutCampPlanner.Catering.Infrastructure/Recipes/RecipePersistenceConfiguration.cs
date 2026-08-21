@@ -12,7 +12,21 @@ internal static class RecipePersistenceConfiguration
         ConfigureDraftGraph(modelBuilder);
         ConfigureRevisions(modelBuilder, isNpgsql);
         ConfigureLibraries(modelBuilder);
+        ConfigureCampRecipeNotes(modelBuilder);
         ConfigureCentralChangeSubmissions(modelBuilder);
+    }
+
+    private static void ConfigureCampRecipeNotes(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<CampRecipeNoteRecord>(entity =>
+        {
+            entity.ToTable("CampRecipeNotes");
+            entity.HasKey(value => value.Id);
+            entity.Property(value => value.Text).IsRequired();
+            entity.HasIndex(value => new { value.CampRecipeEntryId, value.CreatedAtUtc });
+            entity.HasOne<CampRecipeEntryRecord>().WithMany().HasForeignKey(value => value.CampRecipeEntryId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
     }
 
     private static void ConfigureCentralChangeSubmissions(ModelBuilder modelBuilder)

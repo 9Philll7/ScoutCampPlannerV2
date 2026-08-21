@@ -466,6 +466,44 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                         });
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.CampRecipeNoteRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CampRecipeEntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampRecipeEntryId", "CreatedAtUtc");
+
+                    b.ToTable("CampRecipeNotes", "catering");
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.CentralRecipeChangeSubmissionRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1190,6 +1228,15 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                         .WithMany()
                         .HasForeignKey("UpstreamRecipeRevisionId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.CampRecipeNoteRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.CampRecipeEntryRecord", null)
+                        .WithMany()
+                        .HasForeignKey("CampRecipeEntryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.CentralRecipeChangeSubmissionRecord", b =>

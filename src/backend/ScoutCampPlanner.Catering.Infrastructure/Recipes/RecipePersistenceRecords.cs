@@ -149,6 +149,19 @@ internal sealed class CampRecipeEntryRecord
     public DateTimeOffset UpdatedAtUtc { get; set; }
 }
 
+internal sealed class CampRecipeNoteRecord
+{
+    public Guid Id { get; set; }
+    public Guid CampRecipeEntryId { get; set; }
+    public string Text { get; set; } = string.Empty;
+    public Guid CreatedBy { get; set; }
+    public DateTimeOffset CreatedAtUtc { get; set; }
+    public Guid UpdatedBy { get; set; }
+    public DateTimeOffset UpdatedAtUtc { get; set; }
+    public Guid? DeletedBy { get; set; }
+    public DateTimeOffset? DeletedAtUtc { get; set; }
+}
+
 internal enum CentralRecipeChangeSubmissionStatus
 {
     Pending,

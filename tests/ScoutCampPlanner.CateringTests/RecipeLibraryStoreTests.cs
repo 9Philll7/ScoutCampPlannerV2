@@ -253,13 +253,55 @@ public sealed class RecipeLibraryStoreTests
                 cancellationToken: TestContext.Current.CancellationToken)).Status);
     }
 
+    [Fact]
+    public async Task Camp_notes_survive_revision_adoption_and_are_soft_deleted()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Guid firstRevision = await fixture.PublishAsync(RecipeScopeType.Central, null, "Zentral");
+        RecipeLibraryMutationResult entry = await fixture.Libraries.AddUpstreamRevisionToCampAsync(
+            Guid.NewGuid(), fixture.CampId, firstRevision, fixture.UserId, fixture.Now,
+            TestContext.Current.CancellationToken);
+        CampRecipeNoteMutationResult first = await fixture.Notes.CreateAsync(
+            Guid.NewGuid(), entry.EntryId!.Value, "Erste Notiz", fixture.UserId, fixture.Now,
+            TestContext.Current.CancellationToken);
+        CampRecipeNoteMutationResult second = await fixture.Notes.CreateAsync(
+            Guid.NewGuid(), entry.EntryId.Value, "Zweite Notiz", fixture.UserId,
+            fixture.Now.AddMinutes(1), TestContext.Current.CancellationToken);
+
+        Guid nextRevision = await fixture.PublishNextAsync(firstRevision);
+        await fixture.Libraries.AdoptLatestCampRevisionAsync(
+            entry.EntryId.Value, fixture.UserId, fixture.Now.AddMinutes(2),
+            TestContext.Current.CancellationToken);
+        Assert.Equal(CampRecipeNoteMutationStatus.NotFound,
+            (await fixture.Notes.UpdateAsync(
+                Guid.NewGuid(), first.Note!.Id, "Fremder Eintrag", fixture.UserId,
+                fixture.Now.AddMinutes(3), TestContext.Current.CancellationToken)).Status);
+        CampRecipeNoteMutationResult edited = await fixture.Notes.UpdateAsync(
+            entry.EntryId.Value, first.Note.Id, "Überarbeitet", fixture.UserId,
+            fixture.Now.AddMinutes(3), TestContext.Current.CancellationToken);
+        CampRecipeNoteMutationResult deleted = await fixture.Notes.DeleteAsync(
+            entry.EntryId.Value, second.Note!.Id, fixture.UserId, fixture.Now.AddMinutes(4),
+            TestContext.Current.CancellationToken);
+
+        CampRecipeNote remaining = Assert.Single(await fixture.Notes.ListAsync(
+            entry.EntryId.Value, TestContext.Current.CancellationToken));
+        Assert.Equal(nextRevision, (await fixture.Libraries.ListCampEntriesAsync(
+            fixture.CampId, TestContext.Current.CancellationToken)).Single().SourceId);
+        Assert.Equal(CampRecipeNoteMutationStatus.Updated, edited.Status);
+        Assert.Equal(CampRecipeNoteMutationStatus.Deleted, deleted.Status);
+        Assert.Equal("Überarbeitet", remaining.Text);
+        Assert.Equal(fixture.Now, remaining.CreatedAtUtc);
+        Assert.Equal(fixture.Now.AddMinutes(3), remaining.UpdatedAtUtc);
+    }
+
     private sealed class DatabaseFixture(
         SqliteConnection connection,
         CateringDbContext database,
         RecipeDraftStore drafts,
         RecipePublisher publisher,
         RecipeLibraryStore libraries,
-        RecipeChangeSubmissionStore submissions) : IAsyncDisposable
+        RecipeChangeSubmissionStore submissions,
+        CampRecipeNoteStore notes) : IAsyncDisposable
     {
         private readonly Dictionary<Guid, Guid> revisionRecipes = [];
         public Guid UserId { get; } = Guid.NewGuid();
@@ -269,6 +311,7 @@ public sealed class RecipeLibraryStoreTests
         public RecipeLibraryStore Libraries { get; } = libraries;
         public RecipeDraftStore Drafts { get; } = drafts;
         public RecipeChangeSubmissionStore Submissions { get; } = submissions;
+        public CampRecipeNoteStore Notes { get; } = notes;
 
         public static async Task<DatabaseFixture> CreateAsync()
         {
@@ -287,7 +330,8 @@ public sealed class RecipeLibraryStoreTests
                 connection, database, drafts,
                 publisher,
                 new RecipeLibraryStore(database, drafts),
-                new RecipeChangeSubmissionStore(database, drafts, publisher));
+                new RecipeChangeSubmissionStore(database, drafts, publisher),
+                new CampRecipeNoteStore(database));
         }
 
         public async Task<Guid> PublishAsync(RecipeScopeType scope, Guid? scopeId, string name)

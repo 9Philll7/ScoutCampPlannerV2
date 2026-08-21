@@ -8,7 +8,8 @@ namespace ScoutCampPlanner.Api.Catering;
 
 public sealed class PlatformRecipeAuthorization(PlatformDbContext database) :
     IRecipePermanentDeleteAuthorization,
-    IRecipeChangeSubmissionAuthorization
+    IRecipeChangeSubmissionAuthorization,
+    ICampRecipeNoteAuthorization
 {
     public async Task<bool> CanPermanentlyDeleteCentralRecipesAsync(
         Guid actorUserId,
@@ -64,5 +65,28 @@ public sealed class PlatformRecipeAuthorization(PlatformDbContext database) :
             .ToArrayAsync(cancellationToken);
         return AuthorizationCatalogue.ResolvePermissions(AuthorizationScope.Platform, roles)
             .Contains(Permissions.Platform.ReviewCentralRecipeChanges);
+    }
+
+    public Task<bool> CanReadAsync(
+        Guid actorUserId, Guid campId, CancellationToken cancellationToken = default) =>
+        HasCampPermissionAsync(actorUserId, campId, Permissions.Recipes.Read, cancellationToken);
+
+    public Task<bool> CanManageAsync(
+        Guid actorUserId, Guid campId, CancellationToken cancellationToken = default) =>
+        HasCampPermissionAsync(actorUserId, campId, Permissions.Recipes.ManageCampNotes, cancellationToken);
+
+    private async Task<bool> HasCampPermissionAsync(
+        Guid actorUserId, Guid campId, string permission, CancellationToken cancellationToken)
+    {
+        string[] roles = await (from campMembership in database.CampMemberships.AsNoTracking()
+            join tenantMembership in database.TenantMemberships.AsNoTracking()
+                on campMembership.TenantMembershipId equals tenantMembership.Id
+            join assignment in database.CampRoleAssignments.AsNoTracking()
+                on campMembership.Id equals assignment.MembershipId
+            where tenantMembership.UserId == actorUserId && campMembership.CampId == campId &&
+                  tenantMembership.State == TenantMembershipState.Active &&
+                  campMembership.State == CampMembershipState.Active
+            select assignment.RoleIdentifier).ToArrayAsync(cancellationToken);
+        return AuthorizationCatalogue.ResolvePermissions(AuthorizationScope.Camp, roles).Contains(permission);
     }
 }
