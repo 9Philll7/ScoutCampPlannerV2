@@ -14,6 +14,11 @@ public enum IngredientPropertyReviewState
 
 public sealed class IngredientRevision
 {
+    private readonly Dictionary<Guid, IngredientPropertyValue> allergens = [];
+    private readonly Dictionary<Guid, IngredientPropertyValue> intolerances = [];
+    private readonly Dictionary<Guid, IngredientPropertyValue> origins = [];
+    private readonly List<IngredientVariantRevision> variants = [];
+
     private IngredientRevision() { }
 
     internal IngredientRevision(
@@ -61,6 +66,10 @@ public sealed class IngredientRevision
     public Guid UpdatedBy { get; private set; }
     public DateTimeOffset? PublishedAt { get; private set; }
     public Guid? PublishedBy { get; private set; }
+    public IReadOnlyCollection<IngredientPropertyValue> Allergens => allergens.Values.ToArray();
+    public IReadOnlyCollection<IngredientPropertyValue> Intolerances => intolerances.Values.ToArray();
+    public IReadOnlyCollection<IngredientPropertyValue> Origins => origins.Values.ToArray();
+    public IReadOnlyCollection<IngredientVariantRevision> Variants => variants.AsReadOnly();
 
     public void SetContent(
         string name,
@@ -92,6 +101,92 @@ public sealed class IngredientRevision
         MarkChanged(changedBy, changedAt);
     }
 
+    public void SetAllergen(IngredientPropertyValue value, Guid changedBy, DateTimeOffset changedAt)
+    {
+        EnsureDraft();
+        allergens[value.PropertyId] = value;
+        MarkChanged(changedBy, changedAt);
+    }
+
+    public void SetIntolerance(IngredientPropertyValue value, Guid changedBy, DateTimeOffset changedAt)
+    {
+        EnsureDraft();
+        intolerances[value.PropertyId] = value;
+        MarkChanged(changedBy, changedAt);
+    }
+
+    public void SetOrigin(IngredientPropertyValue value, Guid changedBy, DateTimeOffset changedAt)
+    {
+        EnsureDraft();
+        origins[value.PropertyId] = value;
+        MarkChanged(changedBy, changedAt);
+    }
+
+    public IngredientVariantRevision AddVariant(
+        Guid id,
+        string variantKey,
+        string name,
+        Guid changedBy,
+        DateTimeOffset changedAt)
+    {
+        EnsureDraft();
+        string normalizedKey = IngredientVariantRevision.NormalizeKey(variantKey);
+        if (variants.Any(value => value.VariantKey == normalizedKey))
+            throw new InvalidOperationException("Variant keys must be unique within an ingredient revision.");
+        var variant = new IngredientVariantRevision(id, normalizedKey, name);
+        variants.Add(variant);
+        MarkChanged(changedBy, changedAt);
+        return variant;
+    }
+
+    public void SetVariantAllergenOverride(
+        string variantKey,
+        IngredientPropertyValue value,
+        Guid changedBy,
+        DateTimeOffset changedAt)
+    {
+        EnsureDraft();
+        GetVariant(variantKey).SetAllergenOverride(value);
+        MarkChanged(changedBy, changedAt);
+    }
+
+    public void SetVariantIntoleranceOverride(
+        string variantKey,
+        IngredientPropertyValue value,
+        Guid changedBy,
+        DateTimeOffset changedAt)
+    {
+        EnsureDraft();
+        GetVariant(variantKey).SetIntoleranceOverride(value);
+        MarkChanged(changedBy, changedAt);
+    }
+
+    public void SetVariantOriginOverride(
+        string variantKey,
+        IngredientPropertyValue value,
+        Guid changedBy,
+        DateTimeOffset changedAt)
+    {
+        EnsureDraft();
+        GetVariant(variantKey).SetOriginOverride(value);
+        MarkChanged(changedBy, changedAt);
+    }
+
+    internal void CopyRevisionDetailsFrom(IngredientRevision source)
+    {
+        foreach (IngredientPropertyValue value in source.allergens.Values)
+            allergens.Add(value.PropertyId, value);
+        foreach (IngredientPropertyValue value in source.intolerances.Values)
+            intolerances.Add(value.PropertyId, value);
+        foreach (IngredientPropertyValue value in source.origins.Values)
+            origins.Add(value.PropertyId, value);
+        foreach (IngredientVariantRevision variant in source.variants)
+            variants.Add(variant.Copy(Guid.NewGuid()));
+        AllergenReviewState = source.AllergenReviewState;
+        IntoleranceReviewState = source.IntoleranceReviewState;
+        OriginReviewState = source.OriginReviewState;
+    }
+
     internal void Publish(Guid publishedBy, DateTimeOffset publishedAt)
     {
         EnsureDraft();
@@ -107,6 +202,13 @@ public sealed class IngredientRevision
     {
         if (State != IngredientRevisionState.Draft)
             throw new InvalidOperationException("Published ingredient revisions are immutable.");
+    }
+
+    private IngredientVariantRevision GetVariant(string variantKey)
+    {
+        string normalized = IngredientVariantRevision.NormalizeKey(variantKey);
+        return variants.SingleOrDefault(value => value.VariantKey == normalized)
+            ?? throw new ArgumentException("The variant does not belong to this revision.", nameof(variantKey));
     }
 
     private void MarkChanged(Guid changedBy, DateTimeOffset changedAt)

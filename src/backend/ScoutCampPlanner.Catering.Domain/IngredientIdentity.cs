@@ -68,7 +68,7 @@ public sealed class IngredientIdentity
 
         var fork = new IngredientIdentity(
             id, scopeType, scopeId, centralIngredient.Id, sourceRevision.Id);
-        fork.CreateDraft(
+        IngredientRevision draft = fork.CreateDraft(
             draftId,
             sourceRevision.Name,
             sourceRevision.CategoryId,
@@ -76,6 +76,7 @@ public sealed class IngredientIdentity
             createdBy,
             createdAt,
             sourceRevision.Id);
+        draft.CopyRevisionDetailsFrom(sourceRevision);
         return fork;
     }
 
@@ -115,7 +116,7 @@ public sealed class IngredientIdentity
         DateTimeOffset createdAt)
     {
         IngredientRevision published = GetCurrentPublished();
-        return CreateDraft(
+        IngredientRevision draft = CreateDraft(
             revisionId,
             published.Name,
             published.CategoryId,
@@ -123,6 +124,8 @@ public sealed class IngredientIdentity
             createdBy,
             createdAt,
             published.Id);
+        draft.CopyRevisionDetailsFrom(published);
+        return draft;
     }
 
     public void PublishDraft(Guid draftId, Guid publishedBy, DateTimeOffset publishedAt)
