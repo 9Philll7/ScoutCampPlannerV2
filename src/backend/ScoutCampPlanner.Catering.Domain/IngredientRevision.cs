@@ -52,6 +52,7 @@ public sealed class IngredientRevision
     public int RevisionNumber { get; private set; }
     public IngredientRevisionState State { get; private set; }
     public Guid? BasedOnRevisionId { get; private set; }
+    public Guid? MergedCentralRevisionId { get; private set; }
     public string Name { get; private set; } = string.Empty;
     public string NormalizedName { get; private set; } = string.Empty;
     public Guid CategoryId { get; private set; }
@@ -185,6 +186,35 @@ public sealed class IngredientRevision
         AllergenReviewState = source.AllergenReviewState;
         IntoleranceReviewState = source.IntoleranceReviewState;
         OriginReviewState = source.OriginReviewState;
+    }
+
+    internal void ReplaceRevisionDetailsForMerge(
+        IEnumerable<IngredientPropertyValue> mergedAllergens,
+        IEnumerable<IngredientPropertyValue> mergedIntolerances,
+        IEnumerable<IngredientPropertyValue> mergedOrigins,
+        IEnumerable<IngredientVariantRevision> mergedVariants,
+        IngredientPropertyReviewState allergenReviewState,
+        IngredientPropertyReviewState intoleranceReviewState,
+        IngredientPropertyReviewState originReviewState,
+        Guid mergedCentralRevisionId)
+    {
+        EnsureDraft();
+        allergens.Clear();
+        intolerances.Clear();
+        origins.Clear();
+        variants.Clear();
+        foreach (IngredientPropertyValue value in mergedAllergens)
+            allergens.Add(value.PropertyId, value);
+        foreach (IngredientPropertyValue value in mergedIntolerances)
+            intolerances.Add(value.PropertyId, value);
+        foreach (IngredientPropertyValue value in mergedOrigins)
+            origins.Add(value.PropertyId, value);
+        foreach (IngredientVariantRevision variant in mergedVariants)
+            variants.Add(variant.Copy(Guid.NewGuid()));
+        AllergenReviewState = allergenReviewState;
+        IntoleranceReviewState = intoleranceReviewState;
+        OriginReviewState = originReviewState;
+        MergedCentralRevisionId = RequireId(mergedCentralRevisionId, nameof(mergedCentralRevisionId));
     }
 
     internal void Publish(Guid publishedBy, DateTimeOffset publishedAt)

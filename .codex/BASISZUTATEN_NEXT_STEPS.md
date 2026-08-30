@@ -149,15 +149,20 @@ Alle drei Eigenschaftsgruppen müssen vor Publish als `Reviewed` markiert sein. 
 
 ### 3. Zentrale Updates und Drei-Wege-Merge
 
-Danach implementieren:
+Teilweise umgesetzt:
 
-- zuletzt berücksichtigte zentrale Revision je lokalem Stand
+- zuletzt berücksichtigte zentrale Revision je lokalem Stand über `MergedCentralRevisionId`
 - Erkennung einer neueren zentralen veröffentlichten Revision
-- fachlicher Diff für Name, Kategorie, Basiseinheit, Eigenschaften, Varianten und Umrechnungen
-- Merge nicht überlappender Änderungen
-- Konfliktresultat bei überlappenden Änderungen
-- Merge erzeugt immer einen neuen lokalen Draft
-- veröffentlichte lokale Revision wird niemals direkt verändert
+- Drei-Wege-Vergleich für Name, Kategorie, Basiseinheit, Reviewstatus, Eigenschaften und Varianten
+- Merge nicht überlappender Änderungen in einen neuen lokalen Draft
+- Konfliktpfade bei überlappenden Änderungen
+- veröffentlichte lokale Revision wird nicht verändert
+
+Noch offen:
+
+- Umrechnungen in Diff und Merge aufnehmen, sobald sie revisionsgebunden modelliert sind
+- Workflow für einen bereits vorhandenen lokalen Draft festlegen; aktuell wird nur von einer veröffentlichten lokalen Revision in einen neuen Draft gemerged
+- Varianten werden derzeit auf Ebene des gesamten `variant_key` verglichen; bei Bedarf später feinere Konfliktpfade für Name und einzelne Overrides ergänzen
 
 Keine vereinfachte Zwei-Wege-Überschreibung verwenden.
 
