@@ -17,6 +17,7 @@ public sealed class IngredientRevision
     private readonly Dictionary<Guid, IngredientPropertyValue> allergens = [];
     private readonly Dictionary<Guid, IngredientPropertyValue> intolerances = [];
     private readonly Dictionary<Guid, IngredientPropertyValue> origins = [];
+    private readonly Dictionary<Guid, IngredientRevisionUnitConversion> unitConversions = [];
     private readonly List<IngredientVariantRevision> variants = [];
 
     private IngredientRevision() { }
@@ -70,6 +71,7 @@ public sealed class IngredientRevision
     public IReadOnlyCollection<IngredientPropertyValue> Allergens => allergens.Values.ToArray();
     public IReadOnlyCollection<IngredientPropertyValue> Intolerances => intolerances.Values.ToArray();
     public IReadOnlyCollection<IngredientPropertyValue> Origins => origins.Values.ToArray();
+    public IReadOnlyCollection<IngredientRevisionUnitConversion> UnitConversions => unitConversions.Values.ToArray();
     public IReadOnlyCollection<IngredientVariantRevision> Variants => variants.AsReadOnly();
 
     public void SetContent(
@@ -123,6 +125,18 @@ public sealed class IngredientRevision
         MarkChanged(changedBy, changedAt);
     }
 
+    public void SetUnitConversion(
+        IngredientRevisionUnitConversion value,
+        Guid changedBy,
+        DateTimeOffset changedAt)
+    {
+        EnsureDraft();
+        if (value.SourceUnitId == BaseUnitId)
+            throw new ArgumentException("The base unit does not require an ingredient-specific conversion.", nameof(value));
+        unitConversions[value.SourceUnitId] = value;
+        MarkChanged(changedBy, changedAt);
+    }
+
     public IngredientVariantRevision AddVariant(
         Guid id,
         string variantKey,
@@ -173,6 +187,19 @@ public sealed class IngredientRevision
         MarkChanged(changedBy, changedAt);
     }
 
+    public void SetVariantUnitConversionOverride(
+        string variantKey,
+        IngredientRevisionUnitConversion value,
+        Guid changedBy,
+        DateTimeOffset changedAt)
+    {
+        EnsureDraft();
+        if (value.SourceUnitId == BaseUnitId)
+            throw new ArgumentException("The base unit does not require a conversion override.", nameof(value));
+        GetVariant(variantKey).SetUnitConversionOverride(value);
+        MarkChanged(changedBy, changedAt);
+    }
+
     internal void CopyRevisionDetailsFrom(IngredientRevision source)
     {
         foreach (IngredientPropertyValue value in source.allergens.Values)
@@ -181,6 +208,8 @@ public sealed class IngredientRevision
             intolerances.Add(value.PropertyId, value);
         foreach (IngredientPropertyValue value in source.origins.Values)
             origins.Add(value.PropertyId, value);
+        foreach (IngredientRevisionUnitConversion value in source.unitConversions.Values)
+            unitConversions.Add(value.SourceUnitId, value);
         foreach (IngredientVariantRevision variant in source.variants)
             variants.Add(variant.Copy(Guid.NewGuid()));
         AllergenReviewState = source.AllergenReviewState;
@@ -192,6 +221,7 @@ public sealed class IngredientRevision
         IEnumerable<IngredientPropertyValue> mergedAllergens,
         IEnumerable<IngredientPropertyValue> mergedIntolerances,
         IEnumerable<IngredientPropertyValue> mergedOrigins,
+        IEnumerable<IngredientRevisionUnitConversion> mergedUnitConversions,
         IEnumerable<IngredientVariantRevision> mergedVariants,
         IngredientPropertyReviewState allergenReviewState,
         IngredientPropertyReviewState intoleranceReviewState,
@@ -202,6 +232,7 @@ public sealed class IngredientRevision
         allergens.Clear();
         intolerances.Clear();
         origins.Clear();
+        unitConversions.Clear();
         variants.Clear();
         foreach (IngredientPropertyValue value in mergedAllergens)
             allergens.Add(value.PropertyId, value);
@@ -209,6 +240,8 @@ public sealed class IngredientRevision
             intolerances.Add(value.PropertyId, value);
         foreach (IngredientPropertyValue value in mergedOrigins)
             origins.Add(value.PropertyId, value);
+        foreach (IngredientRevisionUnitConversion value in mergedUnitConversions)
+            unitConversions.Add(value.SourceUnitId, value);
         foreach (IngredientVariantRevision variant in mergedVariants)
             variants.Add(variant.Copy(Guid.NewGuid()));
         AllergenReviewState = allergenReviewState;

@@ -117,6 +117,61 @@ public sealed class IngredientRevisionMergeServiceTests
     }
 
     [Fact]
+    public void Non_overlapping_unit_conversions_are_combined()
+    {
+        Guid localUnit = Guid.NewGuid();
+        Guid remoteUnit = Guid.NewGuid();
+        Scenario scenario = CreateScenario(
+            configureLocal: revision => revision.SetUnitConversion(
+                new IngredientRevisionUnitConversion(localUnit, 10m, IngredientConversionPrecision.Average),
+                UserId,
+                Now),
+            configureRemote: revision => revision.SetUnitConversion(
+                new IngredientRevisionUnitConversion(remoteUnit, 20m, IngredientConversionPrecision.Estimated),
+                UserId,
+                Now));
+
+        IngredientMergeResult result = service.MergeIntoNewDraft(
+            scenario.Fork,
+            scenario.Base,
+            scenario.Local,
+            scenario.Remote,
+            Guid.NewGuid(),
+            UserId,
+            Now.AddDays(3));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Draft!.UnitConversions.Count);
+    }
+
+    [Fact]
+    public void Different_changes_to_same_unit_conversion_create_conflict()
+    {
+        Guid unit = Guid.NewGuid();
+        Scenario scenario = CreateScenario(
+            configureLocal: revision => revision.SetUnitConversion(
+                new IngredientRevisionUnitConversion(unit, 10m, IngredientConversionPrecision.Average),
+                UserId,
+                Now),
+            configureRemote: revision => revision.SetUnitConversion(
+                new IngredientRevisionUnitConversion(unit, 20m, IngredientConversionPrecision.Estimated),
+                UserId,
+                Now));
+
+        IngredientMergeResult result = service.MergeIntoNewDraft(
+            scenario.Fork,
+            scenario.Base,
+            scenario.Local,
+            scenario.Remote,
+            Guid.NewGuid(),
+            UserId,
+            Now.AddDays(3));
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains(result.Conflicts, value => value.Path == $"unit_conversions.{unit}");
+    }
+
+    [Fact]
     public void Independent_local_ingredient_cannot_receive_central_update()
     {
         Scenario scenario = CreateScenario();

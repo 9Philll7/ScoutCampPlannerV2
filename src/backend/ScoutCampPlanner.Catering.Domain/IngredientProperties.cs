@@ -51,6 +51,7 @@ public sealed class IngredientVariantRevision
     private readonly Dictionary<Guid, IngredientPropertyValue> allergenOverrides = [];
     private readonly Dictionary<Guid, IngredientPropertyValue> intoleranceOverrides = [];
     private readonly Dictionary<Guid, IngredientPropertyValue> originOverrides = [];
+    private readonly Dictionary<Guid, IngredientRevisionUnitConversion> unitConversionOverrides = [];
 
     internal IngredientVariantRevision(Guid id, string variantKey, string name)
     {
@@ -66,6 +67,7 @@ public sealed class IngredientVariantRevision
     public IReadOnlyCollection<IngredientPropertyValue> AllergenOverrides => allergenOverrides.Values.ToArray();
     public IReadOnlyCollection<IngredientPropertyValue> IntoleranceOverrides => intoleranceOverrides.Values.ToArray();
     public IReadOnlyCollection<IngredientPropertyValue> OriginOverrides => originOverrides.Values.ToArray();
+    public IReadOnlyCollection<IngredientRevisionUnitConversion> UnitConversionOverrides => unitConversionOverrides.Values.ToArray();
 
     internal void Rename(string name) =>
         (Name, NormalizedName) = CatalogName.Normalize(name, nameof(name), 200);
@@ -73,6 +75,8 @@ public sealed class IngredientVariantRevision
     internal void SetAllergenOverride(IngredientPropertyValue value) => allergenOverrides[value.PropertyId] = value;
     internal void SetIntoleranceOverride(IngredientPropertyValue value) => intoleranceOverrides[value.PropertyId] = value;
     internal void SetOriginOverride(IngredientPropertyValue value) => originOverrides[value.PropertyId] = value;
+    internal void SetUnitConversionOverride(IngredientRevisionUnitConversion value) =>
+        unitConversionOverrides[value.SourceUnitId] = value;
 
     internal IngredientVariantRevision Copy(Guid id)
     {
@@ -83,6 +87,8 @@ public sealed class IngredientVariantRevision
             copy.SetIntoleranceOverride(value);
         foreach (IngredientPropertyValue value in originOverrides.Values)
             copy.SetOriginOverride(value);
+        foreach (IngredientRevisionUnitConversion value in unitConversionOverrides.Values)
+            copy.SetUnitConversionOverride(value);
         return copy;
     }
 

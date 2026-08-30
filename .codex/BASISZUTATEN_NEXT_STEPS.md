@@ -168,12 +168,13 @@ Keine vereinfachte Zwei-Wege-Überschreibung verwenden.
 
 ### 4. Kategorien und revisionsgebundene Umrechnungen
 
-Noch nicht im neuen Domain-Modell umgesetzt:
+Im Domain-Modell umgesetzt:
 
-- Zutatenkategorien
+- Zutatenkategorien mit stabilem Code und optionaler Elternkategorie
 - zutatenspezifische, revisionsgebundene Umrechnungen
 - Genauigkeit `Exact`, `Average`, `Estimated`
-- Varianten-Overrides für Umrechnungen
+- Varianten-Overrides und effektive Vererbung für Umrechnungen
+- Einbeziehung der Umrechnungen in Drei-Wege-Merge und Konflikterkennung
 
 Die bestehenden Klassen `MeasurementUnit` und `IngredientUnitConversion` werden aktuell noch von Rezepten verwendet. Die Migration muss deshalb kompatibel und schrittweise erfolgen.
 

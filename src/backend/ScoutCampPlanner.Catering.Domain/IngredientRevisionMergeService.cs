@@ -62,6 +62,9 @@ public sealed class IngredientRevisionMergeService
         IReadOnlyCollection<IngredientPropertyValue> origins = MergeEntries(
             "origins", baseRevision.Origins, localRevision.Origins, remoteRevision.Origins,
             value => value.PropertyId, EqualityComparer<IngredientPropertyValue>.Default.Equals, conflicts);
+        IReadOnlyCollection<IngredientRevisionUnitConversion> conversions = MergeEntries(
+            "unit_conversions", baseRevision.UnitConversions, localRevision.UnitConversions, remoteRevision.UnitConversions,
+            value => value.SourceUnitId, EqualityComparer<IngredientRevisionUnitConversion>.Default.Equals, conflicts);
         IReadOnlyCollection<IngredientVariantRevision> variants = MergeEntries(
             "variants", baseRevision.Variants, localRevision.Variants, remoteRevision.Variants,
             value => value.VariantKey, VariantEquals, conflicts);
@@ -81,6 +84,7 @@ public sealed class IngredientRevisionMergeService
             allergens,
             intolerances,
             origins,
+            conversions,
             variants,
             allergenReview,
             intoleranceReview,
@@ -162,12 +166,18 @@ public sealed class IngredientRevisionMergeService
         left.Name == right.Name &&
         PropertySetsEqual(left.AllergenOverrides, right.AllergenOverrides) &&
         PropertySetsEqual(left.IntoleranceOverrides, right.IntoleranceOverrides) &&
-        PropertySetsEqual(left.OriginOverrides, right.OriginOverrides);
+        PropertySetsEqual(left.OriginOverrides, right.OriginOverrides) &&
+        ConversionSetsEqual(left.UnitConversionOverrides, right.UnitConversionOverrides);
 
     private static bool PropertySetsEqual(
         IEnumerable<IngredientPropertyValue> left,
         IEnumerable<IngredientPropertyValue> right) =>
         left.OrderBy(value => value.PropertyId).SequenceEqual(right.OrderBy(value => value.PropertyId));
+
+    private static bool ConversionSetsEqual(
+        IEnumerable<IngredientRevisionUnitConversion> left,
+        IEnumerable<IngredientRevisionUnitConversion> right) =>
+        left.OrderBy(value => value.SourceUnitId).SequenceEqual(right.OrderBy(value => value.SourceUnitId));
 
     private static void ValidateLineage(
         IngredientIdentity localIngredient,
