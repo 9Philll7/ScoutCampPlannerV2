@@ -19,6 +19,12 @@ public sealed class IngredientRevisionPublicationValidator
     public void Validate(IngredientRevision revision)
     {
         ArgumentNullException.ThrowIfNull(revision);
+        Validate(revision.CreatePublicationSnapshot());
+    }
+
+    public void Validate(IngredientRevisionPublicationSnapshot revision)
+    {
+        ArgumentNullException.ThrowIfNull(revision);
         if (revision.State != IngredientRevisionState.Draft)
             throw new InvalidOperationException("Only a draft can be validated for publication.");
         if (revision.AllergenReviewState != IngredientPropertyReviewState.Reviewed ||
@@ -27,7 +33,7 @@ public sealed class IngredientRevisionPublicationValidator
             throw new InvalidOperationException("All ingredient property groups must be reviewed before publication.");
 
         ValidateAllergenAssignments(revision.Allergens, "ingredient revision");
-        foreach (IngredientVariantRevision variant in revision.Variants)
+        foreach (IngredientVariantPublicationSnapshot variant in revision.Variants)
         {
             IngredientPropertyValue[] effective = revision.Allergens
                 .Where(value => variant.AllergenOverrides.All(overridden => overridden.PropertyId != value.PropertyId))
@@ -78,4 +84,3 @@ public sealed class IngredientRevisionPublicationValidator
         }
     }
 }
-

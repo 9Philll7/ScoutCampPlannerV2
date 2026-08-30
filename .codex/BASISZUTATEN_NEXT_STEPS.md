@@ -193,8 +193,21 @@ Providerunabhängiges Mapping umgesetzt:
 
 Noch offen:
 
-- transaktionalen Publish-Use-Case im Application Layer implementieren
 - unveränderliche Published-Graphen zusätzlich auf Persistenzebene schützen
+
+Der transaktionale Revisionsworkflow ist umgesetzt:
+
+- explizites Speichern eines Drafts ohne Auto-Save
+- gemeinsame Domain-Normalisierung des Draft-Inhalts
+- Scope-basierte Autorisierung für zentrale, Mandanten- und Lagerzutaten
+- optimistische Versionsprüfung über `RowVersion`
+- unterscheidbare Ergebnisse für fehlende Revisionen, Published-Stände,
+  Versionskonflikte, fehlende Berechtigung und ungültige Inhalte
+- Publish-Validierung anhand des persistierten Revisionsgraphen
+- atomare Veröffentlichung von Revision und
+  `CurrentPublishedRevisionId` innerhalb einer Datenbanktransaktion
+- SQLite-Integrationstests für Speichern, Versionskonflikt,
+  Veröffentlichung und Rollback bei ungültigem Publish
 
 `docs/architecture/Basiszutaten_Schema.sql` ist nur ein PostgreSQL-Referenzschema. Es darf nicht direkt als Produktmigration übernommen werden.
 
@@ -239,9 +252,12 @@ Seeds benötigen stabile, zwischen PostgreSQL, SQLite und Lagerpaketen identisch
 
 Erst nach Domain und Migration:
 
-- explizites Draft-Speichern
-- Publish-Aktion
-- optimistische Konfliktmeldung
+- explizites Draft-Speichern – Application- und Persistenzworkflow umgesetzt,
+  API und Editor noch offen
+- Publish-Aktion – Application- und Persistenzworkflow umgesetzt,
+  API und Editor noch offen
+- optimistische Konfliktmeldung – technischer Ergebnisstatus umgesetzt,
+  API-Mapping und UI-Darstellung noch offen
 - Fork erst beim tatsächlichen lokalen Speichern
 - Anzeige verfügbarer zentraler Updates
 - Konfliktauflösung für Drei-Wege-Merge

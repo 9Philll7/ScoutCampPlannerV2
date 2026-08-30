@@ -124,6 +124,8 @@ builder.Services.AddScoped<IIngredientManagementStore, IngredientManagementStore
 builder.Services.AddScoped<IIngredientManagementAuthorization>(services =>
     services.GetRequiredService<PlatformRecipeAuthorization>());
 builder.Services.AddScoped<IngredientManagementService>();
+builder.Services.AddScoped<IIngredientRevisionWorkflowStore, IngredientRevisionWorkflowStore>();
+builder.Services.AddScoped<IngredientRevisionWorkflowService>();
 builder.Services.AddSingleton<IPasswordPolicy, PasswordPolicy>();
 builder.Services.AddSingleton<IPasswordVerifier>(
     _ => new Argon2idPasswordVerifier(Argon2idOperatingMode.Server));

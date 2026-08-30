@@ -261,6 +261,16 @@ public sealed class IngredientRevision
         State = IngredientRevisionState.Published;
     }
 
+    public IngredientRevisionPublicationSnapshot CreatePublicationSnapshot() => new(
+        State,
+        AllergenReviewState,
+        IntoleranceReviewState,
+        OriginReviewState,
+        Allergens,
+        Variants.Select(value => new IngredientVariantPublicationSnapshot(
+            value.VariantKey,
+            value.AllergenOverrides)).ToArray());
+
     private void EnsureDraft()
     {
         if (State != IngredientRevisionState.Draft)
