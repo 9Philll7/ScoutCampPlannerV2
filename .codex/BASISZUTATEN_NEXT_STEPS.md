@@ -180,15 +180,23 @@ Die bestehenden Klassen `MeasurementUnit` und `IngredientUnitConversion` werden 
 
 ### 5. EF-Core-Persistenzmodell
 
-Erst nach Stabilisierung der Domainregeln:
+Providerunabhängiges Mapping umgesetzt:
 
-- `IngredientIdentity` konfigurieren
-- `IngredientRevision` konfigurieren
-- Eigenschaften und Reviewstatus konfigurieren
-- Varianten und Overrides konfigurieren
-- Row-Version als Concurrency Token konfigurieren
+- Infrastructure-Records für Zutatenidentitäten und Revisionen
+- Kategorien und Eigenschaftskataloge
+- Eigenschaften und Reviewstatus
+- Varianten und Overrides
+- revisionsgebundene Umrechnungen
+- Row-Version als Concurrency Token
+- Datenbankregel für höchstens einen Draft je Zutatenidentität
+- SQLite-Roundtrip-Test des vollständigen Graphen
+
+Noch offen:
+
 - transaktionalen Publish-Use-Case im Application Layer implementieren
-- getrennte Migrationen für PostgreSQL und SQLite erzeugen
+- unveränderliche Published-Graphen zusätzlich auf Persistenzebene schützen
+- getrennte Migrationen für PostgreSQL und SQLite erzeugen und prüfen
+- bestehende Daten in die neue Struktur überführen
 
 `docs/architecture/Basiszutaten_Schema.sql` ist nur ein PostgreSQL-Referenzschema. Es darf nicht direkt als Produktmigration übernommen werden.
 

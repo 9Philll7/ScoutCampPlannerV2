@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ScoutCampPlanner.Catering.Domain;
 using ScoutCampPlanner.Catering.Infrastructure.Recipes;
+using ScoutCampPlanner.Catering.Infrastructure.Ingredients;
 
 namespace ScoutCampPlanner.Catering.Infrastructure;
 
@@ -153,6 +154,7 @@ public sealed class CateringDbContext(DbContextOptions<CateringDbContext> option
             entity.HasOne<BaseIngredient>().WithMany().HasForeignKey(x => x.BaseIngredientId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<DietaryRequirement>().WithMany().HasForeignKey(x => x.DietaryRequirementId).OnDelete(DeleteBehavior.Restrict);
         });
+        RevisionedIngredientPersistenceConfiguration.Configure(modelBuilder);
         RecipePersistenceConfiguration.Configure(modelBuilder, isNpgsql);
     }
 

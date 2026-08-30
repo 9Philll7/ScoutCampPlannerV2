@@ -10,6 +10,136 @@ namespace ScoutCampPlanner.CateringTests;
 public sealed class IngredientCatalogPersistenceTests
 {
     [Fact]
+    public async Task Revisioned_ingredient_graph_round_trips()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Guid ingredientId = Guid.NewGuid();
+        Guid revisionId = Guid.NewGuid();
+        Guid variantId = Guid.NewGuid();
+        Guid actorId = Guid.NewGuid();
+        var unit = new MeasurementUnit(Guid.NewGuid(), "Gramm", "g", MeasurementDimension.Mass, 1m);
+        var spoon = new MeasurementUnit(Guid.NewGuid(), "Esslöffel", "EL", MeasurementDimension.Count, 1m);
+        var category = new IngredientCategoryRecord
+        {
+            Id = Guid.NewGuid(), Code = "FATS", Name = "Fette", NormalizedName = "FETTE",
+        };
+        var milk = new IngredientAllergenDefinitionRecord
+        {
+            Id = Guid.NewGuid(), Code = "MILK", Name = "Milch", IsEuMajorAllergen = true,
+        };
+        var lactose = new IngredientIntoleranceDefinitionRecord
+        {
+            Id = Guid.NewGuid(), Code = "LACTOSE", Name = "Laktose",
+        };
+        var dairy = new IngredientOriginPropertyRecord
+        {
+            Id = Guid.NewGuid(), Code = "DAIRY", Name = "Milcherzeugnis", IsAnimalOrigin = true,
+        };
+        var identity = new IngredientIdentityRecord
+        {
+            Id = ingredientId, ScopeType = (int)IngredientScopeType.Central,
+        };
+        var revision = new IngredientRevisionRecord
+        {
+            Id = revisionId,
+            IngredientId = ingredientId,
+            RevisionNumber = 1,
+            State = (int)IngredientRevisionState.Published,
+            Name = "Butter",
+            NormalizedName = "BUTTER",
+            CategoryId = category.Id,
+            BaseUnitId = unit.Id,
+            AllergenReviewState = (int)IngredientPropertyReviewState.Reviewed,
+            IntoleranceReviewState = (int)IngredientPropertyReviewState.Reviewed,
+            OriginReviewState = (int)IngredientPropertyReviewState.Reviewed,
+            RowVersion = 1,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            CreatedBy = actorId,
+            UpdatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedBy = actorId,
+            PublishedAtUtc = DateTimeOffset.UtcNow,
+            PublishedBy = actorId,
+        };
+        fixture.Database.AddRange(unit, spoon, category, milk, lactose, dairy, identity, revision);
+        fixture.Database.AddRange(
+            new IngredientRevisionAllergenRecord
+            {
+                IngredientRevisionId = revisionId, AllergenId = milk.Id,
+                State = (int)IngredientPropertyState.Contains,
+                Source = (int)IngredientPropertySource.Inherent,
+            },
+            new IngredientRevisionIntoleranceRecord
+            {
+                IngredientRevisionId = revisionId, IntoleranceId = lactose.Id,
+                State = (int)IngredientPropertyState.Contains,
+                Source = (int)IngredientPropertySource.Inherent,
+            },
+            new IngredientRevisionOriginRecord
+            {
+                IngredientRevisionId = revisionId, OriginPropertyId = dairy.Id,
+                State = (int)IngredientPropertyState.Contains,
+                Source = (int)IngredientPropertySource.Inherent,
+            },
+            new IngredientRevisionUnitConversionRecord
+            {
+                IngredientRevisionId = revisionId, SourceUnitId = spoon.Id,
+                FactorToBaseUnit = 14m, Precision = (int)IngredientConversionPrecision.Average,
+            },
+            new IngredientVariantRevisionRecord
+            {
+                Id = variantId, IngredientRevisionId = revisionId, VariantKey = "lactose_free",
+                Name = "Laktosefrei", NormalizedName = "LAKTOSEFREI",
+            },
+            new IngredientVariantIntoleranceOverrideRecord
+            {
+                VariantRevisionId = variantId, IntoleranceId = lactose.Id,
+                State = (int)IngredientPropertyState.DoesNotContain,
+                Source = (int)IngredientPropertySource.ManuallyVerified,
+            });
+        await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+        identity.CurrentPublishedRevisionId = revisionId;
+        await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+        fixture.Database.ChangeTracker.Clear();
+
+        IngredientIdentityRecord storedIdentity = await fixture.Database.Set<IngredientIdentityRecord>()
+            .SingleAsync(TestContext.Current.CancellationToken);
+        IngredientRevisionRecord storedRevision = await fixture.Database.Set<IngredientRevisionRecord>()
+            .SingleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(revisionId, storedIdentity.CurrentPublishedRevisionId);
+        Assert.Equal("Butter", storedRevision.Name);
+        Assert.Single(await fixture.Database.Set<IngredientRevisionAllergenRecord>()
+            .ToArrayAsync(TestContext.Current.CancellationToken));
+        Assert.Single(await fixture.Database.Set<IngredientVariantIntoleranceOverrideRecord>()
+            .ToArrayAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(14m, (await fixture.Database.Set<IngredientRevisionUnitConversionRecord>()
+            .SingleAsync(TestContext.Current.CancellationToken)).FactorToBaseUnit);
+    }
+
+    [Fact]
+    public async Task Only_one_draft_per_ingredient_is_enforced_by_database()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Guid ingredientId = Guid.NewGuid();
+        Guid actorId = Guid.NewGuid();
+        var unit = new MeasurementUnit(Guid.NewGuid(), "Gramm", "g", MeasurementDimension.Mass, 1m);
+        var category = new IngredientCategoryRecord
+        {
+            Id = Guid.NewGuid(), Code = "OTHER", Name = "Sonstiges", NormalizedName = "SONSTIGES",
+        };
+        fixture.Database.AddRange(unit, category, new IngredientIdentityRecord
+        {
+            Id = ingredientId, ScopeType = (int)IngredientScopeType.Central,
+        });
+        fixture.Database.AddRange(
+            DraftRecord(Guid.NewGuid(), ingredientId, category.Id, unit.Id, actorId, 1),
+            DraftRecord(Guid.NewGuid(), ingredientId, category.Id, unit.Id, actorId, 2));
+
+        await Assert.ThrowsAsync<DbUpdateException>(() =>
+            fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task Complete_ingredient_catalog_graph_round_trips()
     {
         await using var fixture = await DatabaseFixture.CreateAsync();
@@ -152,4 +282,27 @@ public sealed class IngredientCatalogPersistenceTests
             await connection.DisposeAsync();
         }
     }
+
+    private static IngredientRevisionRecord DraftRecord(
+        Guid id,
+        Guid ingredientId,
+        Guid categoryId,
+        Guid baseUnitId,
+        Guid actorId,
+        int revisionNumber) => new()
+        {
+            Id = id,
+            IngredientId = ingredientId,
+            RevisionNumber = revisionNumber,
+            State = (int)IngredientRevisionState.Draft,
+            Name = "Zutat",
+            NormalizedName = "ZUTAT",
+            CategoryId = categoryId,
+            BaseUnitId = baseUnitId,
+            RowVersion = 1,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            CreatedBy = actorId,
+            UpdatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedBy = actorId,
+        };
 }
