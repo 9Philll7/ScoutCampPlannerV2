@@ -74,11 +74,36 @@ ff827d5 feat: Revisionsmodell für Basiszutaten einführen
 6fd2d5e feat: Eigenschaften und Varianten für Zutatenrevisionen ergänzen
 ```
 
+### Derzeit im Working Tree, noch zu committen
+
+Das dritte Domain-Inkrement enthält:
+
+- `IngredientPropertyDefinition` mit stabilem Code und optionaler Hierarchie
+- `IngredientSuitabilityEvaluator`
+- Auswertung einzelner Allergene und Unverträglichkeitsauslöser
+- Auswertung von vegan, vegetarisch und pescetarisch
+- Auswertung von laktosefrei, milchfrei und glutenfrei
+- Berücksichtigung von Varianten-Overrides
+- Vererbung von Allergen-Untertypen auf ihre Obergruppe
+- sichere Behandlung ungeprüfter und unbekannter Angaben
+- Tests für Milch/Laktose, tierische Herkunft, unbekannte Herkunft, Glutenhierarchie und `MayContain`
+
+Letzter geprüfter Stand dieses Inkrements:
+
+- Catering-Build erfolgreich, keine Warnungen oder Fehler
+- 95 Catering-Tests bestanden
+
+Empfohlene Commit-Message:
+
+```text
+feat: Eignungsprüfung für Basiszutaten ergänzen
+```
+
 ## Nächste Arbeitsschritte
 
-### 1. Fachlichen Auswertungsservice implementieren
+### 1. Fachlichen Auswertungsservice implementieren – umgesetzt
 
-Als nächstes einen providerunabhängigen Domain-Service implementieren, der Basiszutat und optional ausgewählte Variante auswertet.
+Der providerunabhängige Domain-Service ist im dritten Domain-Inkrement umgesetzt. Vor dem Commit noch Architekturtests und `git diff --check` ausführen.
 
 Erforderliche Resultate:
 
