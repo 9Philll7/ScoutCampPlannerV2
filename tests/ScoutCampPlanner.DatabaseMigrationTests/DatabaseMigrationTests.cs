@@ -25,6 +25,8 @@ public sealed class DatabaseMigrationTests
     private const string PostgreSqlPlatformV1 = "20260808204848_InitialPlatform";
     private const string PostgreSqlCampV1 = "20260808204851_InitialCamp";
     private const string PostgreSqlCateringV1 = "20260808204854_InitialCatering";
+    private const string SqliteCateringBeforeRevisionedIngredients = "20260821191856_AddCampRecipeNotes";
+    private const string PostgreSqlCateringBeforeRevisionedIngredients = "20260821191904_AddCampRecipeNotes";
 
     [Fact]
     public async Task Sqlite_upgrade_preserves_existing_data_and_applies_each_module_history()
@@ -35,14 +37,17 @@ public sealed class DatabaseMigrationTests
         await using var databases = CreateSqliteDatabases(connection);
 
         await MigrateToV1Async(databases, SqlitePlatformV1, SqliteCampV1, SqliteCateringV1);
+        await databases.Catering.Database.MigrateAsync(SqliteCateringBeforeRevisionedIngredients);
         var identities = await AddBaselineDataAsync(databases);
+        Guid legacyIngredientId = await AddLegacyIngredientAsync(databases.Catering);
 
         await MigrateToCurrentAsync(databases);
         await AssertBaselineDataAsync(databases, identities);
+        await AssertLegacyIngredientMigratedAsync(connection, legacyIngredientId, false);
 
         Assert.Equal(7, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_platform"));
         Assert.Equal(8, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_camp"));
-        Assert.Equal(11, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_catering"));
+        Assert.Equal(12, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_catering"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_Camps_TenantId_Name'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_Camps_TenantId_NormalizedName_StartDate_EndDate'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'StructureNodes'"));
@@ -84,14 +89,17 @@ public sealed class DatabaseMigrationTests
         await using var databases = CreatePostgreSqlDatabases(connection);
 
         await MigrateToV1Async(databases, PostgreSqlPlatformV1, PostgreSqlCampV1, PostgreSqlCateringV1);
+        await databases.Catering.Database.MigrateAsync(PostgreSqlCateringBeforeRevisionedIngredients);
         var identities = await AddBaselineDataAsync(databases);
+        Guid legacyIngredientId = await AddLegacyIngredientAsync(databases.Catering);
 
         await MigrateToCurrentAsync(databases);
         await AssertBaselineDataAsync(databases, identities);
+        await AssertLegacyIngredientMigratedAsync(connection, legacyIngredientId, true);
 
         Assert.Equal(7, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM platform.\"__EFMigrationsHistory\""));
         Assert.Equal(8, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM camp.\"__EFMigrationsHistory\""));
-        Assert.Equal(11, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM catering.\"__EFMigrationsHistory\""));
+        Assert.Equal(12, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM catering.\"__EFMigrationsHistory\""));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'camp' AND indexname = 'IX_Camps_TenantId_Name'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'camp' AND indexname = 'IX_Camps_TenantId_NormalizedName_StartDate_EndDate'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'camp' AND table_name = 'StructureNodes'"));
@@ -227,6 +235,43 @@ public sealed class DatabaseMigrationTests
         Assert.True(await databases.Camp.Camps.AnyAsync(x => x.Id == identities.CampId));
         Assert.False(await TableExistsAsync(databases.Camp.Database.GetDbConnection(), "CookingUnits"));
         Assert.True(await databases.Catering.MealPlans.AnyAsync(x => x.Id == identities.MealId));
+    }
+
+    private static async Task<Guid> AddLegacyIngredientAsync(CateringDbContext database)
+    {
+        Guid ingredientId = Guid.NewGuid();
+        var unit = new MeasurementUnit(Guid.NewGuid(), "Legacy Gramm", "lg", MeasurementDimension.Mass, 1m);
+        var ingredient = new BaseIngredient(
+            ingredientId, IngredientScopeType.Central, null, "Legacy Mehl", "Unstrukturierte Herkunft");
+        var allergen = new Allergen(Guid.NewGuid(), "Legacy Gluten");
+        var intolerance = new Intolerance(Guid.NewGuid(), "Legacy Unverträglichkeit");
+        database.AddRange(unit, ingredient, allergen, intolerance);
+        database.AddRange(
+            new IngredientVariant(Guid.NewGuid(), ingredientId, "Legacy Vollkorn"),
+            new IngredientUnitConversion(ingredientId, unit.Id, 1m),
+            new BaseIngredientAllergen(ingredientId, allergen.Id),
+            new BaseIngredientIntolerance(ingredientId, intolerance.Id));
+        await database.SaveChangesAsync();
+        return ingredientId;
+    }
+
+    private static async Task AssertLegacyIngredientMigratedAsync(
+        DbConnection connection,
+        Guid ingredientId,
+        bool postgreSql)
+    {
+        string prefix = postgreSql ? "catering." : string.Empty;
+        string parameter = ingredientId.ToString();
+        Assert.Equal(1, await ScalarAsync<long>(connection,
+            $"SELECT COUNT(*) FROM {prefix}\"IngredientIdentities\" WHERE LOWER(CAST(\"Id\" AS TEXT)) = LOWER('{parameter}')"));
+        Assert.Equal(1, await ScalarAsync<long>(connection,
+            $"SELECT COUNT(*) FROM {prefix}\"IngredientRevisions\" WHERE LOWER(CAST(\"Id\" AS TEXT)) = LOWER('{parameter}') AND \"Name\" = 'Legacy Mehl'"));
+        Assert.Equal(1, await ScalarAsync<long>(connection,
+            $"SELECT COUNT(*) FROM {prefix}\"IngredientVariantRevisions\" WHERE LOWER(CAST(\"IngredientRevisionId\" AS TEXT)) = LOWER('{parameter}')"));
+        Assert.Equal(1, await ScalarAsync<long>(connection,
+            $"SELECT COUNT(*) FROM {prefix}\"IngredientRevisionAllergens\" WHERE LOWER(CAST(\"IngredientRevisionId\" AS TEXT)) = LOWER('{parameter}')"));
+        Assert.Equal(1, await ScalarAsync<long>(connection,
+            $"SELECT COUNT(*) FROM {prefix}\"IngredientRevisionIntolerances\" WHERE LOWER(CAST(\"IngredientRevisionId\" AS TEXT)) = LOWER('{parameter}')"));
     }
 
     private static async Task ResetPostgreSqlSchemasAsync(NpgsqlConnection connection)

@@ -195,8 +195,6 @@ Noch offen:
 
 - transaktionalen Publish-Use-Case im Application Layer implementieren
 - unveränderliche Published-Graphen zusätzlich auf Persistenzebene schützen
-- getrennte Migrationen für PostgreSQL und SQLite erzeugen und prüfen
-- bestehende Daten in die neue Struktur überführen
 
 `docs/architecture/Basiszutaten_Schema.sql` ist nur ein PostgreSQL-Referenzschema. Es darf nicht direkt als Produktmigration übernommen werden.
 
@@ -211,7 +209,19 @@ Die vorhandenen Tabellen enthalten bereits produktnahe Zutaten- und Rezeptdaten.
 5. Veröffentlichte Rezept-Snapshots nicht nachträglich verändern.
 6. PostgreSQL- und SQLite-Upgradepfade testen.
 
-Erst nach erfolgreicher Datenübernahme dürfen alte veränderliche Zutatenfelder und alte direkte Zuordnungstabellen entfernt werden.
+Die Migrationen `AddRevisionedIngredients` für SQLite und PostgreSQL sind erstellt. Die Übergangslogik:
+
+- erhält die IDs bestehender Basiszutaten und verwendet sie auch für die initiale Revision,
+- übernimmt Name und Scope,
+- übernimmt Varianten mit einem stabil abgeleiteten Legacy-`variant_key`,
+- übernimmt vorhandene Allergen- und Unverträglichkeitszuordnungen als positive, abgeleitete Angaben,
+- wählt eine vorhandene Umrechnungseinheit als Basiseinheit oder verwendet eine explizite Legacy-Platzhaltereinheit,
+- markiert Eigenschaftsgruppen als ungeprüft und Herkunft als unbekannt,
+- belässt die alten Tabellen vorerst für bestehende Rezeptfunktionen im Schema.
+
+Die Upgrade- und Datenerhaltungstests sind für SQLite und PostgreSQL erfolgreich.
+
+Erst nach erfolgreicher Datenübernahme auf beiden Providern und Umstellung aller Leser dürfen alte veränderliche Zutatenfelder und direkte Zuordnungstabellen entfernt werden.
 
 ### 7. Stammdaten-Seeding
 
