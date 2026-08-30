@@ -208,6 +208,10 @@ Der transaktionale Revisionsworkflow ist umgesetzt:
   `CurrentPublishedRevisionId` innerhalb einer Datenbanktransaktion
 - SQLite-Integrationstests für Speichern, Versionskonflikt,
   Veröffentlichung und Rollback bei ungültigem Publish
+- vollständige Ladeprojektion des Revisionsgraphen einschließlich Eigenschaften,
+  Umrechnungen, Varianten und Overrides
+- authentifizierte REST-Endpunkte zum Laden, Speichern und Veröffentlichen
+- HTTP-409-Antworten mit aktuellem Versionsstand bei Konflikten
 
 `docs/architecture/Basiszutaten_Schema.sql` ist nur ein PostgreSQL-Referenzschema. Es darf nicht direkt als Produktmigration übernommen werden.
 
@@ -253,11 +257,11 @@ Seeds benötigen stabile, zwischen PostgreSQL, SQLite und Lagerpaketen identisch
 Erst nach Domain und Migration:
 
 - explizites Draft-Speichern – Application- und Persistenzworkflow umgesetzt,
-  API und Editor noch offen
+  API umgesetzt, Editor noch offen
 - Publish-Aktion – Application- und Persistenzworkflow umgesetzt,
-  API und Editor noch offen
+  API umgesetzt, Editor noch offen
 - optimistische Konfliktmeldung – technischer Ergebnisstatus umgesetzt,
-  API-Mapping und UI-Darstellung noch offen
+  API-Mapping umgesetzt, UI-Darstellung noch offen
 - Fork erst beim tatsächlichen lokalen Speichern
 - Anzeige verfügbarer zentraler Updates
 - Konfliktauflösung für Drei-Wege-Merge

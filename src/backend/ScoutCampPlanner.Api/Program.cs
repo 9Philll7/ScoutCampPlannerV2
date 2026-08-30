@@ -647,6 +647,51 @@ app.MapPost("/api/camps/{campId:guid}/ingredients", async (
         }),
     };
 }).RequireAuthorization();
+app.MapGet("/api/ingredient-revisions/{revisionId:guid}", async (
+    Guid revisionId,
+    ClaimsPrincipal principal,
+    IngredientRevisionWorkflowService revisions,
+    CancellationToken cancellationToken) =>
+{
+    IngredientRevisionQueryResult result = await revisions.GetAsync(
+        revisionId,
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!),
+        cancellationToken);
+    return result.Status switch
+    {
+        IngredientRevisionQueryStatus.Found => Results.Ok(result.Revision),
+        IngredientRevisionQueryStatus.Forbidden => Results.Forbid(),
+        _ => Results.NotFound(),
+    };
+}).RequireAuthorization();
+app.MapPut("/api/ingredient-revisions/{revisionId:guid}", async (
+    Guid revisionId,
+    SaveIngredientRevisionDraftRequest request,
+    ClaimsPrincipal principal,
+    IngredientRevisionWorkflowService revisions,
+    CancellationToken cancellationToken) =>
+{
+    IngredientRevisionMutationResult result = await revisions.SaveDraftAsync(
+        revisionId,
+        request,
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!),
+        cancellationToken);
+    return ToIngredientRevisionMutationResult(result);
+}).RequireAuthorization();
+app.MapPost("/api/ingredient-revisions/{revisionId:guid}/publish", async (
+    Guid revisionId,
+    PublishIngredientRevisionRequest request,
+    ClaimsPrincipal principal,
+    IngredientRevisionWorkflowService revisions,
+    CancellationToken cancellationToken) =>
+{
+    IngredientRevisionMutationResult result = await revisions.PublishAsync(
+        revisionId,
+        request.ExpectedRowVersion,
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!),
+        cancellationToken);
+    return ToIngredientRevisionMutationResult(result);
+}).RequireAuthorization();
 app.MapPost("/api/camps/{campId:guid}/offline-package", async (
     Guid campId, ClaimsPrincipal principal, CampManagementService management,
     CampPackageService packages, CancellationToken cancellationToken) =>
@@ -701,6 +746,29 @@ static object ToIngredientResponse(IngredientCatalogEntry entry) => new
         conflict.Name,
     }),
 };
+
+static IResult ToIngredientRevisionMutationResult(IngredientRevisionMutationResult result) =>
+    result.Status switch
+    {
+        IngredientRevisionMutationStatus.Saved or IngredientRevisionMutationStatus.Published =>
+            Results.Ok(new { result.RowVersion }),
+        IngredientRevisionMutationStatus.NotFound => Results.NotFound(),
+        IngredientRevisionMutationStatus.Forbidden => Results.Forbid(),
+        IngredientRevisionMutationStatus.NotDraft => Results.Conflict(new
+        {
+            code = "ingredient_revision_not_draft",
+            result.RowVersion,
+        }),
+        IngredientRevisionMutationStatus.ConcurrencyConflict => Results.Conflict(new
+        {
+            code = "ingredient_revision_concurrency_conflict",
+            result.RowVersion,
+        }),
+        _ => Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["ingredientRevision"] = ["Die Zutatenrevision enthält ungültige oder unvollständige Daten."],
+        }),
+    };
 
 static void Configure(DbContextOptionsBuilder options, DbConnection connection, string provider, string module)
 {

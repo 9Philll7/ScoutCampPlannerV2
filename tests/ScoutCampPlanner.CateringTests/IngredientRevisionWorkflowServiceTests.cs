@@ -86,6 +86,11 @@ public sealed class IngredientRevisionWorkflowServiceTests
         public Task<IngredientRevisionScope?> GetScopeAsync(Guid revisionId, CancellationToken cancellationToken = default) =>
             Task.FromResult(scope);
 
+        public Task<IngredientRevisionDraftDetails?> GetAsync(
+            Guid revisionId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IngredientRevisionDraftDetails?>(null);
+
         public Task<IngredientRevisionMutationResult> SaveDraftAsync(
             Guid revisionId,
             IngredientRevisionDraftContent content,

@@ -42,6 +42,58 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
     }
 
     [Fact]
+    public async Task Get_returns_revision_scope_and_complete_editable_graph()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Seed seed = await fixture.SeedDraftAsync(reviewed: true);
+        Guid allergenId = Guid.NewGuid();
+        Guid variantId = Guid.NewGuid();
+        fixture.Database.AddRange(
+            new IngredientAllergenDefinitionRecord
+            {
+                Id = allergenId, Code = "MILK", Name = "Milch", IsEuMajorAllergen = true,
+            },
+            new IngredientRevisionAllergenRecord
+            {
+                IngredientRevisionId = seed.RevisionId,
+                AllergenId = allergenId,
+                State = (int)IngredientPropertyState.Contains,
+                Source = (int)IngredientPropertySource.ManuallyVerified,
+            },
+            new IngredientVariantRevisionRecord
+            {
+                Id = variantId,
+                IngredientRevisionId = seed.RevisionId,
+                VariantKey = "lactose_free",
+                Name = "Laktosefrei",
+                NormalizedName = "LAKTOSEFREI",
+            },
+            new IngredientVariantAllergenOverrideRecord
+            {
+                VariantRevisionId = variantId,
+                AllergenId = allergenId,
+                State = (int)IngredientPropertyState.DoesNotContain,
+                Source = (int)IngredientPropertySource.ManuallyVerified,
+            });
+        await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+        fixture.Database.ChangeTracker.Clear();
+        var store = new IngredientRevisionWorkflowStore(fixture.Database);
+
+        IngredientRevisionDraftDetails? result = await store.GetAsync(
+            seed.RevisionId, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.Equal(IngredientScopeType.Central, result.ScopeType);
+        Assert.Equal("Linsen", result.Name);
+        Assert.Equal(1, result.RowVersion);
+        Assert.Equal(allergenId, Assert.Single(result.Allergens).PropertyId);
+        IngredientVariantRevisionItem variant = Assert.Single(result.Variants);
+        Assert.Equal("lactose_free", variant.VariantKey);
+        Assert.Equal(IngredientPropertyState.DoesNotContain,
+            Assert.Single(variant.AllergenOverrides).State);
+    }
+
+    [Fact]
     public async Task Publish_is_transactional_and_updates_identity_pointer()
     {
         await using var fixture = await DatabaseFixture.CreateAsync();

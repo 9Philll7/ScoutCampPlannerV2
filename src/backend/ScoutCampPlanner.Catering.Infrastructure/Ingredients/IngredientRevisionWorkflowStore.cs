@@ -17,6 +17,111 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
          select new IngredientRevisionScope((IngredientScopeType)identity.ScopeType, identity.ScopeId))
         .SingleOrDefaultAsync(cancellationToken);
 
+    public async Task<IngredientRevisionDraftDetails?> GetAsync(
+        Guid revisionId,
+        CancellationToken cancellationToken = default)
+    {
+        var header = await (
+            from revisionRecord in database.Set<IngredientRevisionRecord>().AsNoTracking()
+            join identity in database.Set<IngredientIdentityRecord>().AsNoTracking()
+                on revisionRecord.IngredientId equals identity.Id
+            where revisionRecord.Id == revisionId && identity.Status == (int)IngredientIdentityStatus.Active
+            select new
+            {
+                Revision = revisionRecord,
+                ScopeType = (IngredientScopeType)identity.ScopeType,
+                identity.ScopeId,
+            }).SingleOrDefaultAsync(cancellationToken);
+        if (header is null)
+            return null;
+
+        IngredientRevisionPropertyItem[] allergens = await database.Set<IngredientRevisionAllergenRecord>()
+            .AsNoTracking()
+            .Where(value => value.IngredientRevisionId == revisionId)
+            .OrderBy(value => value.AllergenId)
+            .Select(value => PropertyItem(value.AllergenId, value.State, value.Source))
+            .ToArrayAsync(cancellationToken);
+        IngredientRevisionPropertyItem[] intolerances = await database.Set<IngredientRevisionIntoleranceRecord>()
+            .AsNoTracking()
+            .Where(value => value.IngredientRevisionId == revisionId)
+            .OrderBy(value => value.IntoleranceId)
+            .Select(value => PropertyItem(value.IntoleranceId, value.State, value.Source))
+            .ToArrayAsync(cancellationToken);
+        IngredientRevisionPropertyItem[] origins = await database.Set<IngredientRevisionOriginRecord>()
+            .AsNoTracking()
+            .Where(value => value.IngredientRevisionId == revisionId)
+            .OrderBy(value => value.OriginPropertyId)
+            .Select(value => PropertyItem(value.OriginPropertyId, value.State, value.Source))
+            .ToArrayAsync(cancellationToken);
+        IngredientRevisionUnitConversionItem[] conversions = await database
+            .Set<IngredientRevisionUnitConversionRecord>()
+            .AsNoTracking()
+            .Where(value => value.IngredientRevisionId == revisionId)
+            .OrderBy(value => value.SourceUnitId)
+            .Select(value => ConversionItem(value.SourceUnitId, value.FactorToBaseUnit, value.Precision))
+            .ToArrayAsync(cancellationToken);
+        IngredientVariantRevisionRecord[] variantRecords = await database.Set<IngredientVariantRevisionRecord>()
+            .AsNoTracking()
+            .Where(value => value.IngredientRevisionId == revisionId)
+            .OrderBy(value => value.SortOrder)
+            .ThenBy(value => value.NormalizedName)
+            .ToArrayAsync(cancellationToken);
+        Guid[] variantIds = variantRecords.Select(value => value.Id).ToArray();
+        IngredientVariantAllergenOverrideRecord[] allergenOverrides = await database
+            .Set<IngredientVariantAllergenOverrideRecord>().AsNoTracking()
+            .Where(value => variantIds.Contains(value.VariantRevisionId))
+            .ToArrayAsync(cancellationToken);
+        IngredientVariantIntoleranceOverrideRecord[] intoleranceOverrides = await database
+            .Set<IngredientVariantIntoleranceOverrideRecord>().AsNoTracking()
+            .Where(value => variantIds.Contains(value.VariantRevisionId))
+            .ToArrayAsync(cancellationToken);
+        IngredientVariantOriginOverrideRecord[] originOverrides = await database
+            .Set<IngredientVariantOriginOverrideRecord>().AsNoTracking()
+            .Where(value => variantIds.Contains(value.VariantRevisionId))
+            .ToArrayAsync(cancellationToken);
+        IngredientVariantUnitConversionOverrideRecord[] conversionOverrides = await database
+            .Set<IngredientVariantUnitConversionOverrideRecord>().AsNoTracking()
+            .Where(value => variantIds.Contains(value.VariantRevisionId))
+            .ToArrayAsync(cancellationToken);
+
+        IngredientRevisionRecord revision = header.Revision;
+        return new IngredientRevisionDraftDetails(
+            revision.Id,
+            revision.IngredientId,
+            header.ScopeType,
+            header.ScopeId,
+            revision.RevisionNumber,
+            (IngredientRevisionState)revision.State,
+            revision.BasedOnRevisionId,
+            revision.Name,
+            revision.CategoryId,
+            revision.BaseUnitId,
+            (IngredientPropertyReviewState)revision.AllergenReviewState,
+            (IngredientPropertyReviewState)revision.IntoleranceReviewState,
+            (IngredientPropertyReviewState)revision.OriginReviewState,
+            revision.RowVersion,
+            allergens,
+            intolerances,
+            origins,
+            conversions,
+            variantRecords.Select(variant => new IngredientVariantRevisionItem(
+                variant.Id,
+                variant.VariantKey,
+                variant.Name,
+                variant.Status == 0,
+                variant.SortOrder,
+                allergenOverrides.Where(value => value.VariantRevisionId == variant.Id)
+                    .Select(value => PropertyItem(value.AllergenId, value.State, value.Source)).ToArray(),
+                intoleranceOverrides.Where(value => value.VariantRevisionId == variant.Id)
+                    .Select(value => PropertyItem(value.IntoleranceId, value.State, value.Source)).ToArray(),
+                originOverrides.Where(value => value.VariantRevisionId == variant.Id)
+                    .Select(value => PropertyItem(value.OriginPropertyId, value.State, value.Source)).ToArray(),
+                conversionOverrides.Where(value => value.VariantRevisionId == variant.Id)
+                    .Select(value => ConversionItem(value.SourceUnitId, value.FactorToBaseUnit, value.Precision))
+                    .ToArray()))
+                .ToArray());
+    }
+
     public async Task<IngredientRevisionMutationResult> SaveDraftAsync(
         Guid revisionId,
         IngredientRevisionDraftContent content,
@@ -192,4 +297,10 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
                 : IngredientRevisionMutationStatus.ConcurrencyConflict,
             current.RowVersion);
     }
+
+    private static IngredientRevisionPropertyItem PropertyItem(Guid id, int state, int source) =>
+        new(id, (IngredientPropertyState)state, (IngredientPropertySource)source);
+
+    private static IngredientRevisionUnitConversionItem ConversionItem(Guid id, decimal factor, int precision) =>
+        new(id, factor, (IngredientConversionPrecision)precision);
 }

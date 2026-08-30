@@ -11,6 +11,61 @@ public sealed record SaveIngredientRevisionDraftRequest(
     IngredientPropertyReviewState OriginReviewState,
     long ExpectedRowVersion);
 
+public sealed record PublishIngredientRevisionRequest(long ExpectedRowVersion);
+
+public sealed record IngredientRevisionPropertyItem(
+    Guid PropertyId,
+    IngredientPropertyState State,
+    IngredientPropertySource Source);
+
+public sealed record IngredientRevisionUnitConversionItem(
+    Guid SourceUnitId,
+    decimal FactorToBaseUnit,
+    IngredientConversionPrecision Precision);
+
+public sealed record IngredientVariantRevisionItem(
+    Guid Id,
+    string VariantKey,
+    string Name,
+    bool IsActive,
+    int SortOrder,
+    IReadOnlyList<IngredientRevisionPropertyItem> AllergenOverrides,
+    IReadOnlyList<IngredientRevisionPropertyItem> IntoleranceOverrides,
+    IReadOnlyList<IngredientRevisionPropertyItem> OriginOverrides,
+    IReadOnlyList<IngredientRevisionUnitConversionItem> UnitConversionOverrides);
+
+public sealed record IngredientRevisionDraftDetails(
+    Guid Id,
+    Guid IngredientId,
+    IngredientScopeType ScopeType,
+    Guid? ScopeId,
+    int RevisionNumber,
+    IngredientRevisionState State,
+    Guid? BasedOnRevisionId,
+    string Name,
+    Guid CategoryId,
+    Guid BaseUnitId,
+    IngredientPropertyReviewState AllergenReviewState,
+    IngredientPropertyReviewState IntoleranceReviewState,
+    IngredientPropertyReviewState OriginReviewState,
+    long RowVersion,
+    IReadOnlyList<IngredientRevisionPropertyItem> Allergens,
+    IReadOnlyList<IngredientRevisionPropertyItem> Intolerances,
+    IReadOnlyList<IngredientRevisionPropertyItem> Origins,
+    IReadOnlyList<IngredientRevisionUnitConversionItem> UnitConversions,
+    IReadOnlyList<IngredientVariantRevisionItem> Variants);
+
+public enum IngredientRevisionQueryStatus
+{
+    Found,
+    NotFound,
+    Forbidden,
+}
+
+public sealed record IngredientRevisionQueryResult(
+    IngredientRevisionQueryStatus Status,
+    IngredientRevisionDraftDetails? Revision = null);
+
 public enum IngredientRevisionMutationStatus
 {
     Saved,
@@ -31,6 +86,10 @@ public sealed record IngredientRevisionScope(IngredientScopeType ScopeType, Guid
 public interface IIngredientRevisionWorkflowStore
 {
     Task<IngredientRevisionScope?> GetScopeAsync(
+        Guid revisionId,
+        CancellationToken cancellationToken = default);
+
+    Task<IngredientRevisionDraftDetails?> GetAsync(
         Guid revisionId,
         CancellationToken cancellationToken = default);
 
@@ -55,6 +114,25 @@ public sealed class IngredientRevisionWorkflowService(
     IIngredientManagementAuthorization authorization,
     TimeProvider timeProvider)
 {
+    public async Task<IngredientRevisionQueryResult> GetAsync(
+        Guid revisionId,
+        Guid actorUserId,
+        CancellationToken cancellationToken = default)
+    {
+        Required(revisionId, nameof(revisionId));
+        Required(actorUserId, nameof(actorUserId));
+        IngredientRevisionScope? scope = await store.GetScopeAsync(revisionId, cancellationToken);
+        if (scope is null)
+            return new(IngredientRevisionQueryStatus.NotFound);
+        if (!await IsAuthorizedAsync(actorUserId, scope, cancellationToken))
+            return new(IngredientRevisionQueryStatus.Forbidden);
+
+        IngredientRevisionDraftDetails? revision = await store.GetAsync(revisionId, cancellationToken);
+        return revision is null
+            ? new(IngredientRevisionQueryStatus.NotFound)
+            : new(IngredientRevisionQueryStatus.Found, revision);
+    }
+
     public async Task<IngredientRevisionMutationResult> SaveDraftAsync(
         Guid revisionId,
         SaveIngredientRevisionDraftRequest request,
