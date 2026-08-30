@@ -11,6 +11,45 @@ namespace ScoutCampPlanner.CateringTests;
 public sealed class IngredientRevisionWorkflowPersistenceTests
 {
     [Fact]
+    public async Task Create_draft_persists_identity_scope_and_initial_revision()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Guid actorId = Guid.NewGuid();
+        Guid tenantId = Guid.NewGuid();
+        var references = await fixture.AddReferencesAsync();
+        var store = new IngredientRevisionWorkflowStore(fixture.Database);
+        IngredientRevisionDraftContent content = IngredientRevisionDraftContent.Create(
+            "  Haferflocken ",
+            references.CategoryId,
+            references.UnitId,
+            IngredientPropertyReviewState.Unreviewed,
+            IngredientPropertyReviewState.Unreviewed,
+            IngredientPropertyReviewState.Unreviewed);
+
+        IngredientRevisionMutationResult result = await store.CreateDraftAsync(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            new IngredientRevisionScope(IngredientScopeType.Tenant, tenantId),
+            content,
+            actorId,
+            DateTimeOffset.UtcNow,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(IngredientRevisionMutationStatus.Created, result.Status);
+        IngredientIdentityRecord identity = await fixture.Database.Set<IngredientIdentityRecord>()
+            .AsNoTracking().SingleAsync(TestContext.Current.CancellationToken);
+        IngredientRevisionRecord revision = await fixture.Database.Set<IngredientRevisionRecord>()
+            .AsNoTracking().SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal((int)IngredientScopeType.Tenant, identity.ScopeType);
+        Assert.Equal(tenantId, identity.ScopeId);
+        Assert.Equal(result.IngredientId, identity.Id);
+        Assert.Equal(result.RevisionId, revision.Id);
+        Assert.Equal("Haferflocken", revision.Name);
+        Assert.Equal(1, revision.RowVersion);
+        Assert.Equal((int)IngredientRevisionState.Draft, revision.State);
+    }
+
+    [Fact]
     public async Task Save_draft_updates_content_and_reports_stale_version()
     {
         await using var fixture = await DatabaseFixture.CreateAsync();
@@ -51,7 +90,7 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
         fixture.Database.AddRange(
             new IngredientAllergenDefinitionRecord
             {
-                Id = allergenId, Code = "MILK", Name = "Milch", IsEuMajorAllergen = true,
+                Id = allergenId, Code = "TEST_MILK", Name = "Test-Milch", IsEuMajorAllergen = true,
             },
             new IngredientRevisionAllergenRecord
             {
@@ -190,6 +229,20 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
             await Database.SaveChangesAsync(TestContext.Current.CancellationToken);
             Database.ChangeTracker.Clear();
             return new Seed(revisionId, category.Id, unit.Id, actorId);
+        }
+
+        public async Task<(Guid CategoryId, Guid UnitId)> AddReferencesAsync()
+        {
+            var unit = new MeasurementUnit(Guid.NewGuid(), "Gramm", "g", MeasurementDimension.Mass, 1m);
+            var category = new IngredientCategoryRecord
+            {
+                Id = Guid.NewGuid(), Code = "TEST_CATEGORY", Name = "Testkategorie",
+                NormalizedName = "TESTKATEGORIE",
+            };
+            Database.AddRange(unit, category);
+            await Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+            Database.ChangeTracker.Clear();
+            return (category.Id, unit.Id);
         }
 
         public async ValueTask DisposeAsync()

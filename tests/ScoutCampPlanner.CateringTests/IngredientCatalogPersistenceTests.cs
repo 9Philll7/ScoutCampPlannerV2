@@ -25,15 +25,15 @@ public sealed class IngredientCatalogPersistenceTests
         };
         var milk = new IngredientAllergenDefinitionRecord
         {
-            Id = Guid.NewGuid(), Code = "MILK", Name = "Milch", IsEuMajorAllergen = true,
+            Id = Guid.NewGuid(), Code = "TEST_MILK", Name = "Test-Milch", IsEuMajorAllergen = true,
         };
         var lactose = new IngredientIntoleranceDefinitionRecord
         {
-            Id = Guid.NewGuid(), Code = "LACTOSE", Name = "Laktose",
+            Id = Guid.NewGuid(), Code = "TEST_LACTOSE", Name = "Test-Laktose",
         };
         var dairy = new IngredientOriginPropertyRecord
         {
-            Id = Guid.NewGuid(), Code = "DAIRY", Name = "Milcherzeugnis", IsAnimalOrigin = true,
+            Id = Guid.NewGuid(), Code = "TEST_DAIRY", Name = "Test-Milcherzeugnis", IsAnimalOrigin = true,
         };
         var identity = new IngredientIdentityRecord
         {

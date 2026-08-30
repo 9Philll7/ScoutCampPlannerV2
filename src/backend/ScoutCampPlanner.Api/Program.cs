@@ -126,6 +126,7 @@ builder.Services.AddScoped<IIngredientManagementAuthorization>(services =>
 builder.Services.AddScoped<IngredientManagementService>();
 builder.Services.AddScoped<IIngredientRevisionWorkflowStore, IngredientRevisionWorkflowStore>();
 builder.Services.AddScoped<IngredientRevisionWorkflowService>();
+builder.Services.AddScoped<IIngredientEditorReferenceDataStore, IngredientEditorReferenceDataStore>();
 builder.Services.AddSingleton<IPasswordPolicy, PasswordPolicy>();
 builder.Services.AddSingleton<IPasswordVerifier>(
     _ => new Argon2idPasswordVerifier(Argon2idOperatingMode.Server));
@@ -613,6 +614,45 @@ app.MapGet("/api/ingredients/central", async (
         Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken);
     return result.IsAuthorized ? Results.Ok(result.Entries.Select(ToIngredientResponse)) : Results.Forbid();
 }).RequireAuthorization();
+app.MapGet("/api/ingredient-reference-data", async (
+    IIngredientEditorReferenceDataStore referenceData,
+    CancellationToken cancellationToken) =>
+    Results.Ok(await referenceData.GetAsync(cancellationToken)))
+    .RequireAuthorization();
+app.MapPost("/api/ingredients/central/revisions", async (
+    CreateIngredientRevisionDraftRequest request,
+    ClaimsPrincipal principal,
+    IngredientRevisionWorkflowService revisions,
+    CancellationToken cancellationToken) =>
+    ToIngredientRevisionCreationResult(await revisions.CreateCentralDraftAsync(
+        request,
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!),
+        cancellationToken)))
+    .RequireAuthorization();
+app.MapPost("/api/tenants/{tenantId:guid}/ingredient-revisions", async (
+    Guid tenantId,
+    CreateIngredientRevisionDraftRequest request,
+    ClaimsPrincipal principal,
+    IngredientRevisionWorkflowService revisions,
+    CancellationToken cancellationToken) =>
+    ToIngredientRevisionCreationResult(await revisions.CreateTenantDraftAsync(
+        tenantId,
+        request,
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!),
+        cancellationToken)))
+    .RequireAuthorization();
+app.MapPost("/api/camps/{campId:guid}/ingredient-revisions", async (
+    Guid campId,
+    CreateIngredientRevisionDraftRequest request,
+    ClaimsPrincipal principal,
+    IngredientRevisionWorkflowService revisions,
+    CancellationToken cancellationToken) =>
+    ToIngredientRevisionCreationResult(await revisions.CreateCampDraftAsync(
+        campId,
+        request,
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!),
+        cancellationToken)))
+    .RequireAuthorization();
 app.MapGet("/api/tenants/{tenantId:guid}/ingredients", async (
     Guid tenantId, ClaimsPrincipal principal, IngredientCatalogService ingredients,
     CancellationToken cancellationToken) =>
@@ -767,6 +807,19 @@ static IResult ToIngredientRevisionMutationResult(IngredientRevisionMutationResu
         _ => Results.ValidationProblem(new Dictionary<string, string[]>
         {
             ["ingredientRevision"] = ["Die Zutatenrevision enthält ungültige oder unvollständige Daten."],
+        }),
+    };
+
+static IResult ToIngredientRevisionCreationResult(IngredientRevisionMutationResult result) =>
+    result.Status switch
+    {
+        IngredientRevisionMutationStatus.Created => Results.Created(
+            $"/api/ingredient-revisions/{result.RevisionId}",
+            new { result.IngredientId, result.RevisionId, result.RowVersion }),
+        IngredientRevisionMutationStatus.Forbidden => Results.Forbid(),
+        _ => Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["ingredientRevision"] = ["Name, Kategorie oder Basiseinheit sind ungültig."],
         }),
     };
 

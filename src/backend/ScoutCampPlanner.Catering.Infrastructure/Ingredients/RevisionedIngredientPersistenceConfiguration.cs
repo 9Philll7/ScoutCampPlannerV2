@@ -53,6 +53,7 @@ internal static class RevisionedIngredientPersistenceConfiguration
             entity.Property(value => value.Name).HasMaxLength(150);
             entity.HasIndex(value => value.Code).IsUnique();
         });
+        IngredientMasterDataSeed.Configure(modelBuilder);
     }
 
     private static void ConfigureIdentityAndRevision(ModelBuilder modelBuilder)
@@ -191,4 +192,3 @@ internal static class RevisionedIngredientPersistenceConfiguration
         });
     }
 }
-

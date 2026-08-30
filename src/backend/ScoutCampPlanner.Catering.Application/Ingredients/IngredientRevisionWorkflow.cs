@@ -2,6 +2,11 @@ using ScoutCampPlanner.Catering.Domain;
 
 namespace ScoutCampPlanner.Catering.Application.Ingredients;
 
+public sealed record CreateIngredientRevisionDraftRequest(
+    string Name,
+    Guid CategoryId,
+    Guid BaseUnitId);
+
 public sealed record SaveIngredientRevisionDraftRequest(
     string Name,
     Guid CategoryId,
@@ -68,6 +73,7 @@ public sealed record IngredientRevisionQueryResult(
 
 public enum IngredientRevisionMutationStatus
 {
+    Created,
     Saved,
     Published,
     NotFound,
@@ -79,7 +85,9 @@ public enum IngredientRevisionMutationStatus
 
 public sealed record IngredientRevisionMutationResult(
     IngredientRevisionMutationStatus Status,
-    long? RowVersion = null);
+    long? RowVersion = null,
+    Guid? IngredientId = null,
+    Guid? RevisionId = null);
 
 public sealed record IngredientRevisionScope(IngredientScopeType ScopeType, Guid? ScopeId);
 
@@ -91,6 +99,15 @@ public interface IIngredientRevisionWorkflowStore
 
     Task<IngredientRevisionDraftDetails?> GetAsync(
         Guid revisionId,
+        CancellationToken cancellationToken = default);
+
+    Task<IngredientRevisionMutationResult> CreateDraftAsync(
+        Guid ingredientId,
+        Guid revisionId,
+        IngredientRevisionScope scope,
+        IngredientRevisionDraftContent content,
+        Guid actorUserId,
+        DateTimeOffset createdAtUtc,
         CancellationToken cancellationToken = default);
 
     Task<IngredientRevisionMutationResult> SaveDraftAsync(
@@ -114,6 +131,44 @@ public sealed class IngredientRevisionWorkflowService(
     IIngredientManagementAuthorization authorization,
     TimeProvider timeProvider)
 {
+    public Task<IngredientRevisionMutationResult> CreateCentralDraftAsync(
+        CreateIngredientRevisionDraftRequest request,
+        Guid actorUserId,
+        CancellationToken cancellationToken = default) =>
+        CreateDraftAsync(
+            new IngredientRevisionScope(IngredientScopeType.Central, null),
+            request,
+            actorUserId,
+            cancellationToken);
+
+    public Task<IngredientRevisionMutationResult> CreateTenantDraftAsync(
+        Guid tenantId,
+        CreateIngredientRevisionDraftRequest request,
+        Guid actorUserId,
+        CancellationToken cancellationToken = default)
+    {
+        Required(tenantId, nameof(tenantId));
+        return CreateDraftAsync(
+            new IngredientRevisionScope(IngredientScopeType.Tenant, tenantId),
+            request,
+            actorUserId,
+            cancellationToken);
+    }
+
+    public Task<IngredientRevisionMutationResult> CreateCampDraftAsync(
+        Guid campId,
+        CreateIngredientRevisionDraftRequest request,
+        Guid actorUserId,
+        CancellationToken cancellationToken = default)
+    {
+        Required(campId, nameof(campId));
+        return CreateDraftAsync(
+            new IngredientRevisionScope(IngredientScopeType.Camp, campId),
+            request,
+            actorUserId,
+            cancellationToken);
+    }
+
     public async Task<IngredientRevisionQueryResult> GetAsync(
         Guid revisionId,
         Guid actorUserId,
@@ -213,6 +268,43 @@ public sealed class IngredientRevisionWorkflowService(
                 authorization.CanManageCampAsync(actorUserId, scope.ScopeId.Value, cancellationToken),
             _ => Task.FromResult(false),
         };
+
+    private async Task<IngredientRevisionMutationResult> CreateDraftAsync(
+        IngredientRevisionScope scope,
+        CreateIngredientRevisionDraftRequest request,
+        Guid actorUserId,
+        CancellationToken cancellationToken)
+    {
+        Required(actorUserId, nameof(actorUserId));
+        ArgumentNullException.ThrowIfNull(request);
+        if (!await IsAuthorizedAsync(actorUserId, scope, cancellationToken))
+            return new(IngredientRevisionMutationStatus.Forbidden);
+
+        IngredientRevisionDraftContent content;
+        try
+        {
+            content = IngredientRevisionDraftContent.Create(
+                request.Name,
+                request.CategoryId,
+                request.BaseUnitId,
+                IngredientPropertyReviewState.Unreviewed,
+                IngredientPropertyReviewState.Unreviewed,
+                IngredientPropertyReviewState.Unreviewed);
+        }
+        catch (ArgumentException)
+        {
+            return new(IngredientRevisionMutationStatus.Invalid);
+        }
+
+        return await store.CreateDraftAsync(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            scope,
+            content,
+            actorUserId,
+            timeProvider.GetUtcNow(),
+            cancellationToken);
+    }
 
     private static Guid Required(Guid value, string parameterName) =>
         value == Guid.Empty ? throw new ArgumentException("ID is required.", parameterName) : value;

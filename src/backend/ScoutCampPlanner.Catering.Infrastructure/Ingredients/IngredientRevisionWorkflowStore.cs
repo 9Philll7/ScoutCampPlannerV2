@@ -122,6 +122,68 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
                 .ToArray());
     }
 
+    public async Task<IngredientRevisionMutationResult> CreateDraftAsync(
+        Guid ingredientId,
+        Guid revisionId,
+        IngredientRevisionScope scope,
+        IngredientRevisionDraftContent content,
+        Guid actorUserId,
+        DateTimeOffset createdAtUtc,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        if (ingredientId == Guid.Empty || revisionId == Guid.Empty || actorUserId == Guid.Empty ||
+            !IsValidScope(scope) ||
+            !await ReferencesExistAsync(content.CategoryId, content.BaseUnitId, cancellationToken))
+            return new(IngredientRevisionMutationStatus.Invalid);
+
+        await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
+        database.Add(new IngredientIdentityRecord
+        {
+            Id = ingredientId,
+            ScopeType = (int)scope.ScopeType,
+            ScopeId = scope.ScopeId,
+            Status = (int)IngredientIdentityStatus.Active,
+        });
+        database.Add(new IngredientRevisionRecord
+        {
+            Id = revisionId,
+            IngredientId = ingredientId,
+            RevisionNumber = 1,
+            State = (int)IngredientRevisionState.Draft,
+            Name = content.Name,
+            NormalizedName = content.NormalizedName,
+            CategoryId = content.CategoryId,
+            BaseUnitId = content.BaseUnitId,
+            AllergenReviewState = (int)content.AllergenReviewState,
+            IntoleranceReviewState = (int)content.IntoleranceReviewState,
+            OriginReviewState = (int)content.OriginReviewState,
+            RowVersion = 1,
+            CreatedAtUtc = createdAtUtc,
+            CreatedBy = actorUserId,
+            UpdatedAtUtc = createdAtUtc,
+            UpdatedBy = actorUserId,
+        });
+
+        try
+        {
+            await database.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            database.ChangeTracker.Clear();
+            return new(IngredientRevisionMutationStatus.Invalid);
+        }
+
+        return new(
+            IngredientRevisionMutationStatus.Created,
+            1,
+            ingredientId,
+            revisionId);
+    }
+
     public async Task<IngredientRevisionMutationResult> SaveDraftAsync(
         Guid revisionId,
         IngredientRevisionDraftContent content,
@@ -303,4 +365,10 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
 
     private static IngredientRevisionUnitConversionItem ConversionItem(Guid id, decimal factor, int precision) =>
         new(id, factor, (IngredientConversionPrecision)precision);
+
+    private static bool IsValidScope(IngredientRevisionScope scope) =>
+        scope.ScopeType == IngredientScopeType.Central
+            ? scope.ScopeId is null
+            : scope.ScopeType is IngredientScopeType.Tenant or IngredientScopeType.Camp &&
+              scope.ScopeId.HasValue && scope.ScopeId.Value != Guid.Empty;
 }

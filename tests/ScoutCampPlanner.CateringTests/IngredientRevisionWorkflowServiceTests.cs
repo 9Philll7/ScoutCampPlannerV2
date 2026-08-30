@@ -7,6 +7,27 @@ namespace ScoutCampPlanner.CateringTests;
 public sealed class IngredientRevisionWorkflowServiceTests
 {
     [Fact]
+    public async Task Create_central_draft_starts_with_unreviewed_property_groups()
+    {
+        var store = new FakeStore(null);
+        var service = new IngredientRevisionWorkflowService(
+            store,
+            new FakeAuthorization { CentralAllowed = true },
+            TimeProvider.System);
+
+        IngredientRevisionMutationResult result = await service.CreateCentralDraftAsync(
+            new CreateIngredientRevisionDraftRequest("Haferflocken", Guid.NewGuid(), Guid.NewGuid()),
+            Guid.NewGuid(),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(IngredientRevisionMutationStatus.Created, result.Status);
+        Assert.Equal(IngredientScopeType.Central, store.CreatedScope!.ScopeType);
+        Assert.Equal(IngredientPropertyReviewState.Unreviewed, store.CreatedContent!.AllergenReviewState);
+        Assert.Equal(IngredientPropertyReviewState.Unreviewed, store.CreatedContent.IntoleranceReviewState);
+        Assert.Equal(IngredientPropertyReviewState.Unreviewed, store.CreatedContent.OriginReviewState);
+    }
+
+    [Fact]
     public async Task Save_draft_normalizes_content_and_uses_scope_authorization()
     {
         Guid tenantId = Guid.NewGuid();
@@ -82,6 +103,8 @@ public sealed class IngredientRevisionWorkflowServiceTests
         public IngredientRevisionDraftContent? SavedContent { get; private set; }
         public long ExpectedRowVersion { get; private set; }
         public bool PublishCalled { get; private set; }
+        public IngredientRevisionScope? CreatedScope { get; private set; }
+        public IngredientRevisionDraftContent? CreatedContent { get; private set; }
 
         public Task<IngredientRevisionScope?> GetScopeAsync(Guid revisionId, CancellationToken cancellationToken = default) =>
             Task.FromResult(scope);
@@ -90,6 +113,21 @@ public sealed class IngredientRevisionWorkflowServiceTests
             Guid revisionId,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<IngredientRevisionDraftDetails?>(null);
+
+        public Task<IngredientRevisionMutationResult> CreateDraftAsync(
+            Guid ingredientId,
+            Guid revisionId,
+            IngredientRevisionScope revisionScope,
+            IngredientRevisionDraftContent content,
+            Guid actorUserId,
+            DateTimeOffset createdAtUtc,
+            CancellationToken cancellationToken = default)
+        {
+            CreatedScope = revisionScope;
+            CreatedContent = content;
+            return Task.FromResult(new IngredientRevisionMutationResult(
+                IngredientRevisionMutationStatus.Created, 1, ingredientId, revisionId));
+        }
 
         public Task<IngredientRevisionMutationResult> SaveDraftAsync(
             Guid revisionId,

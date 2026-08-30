@@ -212,6 +212,9 @@ Der transaktionale Revisionsworkflow ist umgesetzt:
   Umrechnungen, Varianten und Overrides
 - authentifizierte REST-Endpunkte zum Laden, Speichern und Veröffentlichen
 - HTTP-409-Antworten mit aktuellem Versionsstand bei Konflikten
+- transaktionales Anlegen neuer zentraler, Mandanten- und Lagerzutaten
+  als Revision-1-Draft mit ungeprüften Eigenschaftsgruppen
+- REST-Endpunkte zum Anlegen der drei Scope-Varianten
 
 `docs/architecture/Basiszutaten_Schema.sql` ist nur ein PostgreSQL-Referenzschema. Es darf nicht direkt als Produktmigration übernommen werden.
 
@@ -240,15 +243,33 @@ Die Upgrade- und Datenerhaltungstests sind für SQLite und PostgreSQL erfolgreic
 
 Erst nach erfolgreicher Datenübernahme auf beiden Providern und Umstellung aller Leser dürfen alte veränderliche Zutatenfelder und direkte Zuordnungstabellen entfernt werden.
 
-### 7. Stammdaten-Seeding
+### 7. Stammdaten-Seeding – Eigenschaftskataloge umgesetzt
 
-Danach providerunabhängige Seeds für folgende Kataloge erstellen:
+Provideridentische Seeds sind umgesetzt für:
 
 - 14 EU-Hauptallergene
 - definierte Untertypen für glutenhaltiges Getreide und Schalenfrüchte
 - initiale Unverträglichkeitsauslöser
 - nichttierische, tierische und unbekannte Herkunftsmerkmale
-- notwendige Einheiten und Dimensionen
+- stabile IDs und Codes in PostgreSQL, SQLite und neuen `EnsureCreated`-Testdatenbanken
+
+Die 14 EU-Hauptallergene, die dokumentierten Getreide- und
+Schalenfrucht-Untertypen, 10 Unverträglichkeitsauslöser sowie 19
+Herkunftsmerkmale werden durch Migrationen angelegt. Die bereits von der
+Kompatibilitätsmigration erzeugte `UNKNOWN_ORIGIN`-Identität wird dabei
+weiterverwendet.
+
+Zusätzlich stellt `/api/ingredient-reference-data` die aktiven Kataloge,
+vorhandenen Kategorien und Maßeinheiten für den Editor bereit.
+
+Noch offen:
+
+- fachliche Startliste für Zutatenkategorien; die Dokumentation definiert
+  bisher nur die vorhandene Legacy-Auffangkategorie
+- produktive Startliste für Maßeinheiten und Dimensionen
+- fachliche Festlegung, welche Unverträglichkeitsauslöser als
+  mengenabhängig markiert werden; bis dahin bleibt der dokumentierte
+  Schema-Standard `false`
 
 Seeds benötigen stabile, zwischen PostgreSQL, SQLite und Lagerpaketen identische IDs und Codes.
 

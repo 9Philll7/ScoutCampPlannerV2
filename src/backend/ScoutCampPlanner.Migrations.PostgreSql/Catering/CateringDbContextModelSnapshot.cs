@@ -452,6 +452,255 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                     b.HasIndex("ParentAllergenId");
 
                     b.ToTable("IngredientAllergenDefinitions", "catering");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000001"),
+                            Code = "GLUTEN_CEREALS",
+                            IsEuMajorAllergen = true,
+                            Name = "Glutenhaltiges Getreide",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000002"),
+                            Code = "CRUSTACEANS",
+                            IsEuMajorAllergen = true,
+                            Name = "Krebstiere",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000003"),
+                            Code = "EGGS",
+                            IsEuMajorAllergen = true,
+                            Name = "Eier",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000004"),
+                            Code = "FISH",
+                            IsEuMajorAllergen = true,
+                            Name = "Fisch",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000005"),
+                            Code = "PEANUTS",
+                            IsEuMajorAllergen = true,
+                            Name = "Erdnüsse",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000006"),
+                            Code = "SOYBEANS",
+                            IsEuMajorAllergen = true,
+                            Name = "Sojabohnen",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000007"),
+                            Code = "MILK",
+                            IsEuMajorAllergen = true,
+                            Name = "Milch",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000008"),
+                            Code = "TREE_NUTS",
+                            IsEuMajorAllergen = true,
+                            Name = "Schalenfrüchte",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000009"),
+                            Code = "CELERY",
+                            IsEuMajorAllergen = true,
+                            Name = "Sellerie",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000010"),
+                            Code = "MUSTARD",
+                            IsEuMajorAllergen = true,
+                            Name = "Senf",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000011"),
+                            Code = "SESAME",
+                            IsEuMajorAllergen = true,
+                            Name = "Sesamsamen",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000012"),
+                            Code = "SULPHUR_DIOXIDE_AND_SULPHITES",
+                            IsEuMajorAllergen = true,
+                            Name = "Schwefeldioxid und Sulfite",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000013"),
+                            Code = "LUPIN",
+                            IsEuMajorAllergen = true,
+                            Name = "Lupinen",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000014"),
+                            Code = "MOLLUSCS",
+                            IsEuMajorAllergen = true,
+                            Name = "Weichtiere",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000015"),
+                            Code = "WHEAT",
+                            IsEuMajorAllergen = false,
+                            Name = "Weizen",
+                            ParentAllergenId = new Guid("21111111-1111-1111-1111-000000000001"),
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000016"),
+                            Code = "RYE",
+                            IsEuMajorAllergen = false,
+                            Name = "Roggen",
+                            ParentAllergenId = new Guid("21111111-1111-1111-1111-000000000001"),
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000017"),
+                            Code = "BARLEY",
+                            IsEuMajorAllergen = false,
+                            Name = "Gerste",
+                            ParentAllergenId = new Guid("21111111-1111-1111-1111-000000000001"),
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000018"),
+                            Code = "OATS",
+                            IsEuMajorAllergen = false,
+                            Name = "Hafer",
+                            ParentAllergenId = new Guid("21111111-1111-1111-1111-000000000001"),
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000019"),
+                            Code = "SPELT",
+                            IsEuMajorAllergen = false,
+                            Name = "Dinkel",
+                            ParentAllergenId = new Guid("21111111-1111-1111-1111-000000000001"),
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000020"),
+                            Code = "KHORASAN_WHEAT",
+                            IsEuMajorAllergen = false,
+                            Name = "Khorasan-Weizen",
+                            ParentAllergenId = new Guid("21111111-1111-1111-1111-000000000001"),
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000021"),
+                            Code = "HYBRID_STRAINS",
+                            IsEuMajorAllergen = false,
+                            Name = "Hybridstämme",
+                            ParentAllergenId = new Guid("21111111-1111-1111-1111-000000000001"),
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000022"),
+                            Code = "ALMONDS",
+                            IsEuMajorAllergen = false,
+                            Name = "Mandeln",
+                            ParentAllergenId = new Guid("21111111-1111-1111-1111-000000000008"),
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000023"),
+                            Code = "HAZELNUTS",
+                            IsEuMajorAllergen = false,
+                            Name = "Haselnüsse",
+                            ParentAllergenId = new Guid("21111111-1111-1111-1111-000000000008"),
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000024"),
+                            Code = "WALNUTS",
+                            IsEuMajorAllergen = false,
+                            Name = "Walnüsse",
+                            ParentAllergenId = new Guid("21111111-1111-1111-1111-000000000008"),
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000025"),
+                            Code = "CASHEWS",
+                            IsEuMajorAllergen = false,
+                            Name = "Cashewkerne",
+                            ParentAllergenId = new Guid("21111111-1111-1111-1111-000000000008"),
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000026"),
+                            Code = "PECANS",
+                            IsEuMajorAllergen = false,
+                            Name = "Pekannüsse",
+                            ParentAllergenId = new Guid("21111111-1111-1111-1111-000000000008"),
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000027"),
+                            Code = "BRAZIL_NUTS",
+                            IsEuMajorAllergen = false,
+                            Name = "Paranüsse",
+                            ParentAllergenId = new Guid("21111111-1111-1111-1111-000000000008"),
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000028"),
+                            Code = "PISTACHIOS",
+                            IsEuMajorAllergen = false,
+                            Name = "Pistazien",
+                            ParentAllergenId = new Guid("21111111-1111-1111-1111-000000000008"),
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("21111111-1111-1111-1111-000000000029"),
+                            Code = "MACADAMIA_NUTS",
+                            IsEuMajorAllergen = false,
+                            Name = "Macadamianüsse",
+                            ParentAllergenId = new Guid("21111111-1111-1111-1111-000000000008"),
+                            Status = 0
+                        });
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientCategoryRecord", b =>
@@ -562,6 +811,88 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                         .IsUnique();
 
                     b.ToTable("IngredientIntoleranceDefinitions", "catering");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("31111111-1111-1111-1111-000000000001"),
+                            Code = "LACTOSE",
+                            IsQuantityDependent = false,
+                            Name = "Laktose",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("31111111-1111-1111-1111-000000000002"),
+                            Code = "FRUCTOSE",
+                            IsQuantityDependent = false,
+                            Name = "Fruktose",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("31111111-1111-1111-1111-000000000003"),
+                            Code = "SORBITOL",
+                            IsQuantityDependent = false,
+                            Name = "Sorbit",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("31111111-1111-1111-1111-000000000004"),
+                            Code = "HISTAMINE",
+                            IsQuantityDependent = false,
+                            Name = "Histamin",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("31111111-1111-1111-1111-000000000005"),
+                            Code = "GLUTEN",
+                            IsQuantityDependent = false,
+                            Name = "Gluten",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("31111111-1111-1111-1111-000000000006"),
+                            Code = "FRUCTANS",
+                            IsQuantityDependent = false,
+                            Name = "Fruktane",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("31111111-1111-1111-1111-000000000007"),
+                            Code = "GALACTANS",
+                            IsQuantityDependent = false,
+                            Name = "Galaktane",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("31111111-1111-1111-1111-000000000008"),
+                            Code = "MANNITOL",
+                            IsQuantityDependent = false,
+                            Name = "Mannit",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("31111111-1111-1111-1111-000000000009"),
+                            Code = "XYLITOL",
+                            IsQuantityDependent = false,
+                            Name = "Xylit",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("31111111-1111-1111-1111-000000000010"),
+                            Code = "OTHER_POLYOLS",
+                            IsQuantityDependent = false,
+                            Name = "Andere Polyole",
+                            Status = 0
+                        });
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientOriginPropertyRecord", b =>
@@ -592,6 +923,160 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                         .IsUnique();
 
                     b.ToTable("IngredientOriginProperties", "catering");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("41111111-1111-1111-1111-000000000001"),
+                            Code = "PLANT",
+                            IsAnimalOrigin = false,
+                            Name = "Pflanzlich",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("41111111-1111-1111-1111-000000000002"),
+                            Code = "FUNGI",
+                            IsAnimalOrigin = false,
+                            Name = "Pilze",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("41111111-1111-1111-1111-000000000003"),
+                            Code = "MINERAL",
+                            IsAnimalOrigin = false,
+                            Name = "Mineralisch",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("41111111-1111-1111-1111-000000000004"),
+                            Code = "SYNTHETIC",
+                            IsAnimalOrigin = false,
+                            Name = "Synthetisch",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("41111111-1111-1111-1111-000000000005"),
+                            Code = "MICROBIAL",
+                            IsAnimalOrigin = false,
+                            Name = "Mikrobiell",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("41111111-1111-1111-1111-000000000006"),
+                            Code = "MEAT",
+                            IsAnimalOrigin = true,
+                            Name = "Fleisch",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("41111111-1111-1111-1111-000000000007"),
+                            Code = "POULTRY",
+                            IsAnimalOrigin = true,
+                            Name = "Geflügel",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("41111111-1111-1111-1111-000000000008"),
+                            Code = "FISH",
+                            IsAnimalOrigin = true,
+                            Name = "Fisch",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("41111111-1111-1111-1111-000000000009"),
+                            Code = "CRUSTACEAN",
+                            IsAnimalOrigin = true,
+                            Name = "Krebstier",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("41111111-1111-1111-1111-000000000010"),
+                            Code = "MOLLUSC",
+                            IsAnimalOrigin = true,
+                            Name = "Weichtier",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("41111111-1111-1111-1111-000000000011"),
+                            Code = "DAIRY",
+                            IsAnimalOrigin = true,
+                            Name = "Milcherzeugnis",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("41111111-1111-1111-1111-000000000012"),
+                            Code = "EGG",
+                            IsAnimalOrigin = true,
+                            Name = "Ei",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("41111111-1111-1111-1111-000000000013"),
+                            Code = "HONEY",
+                            IsAnimalOrigin = true,
+                            Name = "Honig",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("41111111-1111-1111-1111-000000000014"),
+                            Code = "INSECT",
+                            IsAnimalOrigin = true,
+                            Name = "Insekt",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("41111111-1111-1111-1111-000000000015"),
+                            Code = "ANIMAL_FAT",
+                            IsAnimalOrigin = true,
+                            Name = "Tierisches Fett",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("41111111-1111-1111-1111-000000000016"),
+                            Code = "GELATIN",
+                            IsAnimalOrigin = true,
+                            Name = "Gelatine",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("41111111-1111-1111-1111-000000000017"),
+                            Code = "ANIMAL_RENNET",
+                            IsAnimalOrigin = true,
+                            Name = "Tierisches Lab",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("41111111-1111-1111-1111-000000000018"),
+                            Code = "OTHER_ANIMAL_DERIVED",
+                            IsAnimalOrigin = true,
+                            Name = "Sonstiger tierischer Ursprung",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("11111111-1111-1111-1111-000000000003"),
+                            Code = "UNKNOWN_ORIGIN",
+                            IsAnimalOrigin = false,
+                            Name = "Ungeklärter Ursprung",
+                            Status = 0
+                        });
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionAllergenRecord", b =>

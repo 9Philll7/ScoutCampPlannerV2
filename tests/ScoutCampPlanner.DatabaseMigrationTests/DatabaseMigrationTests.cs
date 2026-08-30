@@ -47,7 +47,7 @@ public sealed class DatabaseMigrationTests
 
         Assert.Equal(7, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_platform"));
         Assert.Equal(8, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_camp"));
-        Assert.Equal(12, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_catering"));
+        Assert.Equal(13, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_catering"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_Camps_TenantId_Name'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_Camps_TenantId_NormalizedName_StartDate_EndDate'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'StructureNodes'"));
@@ -99,7 +99,7 @@ public sealed class DatabaseMigrationTests
 
         Assert.Equal(7, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM platform.\"__EFMigrationsHistory\""));
         Assert.Equal(8, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM camp.\"__EFMigrationsHistory\""));
-        Assert.Equal(12, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM catering.\"__EFMigrationsHistory\""));
+        Assert.Equal(13, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM catering.\"__EFMigrationsHistory\""));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'camp' AND indexname = 'IX_Camps_TenantId_Name'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'camp' AND indexname = 'IX_Camps_TenantId_NormalizedName_StartDate_EndDate'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'camp' AND table_name = 'StructureNodes'"));
@@ -272,6 +272,14 @@ public sealed class DatabaseMigrationTests
             $"SELECT COUNT(*) FROM {prefix}\"IngredientRevisionAllergens\" WHERE LOWER(CAST(\"IngredientRevisionId\" AS TEXT)) = LOWER('{parameter}')"));
         Assert.Equal(1, await ScalarAsync<long>(connection,
             $"SELECT COUNT(*) FROM {prefix}\"IngredientRevisionIntolerances\" WHERE LOWER(CAST(\"IngredientRevisionId\" AS TEXT)) = LOWER('{parameter}')"));
+        Assert.Equal(29, await ScalarAsync<long>(connection,
+            $"SELECT COUNT(*) FROM {prefix}\"IngredientAllergenDefinitions\" WHERE \"Code\" NOT LIKE 'LEGACY_%'"));
+        Assert.Equal(10, await ScalarAsync<long>(connection,
+            $"SELECT COUNT(*) FROM {prefix}\"IngredientIntoleranceDefinitions\" WHERE \"Code\" NOT LIKE 'LEGACY_%'"));
+        Assert.Equal(19, await ScalarAsync<long>(connection,
+            $"SELECT COUNT(*) FROM {prefix}\"IngredientOriginProperties\""));
+        Assert.Equal(14, await ScalarAsync<long>(connection,
+            $"SELECT COUNT(*) FROM {prefix}\"IngredientAllergenDefinitions\" WHERE \"IsEuMajorAllergen\" = {(postgreSql ? "TRUE" : "1")}"));
     }
 
     private static async Task ResetPostgreSqlSchemasAsync(NpgsqlConnection connection)
