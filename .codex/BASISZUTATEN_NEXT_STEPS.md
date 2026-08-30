@@ -87,23 +87,27 @@ Das dritte Domain-Inkrement enthält:
 - Vererbung von Allergen-Untertypen auf ihre Obergruppe
 - sichere Behandlung ungeprüfter und unbekannter Angaben
 - Tests für Milch/Laktose, tierische Herkunft, unbekannte Herkunft, Glutenhierarchie und `MayContain`
+- `IngredientRevisionPublicationValidator`
+- verpflichtenden Review aller drei Eigenschaftsgruppen vor Publish
+- Prüfung hierarchischer Allergenwidersprüche für Basiswerte und Varianten
+- Publish bleibt bei Validierungsfehlern vollständig im Draft-Zustand
 
 Letzter geprüfter Stand dieses Inkrements:
 
 - Catering-Build erfolgreich, keine Warnungen oder Fehler
-- 95 Catering-Tests bestanden
+- 100 Catering-Tests bestanden
 
 Empfohlene Commit-Message:
 
 ```text
-feat: Eignungsprüfung für Basiszutaten ergänzen
+feat: Eignungsprüfung und Publish-Validierung für Basiszutaten ergänzen
 ```
 
 ## Nächste Arbeitsschritte
 
 ### 1. Fachlichen Auswertungsservice implementieren – umgesetzt
 
-Der providerunabhängige Domain-Service ist im dritten Domain-Inkrement umgesetzt. Vor dem Commit noch Architekturtests und `git diff --check` ausführen.
+Der providerunabhängige Domain-Service ist im dritten Domain-Inkrement umgesetzt.
 
 Erforderliche Resultate:
 
@@ -131,9 +135,9 @@ Vorher die bestehenden Katalogklassen prüfen. Die aktuellen Typen `Allergen`, `
 
 Notwendige Tests entsprechen mindestens den Punkten 17 bis 23 aus `.codex/BASISZUTATEN_IMPLEMENTIERUNG.md`.
 
-### 2. Publish-Validierung ergänzen
+### 2. Publish-Validierung ergänzen – umgesetzt
 
-Publish muss anschließend zusätzlich verhindern:
+Publish verhindert nun:
 
 - widersprüchliche Eltern-/Kindzustände bei Allergenen
 - doppelte `variant_key`-Werte
@@ -141,7 +145,7 @@ Publish muss anschließend zusätzlich verhindern:
 - Varianten, die nicht zur Revision gehören
 - Änderungen an einer bereits veröffentlichten Revision
 
-Reviewstatus für Allergene, Unverträglichkeiten und Herkunft berücksichtigen. Die konkrete Mindestanforderung für Publish aus den Domainregeln ableiten und mit Tests absichern.
+Alle drei Eigenschaftsgruppen müssen vor Publish als `Reviewed` markiert sein. Die Domain-Tests decken ungeprüfte Revisionen sowie Widersprüche der Basiswerte und effektiven Variantenwerte ab.
 
 ### 3. Zentrale Updates und Drei-Wege-Merge
 

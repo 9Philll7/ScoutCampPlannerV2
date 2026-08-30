@@ -128,13 +128,19 @@ public sealed class IngredientIdentity
         return draft;
     }
 
-    public void PublishDraft(Guid draftId, Guid publishedBy, DateTimeOffset publishedAt)
+    public void PublishDraft(
+        Guid draftId,
+        Guid publishedBy,
+        DateTimeOffset publishedAt,
+        IngredientRevisionPublicationValidator validator)
     {
         EnsureActive();
+        ArgumentNullException.ThrowIfNull(validator);
         IngredientRevision draft = revisions.SingleOrDefault(value => value.Id == draftId)
             ?? throw new ArgumentException("The draft does not belong to this ingredient.", nameof(draftId));
         if (draft.State != IngredientRevisionState.Draft)
             throw new InvalidOperationException("Only a draft can be published.");
+        validator.Validate(draft);
         draft.Publish(publishedBy, publishedAt);
         CurrentPublishedRevisionId = draft.Id;
     }

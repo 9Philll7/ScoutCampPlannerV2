@@ -5,6 +5,7 @@ namespace ScoutCampPlanner.CateringTests;
 
 public sealed class IngredientRevisionTests
 {
+    private static readonly IngredientRevisionPublicationValidator Validator = new([]);
     private static readonly Guid CategoryId = Guid.NewGuid();
     private static readonly Guid UnitId = Guid.NewGuid();
     private static readonly Guid UserId = Guid.NewGuid();
@@ -17,7 +18,8 @@ public sealed class IngredientRevisionTests
         IngredientRevision draft = ingredient.CreateDraft(
             Guid.NewGuid(), " Butter ", CategoryId, UnitId, UserId, Now);
 
-        ingredient.PublishDraft(draft.Id, UserId, Now.AddMinutes(1));
+        Review(draft);
+        ingredient.PublishDraft(draft.Id, UserId, Now.AddMinutes(1), Validator);
 
         Assert.Equal(IngredientRevisionState.Published, draft.State);
         Assert.Equal(draft.Id, ingredient.CurrentPublishedRevisionId);
@@ -94,7 +96,7 @@ public sealed class IngredientRevisionTests
             Guid.NewGuid(), "Butter", CategoryId, UnitId, UserId, Now);
         ingredient.Archive();
 
-        Assert.Throws<InvalidOperationException>(() => ingredient.PublishDraft(draft.Id, UserId, Now));
+        Assert.Throws<InvalidOperationException>(() => ingredient.PublishDraft(draft.Id, UserId, Now, Validator));
         Assert.Throws<InvalidOperationException>(() => ingredient.CreateDraft(
             Guid.NewGuid(), "Butter", CategoryId, UnitId, UserId, Now));
     }
@@ -104,7 +106,15 @@ public sealed class IngredientRevisionTests
         var ingredient = IngredientIdentity.CreateCentral(Guid.NewGuid());
         revision = ingredient.CreateDraft(
             Guid.NewGuid(), "Butter", CategoryId, UnitId, UserId, Now);
-        ingredient.PublishDraft(revision.Id, UserId, Now.AddMinutes(1));
+        Review(revision);
+        ingredient.PublishDraft(revision.Id, UserId, Now.AddMinutes(1), Validator);
         return ingredient;
     }
+
+    private static void Review(IngredientRevision revision) => revision.SetReviewStates(
+        IngredientPropertyReviewState.Reviewed,
+        IngredientPropertyReviewState.Reviewed,
+        IngredientPropertyReviewState.Reviewed,
+        UserId,
+        Now);
 }

@@ -5,6 +5,7 @@ namespace ScoutCampPlanner.CateringTests;
 
 public sealed class IngredientPropertyTests
 {
+    private static readonly IngredientRevisionPublicationValidator Validator = new([]);
     private static readonly Guid CategoryId = Guid.NewGuid();
     private static readonly Guid UnitId = Guid.NewGuid();
     private static readonly Guid UserId = Guid.NewGuid();
@@ -83,7 +84,8 @@ public sealed class IngredientPropertyTests
         Guid milk = Guid.NewGuid();
         published.SetAllergen(Value(milk, IngredientPropertyState.Contains), UserId, Now);
         published.AddVariant(Guid.NewGuid(), "lactose_free", "Laktosefrei", UserId, Now);
-        ingredient.PublishDraft(published.Id, UserId, Now);
+        Review(published);
+        ingredient.PublishDraft(published.Id, UserId, Now, Validator);
 
         IngredientRevision next = ingredient.CreateDraftFromPublished(
             Guid.NewGuid(), UserId, Now.AddDays(1));
@@ -100,7 +102,8 @@ public sealed class IngredientPropertyTests
             Guid.NewGuid(), "Butter", CategoryId, UnitId, UserId, Now);
         IngredientVariantRevision variant = revision.AddVariant(
             Guid.NewGuid(), "lactose_free", "Laktosefrei", UserId, Now);
-        ingredient.PublishDraft(revision.Id, UserId, Now);
+        Review(revision);
+        ingredient.PublishDraft(revision.Id, UserId, Now, Validator);
 
         Assert.Throws<InvalidOperationException>(() => revision.SetAllergen(
             Value(Guid.NewGuid(), IngredientPropertyState.Contains), UserId, Now));
@@ -119,4 +122,11 @@ public sealed class IngredientPropertyTests
 
     private static IngredientPropertyValue Value(Guid id, IngredientPropertyState state) =>
         new(id, state, IngredientPropertySource.ManuallyVerified);
+
+    private static void Review(IngredientRevision revision) => revision.SetReviewStates(
+        IngredientPropertyReviewState.Reviewed,
+        IngredientPropertyReviewState.Reviewed,
+        IngredientPropertyReviewState.Reviewed,
+        UserId,
+        Now);
 }
