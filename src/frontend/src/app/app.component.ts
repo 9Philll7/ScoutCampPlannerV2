@@ -16,6 +16,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { concatMap, forkJoin } from 'rxjs';
 import { AuthenticationApiService, AuthenticatedUser } from './features/authentication/authentication-api.service';
 import { CampAdministratorOption, CampApiService, CampMeal, CampMealType, CampPlanningSummary, CampStageFoodFactor, CampSummary, IngredientCatalogEntry, IngredientConflictType, IngredientScope, MeasurementDimension, ParticipantEstimate, StructureConfiguration, StructureNodeSummary, TenantOption, TenantStageFoodFactor, WeightedStageTotal } from './features/camp/camp-api.service';
+import { IngredientRevisionEditorComponent } from './features/ingredients/ingredient-revision-editor.component';
 import { SetupApiService } from './features/setup/setup-api.service';
 import { ActionIconComponent } from './shared/action-icon.component';
 
@@ -28,7 +29,7 @@ type CampSection = 'general' | 'structure' | 'catering';
   standalone: true,
   imports: [FormsModule, MatButtonModule, MatButtonToggleModule, MatCardModule, MatCheckboxModule, MatFormFieldModule, MatInputModule,
     MatProgressSpinnerModule, MatSelectModule, MatToolbarModule, MatTooltipModule, MatDatepickerModule,
-    ActionIconComponent],
+    ActionIconComponent, IngredientRevisionEditorComponent],
   providers: [provideNativeDateAdapter(), { provide: MAT_DATE_LOCALE, useValue: 'de-AT' }],
   template: `
     <mat-toolbar color="primary" class="app-toolbar">
@@ -606,35 +607,15 @@ type CampSection = 'general' | 'structure' | 'catering';
                       } @else { <p>Noch keine Verpflegungseinheiten vorhanden.</p> }
                     </section>
                     <section class="settings-section">
-                      <div class="section-heading"><div><p class="eyebrow">Zutatenkatalog</p><h3>Verfügbare Zutaten</h3></div>
-                        <div class="section-actions"><span class="catalog-count">{{ filteredIngredients().length }} von {{ ingredients().length }}</span>
-                          @if (camp.canEdit && !camp.isFrozen) {
-                            <button matButton type="button" (click)="ingredientEditorOpen.set(!ingredientEditorOpen())">
-                              <scp-action-icon name="add"/>Lagerzutat</button>
-                          }
-                        </div>
+                      <div class="section-heading"><div><p class="eyebrow">Zutatenverwaltung</p><h3>Eigene Lagerzutaten</h3></div></div>
+                      <p class="context-info">Lagerzutaten werden zuerst als Entwurf angelegt und nach bewusster Prüfung veröffentlicht.</p>
+                      <scp-ingredient-revision-editor [campId]="camp.id" [disabled]="!camp.canEdit || camp.isFrozen"/>
+                    </section>
+                    <section class="settings-section">
+                      <div class="section-heading"><div><p class="eyebrow">Bestehender Zutatenkatalog</p><h3>Verfügbare Zutaten</h3></div>
+                        <span class="catalog-count">{{ filteredIngredients().length }} von {{ ingredients().length }}</span>
                       </div>
-                      <p class="context-info">Hier erscheinen zentrale Zutaten sowie Zutaten deiner Organisation und dieses Lagers.</p>
-                      @if (ingredientEditorOpen()) {
-                        <form class="ingredient-editor" (ngSubmit)="createCampIngredient(camp)">
-                          <mat-form-field appearance="outline"><mat-label>Name</mat-label>
-                            <input matInput name="newIngredientName" [(ngModel)]="newIngredientName" maxlength="200" required>
-                          </mat-form-field>
-                          <mat-form-field appearance="outline"><mat-label>Herkunft oder Hinweis</mat-label>
-                            <textarea matInput name="newIngredientOrigin" [(ngModel)]="newIngredientOrigin" maxlength="2000" rows="2"></textarea>
-                          </mat-form-field>
-                          <mat-form-field appearance="outline"><mat-label>Varianten</mat-label>
-                            <input matInput name="newIngredientVariants" [(ngModel)]="newIngredientVariants"
-                              placeholder="Kommagetrennt, z. B. Bio, Vollkorn">
-                            <mat-hint>Varianten gelten als 1:1 austauschbar.</mat-hint>
-                          </mat-form-field>
-                          <div class="section-actions">
-                            <button matButton type="button" (click)="closeIngredientEditor()">Abbrechen</button>
-                            <button matButton="filled" type="submit" [disabled]="submitting() || !newIngredientName.trim()">
-                              <scp-action-icon name="save"/>Zutat anlegen</button>
-                          </div>
-                        </form>
-                      }
+                      <p class="context-info">Hier erscheinen die bisher verfügbaren zentralen Zutaten sowie Zutaten deiner Organisation und dieses Lagers.</p>
                       <mat-form-field appearance="outline" class="catalog-search"><mat-label>Zutaten durchsuchen</mat-label>
                         <input matInput [ngModel]="ingredientSearch()" (ngModelChange)="ingredientSearch.set($event)"
                           name="ingredientSearch" autocomplete="off">
@@ -761,10 +742,6 @@ export class AppComponent {
   readonly ingredients = signal<IngredientCatalogEntry[]>([]);
   readonly ingredientsLoading = signal(false);
   readonly ingredientSearch = signal('');
-  readonly ingredientEditorOpen = signal(false);
-  newIngredientName = '';
-  newIngredientOrigin = '';
-  newIngredientVariants = '';
   readonly filteredIngredients = computed(() => {
     const search = this.ingredientSearch().trim().toLocaleLowerCase('de');
     if (!search) return this.ingredients();
@@ -920,7 +897,6 @@ export class AppComponent {
     this.creatingStructureParent.set(null); this.planningDetailsVisible.set(false);
     if (this.structureCampId()) this.structureCampId.set(null);
     this.ingredients.set([]); this.ingredientSearch.set('');
-    this.closeIngredientEditor();
     this.error.set(null);
     this.notice.set(null);
   }
@@ -1294,29 +1270,6 @@ export class AppComponent {
       error: () => { this.ingredients.set([]); this.ingredientsLoading.set(false);
         this.error.set('Der Zutatenkatalog konnte nicht geladen werden.'); }
     });
-  }
-
-  createCampIngredient(camp: CampSummary) {
-    if (this.submitting() || !this.newIngredientName.trim()) return;
-    const variants = this.newIngredientVariants.split(',').map(value => value.trim()).filter(Boolean);
-    this.submitting.set(true); this.error.set(null); this.notice.set(null);
-    this.campApi.createCampIngredient(camp.id, {
-      name: this.newIngredientName.trim(),
-      originInformation: this.newIngredientOrigin.trim() || null,
-      variants
-    }).subscribe({
-      next: () => { this.submitting.set(false); this.closeIngredientEditor();
-        this.notice.set('Die Lagerzutat wurde angelegt.'); this.loadIngredients(camp.id); },
-      error: (response: HttpErrorResponse) => { this.submitting.set(false);
-        this.error.set(response.status === 403 ? 'Du darfst keine Lagerzutaten anlegen.' :
-          response.status === 409 ? 'Eine Lagerzutat mit diesem Namen existiert bereits.' :
-          'Die Lagerzutat konnte nicht angelegt werden.'); }
-    });
-  }
-
-  closeIngredientEditor() {
-    this.ingredientEditorOpen.set(false);
-    this.newIngredientName = ''; this.newIngredientOrigin = ''; this.newIngredientVariants = '';
   }
 
   ingredientScopeLabel(scope: IngredientScope) {

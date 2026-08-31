@@ -122,6 +122,46 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
                 .ToArray());
     }
 
+    public async Task<IReadOnlyList<IngredientRevisionSummary>> ListAsync(
+        IngredientRevisionScope scope,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsValidScope(scope))
+            return [];
+
+        var candidates = await (
+            from identity in database.Set<IngredientIdentityRecord>().AsNoTracking()
+            join revision in database.Set<IngredientRevisionRecord>().AsNoTracking()
+                on identity.Id equals revision.IngredientId
+            where identity.ScopeType == (int)scope.ScopeType &&
+                  identity.ScopeId == scope.ScopeId &&
+                  identity.Status == (int)IngredientIdentityStatus.Active &&
+                  (revision.State == (int)IngredientRevisionState.Draft ||
+                   revision.Id == identity.CurrentPublishedRevisionId)
+            select new
+            {
+                IngredientId = identity.Id,
+                RevisionId = revision.Id,
+                revision.Name,
+                revision.NormalizedName,
+                revision.State,
+                revision.RowVersion,
+            })
+            .ToArrayAsync(cancellationToken);
+
+        return candidates
+            .GroupBy(value => value.IngredientId)
+            .Select(group => group.OrderBy(value => value.State).First())
+            .OrderBy(value => value.NormalizedName)
+            .Select(value => new IngredientRevisionSummary(
+                value.IngredientId,
+                value.RevisionId,
+                value.Name,
+                (IngredientRevisionState)value.State,
+                value.RowVersion))
+            .ToArray();
+    }
+
     public async Task<IngredientRevisionMutationResult> CreateDraftAsync(
         Guid ingredientId,
         Guid revisionId,

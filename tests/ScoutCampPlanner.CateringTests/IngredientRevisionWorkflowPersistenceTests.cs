@@ -47,6 +47,11 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
         Assert.Equal("Haferflocken", revision.Name);
         Assert.Equal(1, revision.RowVersion);
         Assert.Equal((int)IngredientRevisionState.Draft, revision.State);
+        IngredientRevisionSummary summary = Assert.Single(await store.ListAsync(
+            new IngredientRevisionScope(IngredientScopeType.Tenant, tenantId),
+            TestContext.Current.CancellationToken));
+        Assert.Equal(result.RevisionId, summary.RevisionId);
+        Assert.Equal(IngredientRevisionState.Draft, summary.State);
     }
 
     [Fact]
@@ -78,6 +83,47 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
             .AsNoTracking().SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal("Gelbe Linsen", stored.Name);
         Assert.Equal("GELBE LINSEN", stored.NormalizedName);
+    }
+
+    [Fact]
+    public async Task List_prefers_editable_draft_over_current_published_revision()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Seed seed = await fixture.SeedDraftAsync(reviewed: true);
+        IngredientRevisionRecord published = await fixture.Database.Set<IngredientRevisionRecord>().SingleAsync(
+            value => value.Id == seed.RevisionId, TestContext.Current.CancellationToken);
+        IngredientIdentityRecord identity = await fixture.Database.Set<IngredientIdentityRecord>().SingleAsync(
+            value => value.Id == published.IngredientId, TestContext.Current.CancellationToken);
+        published.State = (int)IngredientRevisionState.Published;
+        identity.CurrentPublishedRevisionId = published.Id;
+        Guid draftId = Guid.NewGuid();
+        fixture.Database.Add(new IngredientRevisionRecord
+        {
+            Id = draftId,
+            IngredientId = published.IngredientId,
+            RevisionNumber = 2,
+            State = (int)IngredientRevisionState.Draft,
+            BasedOnRevisionId = published.Id,
+            Name = "Linsen neu",
+            NormalizedName = "LINSEN NEU",
+            CategoryId = seed.CategoryId,
+            BaseUnitId = seed.UnitId,
+            RowVersion = 1,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            CreatedBy = seed.ActorId,
+            UpdatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedBy = seed.ActorId,
+        });
+        await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+        fixture.Database.ChangeTracker.Clear();
+        var store = new IngredientRevisionWorkflowStore(fixture.Database);
+
+        IngredientRevisionSummary result = Assert.Single(await store.ListAsync(
+            new IngredientRevisionScope(IngredientScopeType.Central, null),
+            TestContext.Current.CancellationToken));
+
+        Assert.Equal(draftId, result.RevisionId);
+        Assert.Equal(IngredientRevisionState.Draft, result.State);
     }
 
     [Fact]

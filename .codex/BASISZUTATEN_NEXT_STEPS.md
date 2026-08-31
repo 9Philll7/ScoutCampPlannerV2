@@ -277,12 +277,17 @@ Seeds benötigen stabile, zwischen PostgreSQL, SQLite und Lagerpaketen identisch
 
 Erst nach Domain und Migration:
 
-- explizites Draft-Speichern – Application- und Persistenzworkflow umgesetzt,
-  API umgesetzt, Editor noch offen
-- Publish-Aktion – Application- und Persistenzworkflow umgesetzt,
-  API umgesetzt, Editor noch offen
-- optimistische Konfliktmeldung – technischer Ergebnisstatus umgesetzt,
-  API-Mapping umgesetzt, UI-Darstellung noch offen
+- explizites Draft-Speichern – Application-, Persistenz- und erster
+  Lagereditor-Workflow umgesetzt
+- Publish-Aktion – Application-, Persistenz-, API- und erster
+  Lagereditor-Workflow umgesetzt
+- optimistische Konfliktmeldung – technischer Ergebnisstatus, API-Mapping
+  und Neuladen mit UI-Hinweis umgesetzt
+- Anlegen, Auflisten und Wiederöffnen revisionsfähiger Lagerzutaten – umgesetzt
+- Auswahl von Name, Kategorie und Basiseinheit – umgesetzt
+- explizite Bestätigung der drei fachlichen Eigenschaftsgruppen – umgesetzt
+- Schutz vor Veröffentlichung noch nicht gespeicherter UI-Änderungen – umgesetzt
+- noch offen: fachliche Eigenschaftswerte, Varianten und Umrechnungen im Editor
 - Fork erst beim tatsächlichen lokalen Speichern
 - Anzeige verfügbarer zentraler Updates
 - Konfliktauflösung für Drei-Wege-Merge

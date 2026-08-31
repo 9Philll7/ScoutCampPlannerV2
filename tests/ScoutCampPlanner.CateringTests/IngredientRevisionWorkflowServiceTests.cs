@@ -114,6 +114,11 @@ public sealed class IngredientRevisionWorkflowServiceTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult<IngredientRevisionDraftDetails?>(null);
 
+        public Task<IReadOnlyList<IngredientRevisionSummary>> ListAsync(
+            IngredientRevisionScope revisionScope,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<IngredientRevisionSummary>>([]);
+
         public Task<IngredientRevisionMutationResult> CreateDraftAsync(
             Guid ingredientId,
             Guid revisionId,

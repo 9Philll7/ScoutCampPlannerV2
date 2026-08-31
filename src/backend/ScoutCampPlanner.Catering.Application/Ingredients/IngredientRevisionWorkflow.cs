@@ -71,6 +71,17 @@ public sealed record IngredientRevisionQueryResult(
     IngredientRevisionQueryStatus Status,
     IngredientRevisionDraftDetails? Revision = null);
 
+public sealed record IngredientRevisionSummary(
+    Guid IngredientId,
+    Guid RevisionId,
+    string Name,
+    IngredientRevisionState State,
+    long RowVersion);
+
+public sealed record IngredientRevisionListResult(
+    bool IsAuthorized,
+    IReadOnlyList<IngredientRevisionSummary> Revisions);
+
 public enum IngredientRevisionMutationStatus
 {
     Created,
@@ -99,6 +110,10 @@ public interface IIngredientRevisionWorkflowStore
 
     Task<IngredientRevisionDraftDetails?> GetAsync(
         Guid revisionId,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<IngredientRevisionSummary>> ListAsync(
+        IngredientRevisionScope scope,
         CancellationToken cancellationToken = default);
 
     Task<IngredientRevisionMutationResult> CreateDraftAsync(
@@ -186,6 +201,19 @@ public sealed class IngredientRevisionWorkflowService(
         return revision is null
             ? new(IngredientRevisionQueryStatus.NotFound)
             : new(IngredientRevisionQueryStatus.Found, revision);
+    }
+
+    public async Task<IngredientRevisionListResult> ListCampAsync(
+        Guid campId,
+        Guid actorUserId,
+        CancellationToken cancellationToken = default)
+    {
+        Required(campId, nameof(campId));
+        Required(actorUserId, nameof(actorUserId));
+        var scope = new IngredientRevisionScope(IngredientScopeType.Camp, campId);
+        if (!await IsAuthorizedAsync(actorUserId, scope, cancellationToken))
+            return new(false, []);
+        return new(true, await store.ListAsync(scope, cancellationToken));
     }
 
     public async Task<IngredientRevisionMutationResult> SaveDraftAsync(
