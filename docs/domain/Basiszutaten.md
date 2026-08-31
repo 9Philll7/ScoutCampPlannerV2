@@ -349,20 +349,24 @@ Die Anwendung verwendet die EU-Hauptallergene als zentral gepflegten Katalog.
 
 ### Hauptgruppen
 
-- `GLUTEN_CEREALS` – Glutenhaltiges Getreide
-- `CRUSTACEANS` – Krebstiere
-- `EGGS` – Eier
-- `FISH` – Fisch
-- `PEANUTS` – Erdnüsse
-- `SOYBEANS` – Sojabohnen
-- `MILK` – Milch
-- `TREE_NUTS` – Schalenfrüchte
-- `CELERY` – Sellerie
-- `MUSTARD` – Senf
-- `SESAME` – Sesamsamen
-- `SULPHUR_DIOXIDE_AND_SULPHITES` – Schwefeldioxid und Sulfite
-- `LUPIN` – Lupinen
-- `MOLLUSCS` – Weichtiere
+- `A` – `GLUTEN_CEREALS` – Glutenhaltiges Getreide
+- `B` – `CRUSTACEANS` – Krebstiere
+- `C` – `EGGS` – Eier
+- `D` – `FISH` – Fisch
+- `E` – `PEANUTS` – Erdnüsse
+- `F` – `SOYBEANS` – Sojabohnen
+- `G` – `MILK` – Milch
+- `H` – `TREE_NUTS` – Schalenfrüchte
+- `L` – `CELERY` – Sellerie
+- `M` – `MUSTARD` – Senf
+- `N` – `SESAME` – Sesamsamen
+- `O` – `SULPHUR_DIOXIDE_AND_SULPHITES` – Schwefeldioxid und Sulfite
+- `P` – `LUPIN` – Lupinen
+- `R` – `MOLLUSCS` – Weichtiere
+
+Die Buchstaben entsprechen der österreichischen Codex-Empfehlung zur
+Allergeninformation. Intern bleiben die stabilen fachlichen Codes und IDs
+maßgeblich. Referenz: [Österreichisches Lebensmittelbuch, Codexkapitel A 5](https://www.verbrauchergesundheit.gv.at/lebensmittel/das-oesterreichische-lebensmittelbuch/codexkapitel.html).
 
 ### Untertypen glutenhaltigen Getreides
 
@@ -389,6 +393,14 @@ Ein enthaltener Untertyp impliziert die übergeordnete Gruppe.
 
 Die umgekehrte Richtung gilt nicht.
 
+Im Editor werden nur die 14 Hauptgruppen direkt angezeigt. Untertypen von
+glutenhaltigem Getreide und Schalenfrüchten werden als Detailauswahl unter der
+jeweiligen Hauptgruppe angeboten. Diese Detailauswahl ist nur bei Zustand
+`contains` separat editierbar. Bei `does_not_contain`, `may_contain` oder
+`unknown` übernehmen alle Untertypen automatisch denselben Zustand mit Quelle
+`derived`. Bei `contains` werden noch nicht näher bestimmte Untertypen zunächst
+als `unknown` geführt, bis sie bewusst konkretisiert werden.
+
 Spurenhinweise sind nicht Bestandteil der Basiszutat, da sie typischerweise vom konkreten Produkt und Herstellungsprozess abhängen.
 
 ---
@@ -399,18 +411,32 @@ Es gibt keine mit den EU-Hauptallergenen vergleichbare abschließende amtliche G
 
 Der Katalog ist daher fachlich gepflegt und erweiterbar.
 
-Initial:
+Direkt im Editor angeboten:
 
 - `LACTOSE`
 - `FRUCTOSE`
-- `SORBITOL`
 - `HISTAMINE`
-- `GLUTEN`
+
+Als erweiterte Auswahl angeboten:
+
+- `SORBITOL`
 - `FRUCTANS`
 - `GALACTANS`
 - `MANNITOL`
 - `XYLITOL`
 - `OTHER_POLYOLS`
+
+Der bereits vorhandene Katalogcode `GLUTEN` bleibt ausschließlich für die
+Kompatibilität bestehender Daten erhalten. Er wird nicht mehr neu erfasst und
+nicht für die Berechnung von Glutenfreiheit verwendet. Glutenfreiheit wird
+allein aus der offiziellen Allergen-Hauptgruppe `A` (`GLUTEN_CEREALS`) und
+ihren Untertypen abgeleitet.
+
+Neue Entwürfe führen die direkt sichtbaren Einträge `LACTOSE`, `FRUCTOSE` und
+`HISTAMINE` zunächst als `unknown`. Noch nicht gesetzte Einträge der erweiterten
+Auswahl werden erst beim bewussten Bestätigen des Reviewstatus automatisch als
+`does_not_contain` mit Quelle `derived` übernommen. Vor dieser Bestätigung darf
+aus fehlenden Angaben keine positive Verträglichkeit abgeleitet werden.
 
 Einige Unverträglichkeiten sind mengen-, verarbeitungs- oder produktspezifisch. In solchen Fällen darf die Basiszutat `unknown` oder `article_dependent` verwenden.
 
@@ -425,7 +451,7 @@ Milch und Laktose müssen getrennt bleiben:
 
 Herkunftsmerkmale dienen insbesondere der regelbasierten Auswertung von vegan, vegetarisch und pescetarisch.
 
-### Nichttierische Herkunft
+### Nichttierische Hauptherkunft
 
 - `PLANT`
 - `FUNGI`
@@ -433,7 +459,7 @@ Herkunftsmerkmale dienen insbesondere der regelbasierten Auswertung von vegan, v
 - `SYNTHETIC`
 - `MICROBIAL`
 
-### Tierische Herkunft
+### Tierische Hauptherkunft
 
 - `MEAT`
 - `POULTRY`
@@ -444,6 +470,9 @@ Herkunftsmerkmale dienen insbesondere der regelbasierten Auswertung von vegan, v
 - `EGG`
 - `HONEY`
 - `INSECT`
+
+### Zusätzliche tierische Merkmale
+
 - `ANIMAL_FAT`
 - `GELATIN`
 - `ANIMAL_RENNET`
@@ -453,7 +482,21 @@ Herkunftsmerkmale dienen insbesondere der regelbasierten Auswertung von vegan, v
 
 - `UNKNOWN_ORIGIN`
 
-Mehrfachzuordnungen sind zulässig.
+Eine Basiszutat besitzt genau eine Hauptherkunft. Die Hauptherkunft wird im
+Editor als Einzelauswahl erfasst. Wird eine Hauptherkunft gewählt, wird sie als
+`contains` gespeichert; alle anderen Hauptherkünfte werden mit Quelle `derived`
+als `does_not_contain` gespeichert. Neue Zutaten beginnen mit
+`UNKNOWN_ORIGIN = contains`, bis die Herkunft bewusst festgelegt wurde.
+
+Die Merkmale `ANIMAL_FAT`, `GELATIN`, `ANIMAL_RENNET` und
+`OTHER_ANIMAL_DERIVED` sind keine konkurrierenden Hauptherkünfte. Sie dürfen
+zusätzlich kombiniert werden, beispielsweise `DAIRY = contains` und
+`ANIMAL_RENNET = contains` für einen mit tierischem Lab hergestellten Käse.
+
+Wird der Herkunftsbereich ausdrücklich als vollständig geprüft markiert, werden
+noch nicht gesetzte zusätzliche Merkmale als `does_not_contain` mit Quelle
+`derived` übernommen. Bereits manuell erfasste Werte werden dabei nicht
+überschrieben.
 
 ---
 
@@ -614,9 +657,12 @@ Laktosefreiheit bedeutet nicht Milchfreiheit.
 
 ### 13.9 Glutenfrei
 
-- `GLUTEN = contains` → `incompatible`
 - `GLUTEN_CEREALS = contains` → `incompatible`
+- enthaltener Untertyp von `GLUTEN_CEREALS` → `incompatible`
 - relevante Information unbekannt → `unknown`
+
+Ein gegebenenfalls noch vorhandener Legacy-Wert `GLUTEN` aus dem
+Unverträglichkeitskatalog wird bei dieser Berechnung ignoriert.
 
 ### 13.10 Religiöse oder zertifizierungsabhängige Anforderungen
 

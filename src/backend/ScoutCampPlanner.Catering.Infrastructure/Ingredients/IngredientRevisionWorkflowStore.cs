@@ -174,7 +174,7 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
         ArgumentNullException.ThrowIfNull(content);
         if (ingredientId == Guid.Empty || revisionId == Guid.Empty || actorUserId == Guid.Empty ||
             !IsValidScope(scope) ||
-            !await ReferencesExistAsync(content.CategoryId, content.BaseUnitId, cancellationToken))
+            !await ReferencesExistAsync(content, cancellationToken))
             return new(IngredientRevisionMutationStatus.Invalid);
 
         await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
@@ -233,9 +233,10 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(content);
-        if (!await ReferencesExistAsync(content.CategoryId, content.BaseUnitId, cancellationToken))
+        if (!await ReferencesExistAsync(content, cancellationToken))
             return new(IngredientRevisionMutationStatus.Invalid);
 
+        await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
         int affected = await database.Set<IngredientRevisionRecord>()
             .Where(value => value.Id == revisionId &&
                             value.State == (int)IngredientRevisionState.Draft &&
@@ -253,9 +254,56 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
                 .SetProperty(value => value.RowVersion, value => value.RowVersion + 1),
                 cancellationToken);
 
-        return affected == 1
-            ? new(IngredientRevisionMutationStatus.Saved, expectedRowVersion + 1)
-            : await DetermineFailureAsync(revisionId, expectedRowVersion, cancellationToken);
+        if (affected != 1)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return await DetermineFailureAsync(revisionId, expectedRowVersion, cancellationToken);
+        }
+
+        await database.Set<IngredientRevisionAllergenRecord>()
+            .Where(value => value.IngredientRevisionId == revisionId)
+            .ExecuteDeleteAsync(cancellationToken);
+        await database.Set<IngredientRevisionIntoleranceRecord>()
+            .Where(value => value.IngredientRevisionId == revisionId)
+            .ExecuteDeleteAsync(cancellationToken);
+        await database.Set<IngredientRevisionOriginRecord>()
+            .Where(value => value.IngredientRevisionId == revisionId)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        database.AddRange(content.Allergens.Select(value => new IngredientRevisionAllergenRecord
+        {
+            IngredientRevisionId = revisionId,
+            AllergenId = value.PropertyId,
+            State = (int)value.State,
+            Source = (int)value.Source,
+        }));
+        database.AddRange(content.Intolerances.Select(value => new IngredientRevisionIntoleranceRecord
+        {
+            IngredientRevisionId = revisionId,
+            IntoleranceId = value.PropertyId,
+            State = (int)value.State,
+            Source = (int)value.Source,
+        }));
+        database.AddRange(content.Origins.Select(value => new IngredientRevisionOriginRecord
+        {
+            IngredientRevisionId = revisionId,
+            OriginPropertyId = value.PropertyId,
+            State = (int)value.State,
+            Source = (int)value.Source,
+        }));
+
+        try
+        {
+            await database.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return new(IngredientRevisionMutationStatus.Saved, expectedRowVersion + 1);
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            database.ChangeTracker.Clear();
+            return new(IngredientRevisionMutationStatus.Invalid, expectedRowVersion);
+        }
     }
 
     public async Task<IngredientRevisionMutationResult> PublishAsync(
@@ -371,13 +419,32 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
     }
 
     private async Task<bool> ReferencesExistAsync(
-        Guid categoryId,
-        Guid baseUnitId,
+        IngredientRevisionDraftContent content,
         CancellationToken cancellationToken) =>
         await database.Set<IngredientCategoryRecord>().AsNoTracking()
-            .AnyAsync(value => value.Id == categoryId, cancellationToken) &&
+            .AnyAsync(value => value.Id == content.CategoryId, cancellationToken) &&
         await database.MeasurementUnits.AsNoTracking()
-            .AnyAsync(value => value.Id == baseUnitId, cancellationToken);
+            .AnyAsync(value => value.Id == content.BaseUnitId, cancellationToken) &&
+        await AllReferencesExistAsync(content.Allergens.Select(value => value.PropertyId),
+            database.Set<IngredientAllergenDefinitionRecord>().Where(value => value.Status == 0).Select(value => value.Id),
+            cancellationToken) &&
+        await AllReferencesExistAsync(content.Intolerances.Select(value => value.PropertyId),
+            database.Set<IngredientIntoleranceDefinitionRecord>().Where(value => value.Status == 0).Select(value => value.Id),
+            cancellationToken) &&
+        await AllReferencesExistAsync(content.Origins.Select(value => value.PropertyId),
+            database.Set<IngredientOriginPropertyRecord>().Where(value => value.Status == 0).Select(value => value.Id),
+            cancellationToken);
+
+    private static async Task<bool> AllReferencesExistAsync(
+        IEnumerable<Guid> requestedIds,
+        IQueryable<Guid> availableIds,
+        CancellationToken cancellationToken)
+    {
+        Guid[] requested = requestedIds.Distinct().ToArray();
+        if (requested.Length == 0)
+            return true;
+        return await availableIds.CountAsync(value => requested.Contains(value), cancellationToken) == requested.Length;
+    }
 
     private async Task<IngredientRevisionMutationResult> DetermineFailureAsync(
         Guid revisionId,

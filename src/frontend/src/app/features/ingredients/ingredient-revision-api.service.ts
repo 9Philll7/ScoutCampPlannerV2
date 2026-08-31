@@ -4,6 +4,8 @@ import { API_BASE_URL } from '../../core/api-base-url';
 
 export enum IngredientRevisionState { Draft = 0, Published = 1 }
 export enum IngredientPropertyReviewState { Unreviewed = 0, Reviewed = 1 }
+export enum IngredientPropertyState { Contains = 0, DoesNotContain = 1, MayContain = 2, Unknown = 3 }
+export enum IngredientPropertySource { Inherent = 0, Derived = 1, ManuallyVerified = 2, ArticleDependent = 3 }
 
 export interface IngredientCategoryReference {
   id: string;
@@ -20,12 +22,40 @@ export interface MeasurementUnitReference {
   baseUnitFactor: number;
 }
 
+export interface IngredientAllergenReference {
+  id: string;
+  parentAllergenId: string | null;
+  code: string;
+  name: string;
+  isEuMajorAllergen: boolean;
+}
+
+export interface IngredientIntoleranceReference {
+  id: string;
+  code: string;
+  name: string;
+  isQuantityDependent: boolean;
+}
+
+export interface IngredientOriginReference {
+  id: string;
+  code: string;
+  name: string;
+  isAnimalOrigin: boolean;
+}
+
 export interface IngredientEditorReferenceData {
   categories: IngredientCategoryReference[];
   units: MeasurementUnitReference[];
-  allergens: unknown[];
-  intolerances: unknown[];
-  origins: unknown[];
+  allergens: IngredientAllergenReference[];
+  intolerances: IngredientIntoleranceReference[];
+  origins: IngredientOriginReference[];
+}
+
+export interface IngredientRevisionPropertyItem {
+  propertyId: string;
+  state: IngredientPropertyState;
+  source: IngredientPropertySource;
 }
 
 export interface IngredientRevisionSummary {
@@ -47,6 +77,9 @@ export interface IngredientRevisionDetails {
   allergenReviewState: IngredientPropertyReviewState;
   intoleranceReviewState: IngredientPropertyReviewState;
   originReviewState: IngredientPropertyReviewState;
+  allergens: IngredientRevisionPropertyItem[];
+  intolerances: IngredientRevisionPropertyItem[];
+  origins: IngredientRevisionPropertyItem[];
 }
 
 export interface IngredientRevisionMutationResponse {
@@ -89,6 +122,9 @@ export class IngredientRevisionApiService {
     intoleranceReviewState: IngredientPropertyReviewState;
     originReviewState: IngredientPropertyReviewState;
     expectedRowVersion: number;
+    allergens: IngredientRevisionPropertyItem[];
+    intolerances: IngredientRevisionPropertyItem[];
+    origins: IngredientRevisionPropertyItem[];
   }) {
     return this.http.put<IngredientRevisionMutationResponse>(
       `${this.baseUrl}/api/ingredient-revisions/${revisionId}`, request, this.options);

@@ -109,11 +109,7 @@ public sealed class IngredientSuitabilityEvaluator
         EvaluateAllergen(revision, "MILK", variantKey);
 
     public IngredientCompatibility EvaluateGlutenFree(IngredientRevision revision, string? variantKey = null) =>
-        Combine(
-        [
-            EvaluateIntolerance(revision, "GLUTEN", variantKey),
-            EvaluateAllergen(revision, "GLUTEN_CEREALS", variantKey),
-        ]);
+        EvaluateAllergen(revision, "GLUTEN_CEREALS", variantKey);
 
     private IngredientCompatibility EvaluateOrigins(
         IngredientRevision revision,
@@ -211,4 +207,3 @@ public sealed class IngredientSuitabilityEvaluator
             : throw new ArgumentException($"Unknown property code '{code}'.", parameterName);
     }
 }
-

@@ -12,9 +12,13 @@ import { forkJoin } from 'rxjs';
 import { ActionIconComponent } from '../../shared/action-icon.component';
 import {
   IngredientEditorReferenceData,
+  IngredientAllergenReference,
   IngredientPropertyReviewState,
+  IngredientPropertySource,
+  IngredientPropertyState,
   IngredientRevisionApiService,
   IngredientRevisionDetails,
+  IngredientRevisionPropertyItem,
   IngredientRevisionState,
   IngredientRevisionSummary
 } from './ingredient-revision-api.service';
@@ -99,16 +103,148 @@ import {
               }
             </mat-select>
           </mat-form-field>
+          <div class="property-groups">
+            <details class="property-group" open>
+              <summary><span>Allergene</span><small>{{ specifiedMainAllergenCount(revision) }} von 14 angegeben</small></summary>
+              <div class="property-review">
+                <mat-checkbox [checked]="isReviewed(revision.allergenReviewState)"
+                  (change)="revision.allergenReviewState = reviewState($event.checked)"
+                  [disabled]="revision.state === publishedState || disabled()">Allergenangaben vollständig geprüft</mat-checkbox>
+              </div>
+              <div class="allergen-grid">
+                @for (property of mainAllergens(); track property.id) {
+                  <article class="allergen-card">
+                    <div class="property-row allergen-main">
+                      <span class="allergen-name"><strong>{{ allergenLetter(property.code) }}</strong>{{ property.name }}</span>
+                      <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Zustand</mat-label>
+                        <mat-select [value]="propertyState(revision.allergens, property.id)"
+                          (selectionChange)="setPropertyState(revision, 'allergens', property.id, $event.value)"
+                          [disabled]="revision.state === publishedState || disabled()">
+                          <mat-option [value]="null">Nicht angegeben</mat-option>
+                          @for (state of propertyStates; track state.value) {
+                            <mat-option [value]="state.value">{{ state.label }}</mat-option>
+                          }
+                        </mat-select>
+                      </mat-form-field>
+                    </div>
+                    @if (allergenChildren(property.id); as children) {
+                      @if (children.length && propertyState(revision.allergens, property.id) === containsState) {
+                        <details class="allergen-details">
+                          <summary>Enthaltene Untertypen auswählen</summary>
+                          <div class="allergen-children">
+                            @for (child of children; track child.id) {
+                              <div class="property-row property-child">
+                                <span>{{ child.name }}</span>
+                                <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Zustand</mat-label>
+                                  <mat-select [value]="propertyState(revision.allergens, child.id)"
+                                    (selectionChange)="setPropertyState(revision, 'allergens', child.id, $event.value)"
+                                    [disabled]="revision.state === publishedState || disabled()">
+                                    @for (state of propertyStates; track state.value) {
+                                      <mat-option [value]="state.value">{{ state.label }}</mat-option>
+                                    }
+                                  </mat-select>
+                                </mat-form-field>
+                              </div>
+                            }
+                          </div>
+                        </details>
+                      } @else if (children.length && propertyState(revision.allergens, property.id) !== null) {
+                        <p class="inherited-details">Alle Untertypen übernehmen „{{ propertyStateLabel(propertyState(revision.allergens, property.id)) }}“.</p>
+                      }
+                    }
+                  </article>
+                }
+              </div>
+            </details>
+            <details class="property-group">
+              <summary><span>Unverträglichkeiten</span><small>{{ specifiedVisibleIntoleranceCount(revision) }} angegeben</small></summary>
+              <div class="property-review">
+                <mat-checkbox [checked]="isReviewed(revision.intoleranceReviewState)"
+                  (change)="setIntoleranceReviewState(revision, $event.checked)"
+                  [disabled]="revision.state === publishedState || disabled()">Unverträglichkeiten vollständig geprüft</mat-checkbox>
+              </div>
+              <p class="property-info">Gluten wird nicht doppelt erfasst, sondern über Allergen A ausgewertet. Laktose bleibt von der Milchallergie getrennt.</p>
+              <div class="property-grid">
+                @for (property of commonIntolerances(); track property.id) {
+                  <div class="property-row">
+                    <span>{{ intoleranceLabel(property.code, property.name) }}</span>
+                    <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Zustand</mat-label>
+                      <mat-select [value]="propertyState(revision.intolerances, property.id)"
+                        (selectionChange)="setPropertyState(revision, 'intolerances', property.id, $event.value)"
+                        [disabled]="revision.state === publishedState || disabled()">
+                        <mat-option [value]="null">Nicht angegeben</mat-option>
+                        @for (state of propertyStates; track state.value) {
+                          <mat-option [value]="state.value">{{ state.label }}</mat-option>
+                        }
+                      </mat-select>
+                    </mat-form-field>
+                  </div>
+                }
+              </div>
+              <details class="secondary-details">
+                <summary>Weitere Unverträglichkeiten</summary>
+                <div class="property-grid">
+                  @for (property of advancedIntolerances(); track property.id) {
+                    <div class="property-row">
+                      <span>{{ property.name }}</span>
+                      <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Zustand</mat-label>
+                        <mat-select [value]="propertyState(revision.intolerances, property.id)"
+                          (selectionChange)="setPropertyState(revision, 'intolerances', property.id, $event.value)"
+                          [disabled]="revision.state === publishedState || disabled()">
+                          <mat-option [value]="null">Nicht angegeben</mat-option>
+                          @for (state of propertyStates; track state.value) {
+                            <mat-option [value]="state.value">{{ state.label }}</mat-option>
+                          }
+                        </mat-select>
+                      </mat-form-field>
+                    </div>
+                  }
+                </div>
+              </details>
+            </details>
+            <details class="property-group">
+              <summary><span>Herkunft</span><small>{{ primaryOriginLabel(revision) }}</small></summary>
+              <div class="property-review">
+                <mat-checkbox [checked]="isReviewed(revision.originReviewState)"
+                  (change)="setOriginReviewState(revision, $event.checked)"
+                  [disabled]="revision.state === publishedState || disabled() || !primaryOriginId(revision)">Herkunftsangaben vollständig geprüft</mat-checkbox>
+              </div>
+              <p class="property-info">Wähle genau eine Hauptherkunft. Besondere tierische Bestandteile können danach zusätzlich angegeben werden.</p>
+              <div class="origin-main-selection">
+                <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Hauptherkunft</mat-label>
+                  <mat-select [value]="primaryOriginId(revision)"
+                    (selectionChange)="setPrimaryOrigin(revision, $event.value)"
+                    [disabled]="revision.state === publishedState || disabled()">
+                    <mat-option [value]="null" disabled>Bitte auswählen</mat-option>
+                    @for (property of primaryOrigins(); track property.id) {
+                      <mat-option [value]="property.id">{{ property.name }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+              </div>
+              <details class="secondary-details">
+                <summary>Zusätzliche tierische Merkmale</summary>
+                <div class="property-grid">
+                @for (property of additionalOrigins(); track property.id) {
+                  <div class="property-row">
+                    <span>{{ property.name }}</span>
+                    <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Zustand</mat-label>
+                      <mat-select [value]="propertyState(revision.origins, property.id)"
+                        (selectionChange)="setPropertyState(revision, 'origins', property.id, $event.value)"
+                        [disabled]="revision.state === publishedState || disabled()">
+                        <mat-option [value]="null">Nicht angegeben</mat-option>
+                        @for (state of propertyStates; track state.value) {
+                          <mat-option [value]="state.value">{{ state.label }}</mat-option>
+                        }
+                      </mat-select>
+                    </mat-form-field>
+                  </div>
+                }
+                </div>
+              </details>
+            </details>
+          </div>
           @if (revision.state === draftState) {
-            <fieldset class="review-checks" [disabled]="disabled()">
-              <legend>Fachliche Prüfung</legend>
-              <mat-checkbox [checked]="isReviewed(revision.allergenReviewState)"
-                (change)="revision.allergenReviewState = reviewState($event.checked)">Allergenangaben geprüft</mat-checkbox>
-              <mat-checkbox [checked]="isReviewed(revision.intoleranceReviewState)"
-                (change)="revision.intoleranceReviewState = reviewState($event.checked)">Unverträglichkeiten geprüft</mat-checkbox>
-              <mat-checkbox [checked]="isReviewed(revision.originReviewState)"
-                (change)="revision.originReviewState = reviewState($event.checked)">Herkunftsangaben geprüft</mat-checkbox>
-            </fieldset>
             <p class="revision-hint">„Geprüft“ bedeutet: Auch fehlende Einträge wurden bewusst kontrolliert.</p>
             <div class="revision-actions">
               <button matButton type="submit" [disabled]="submitting() || disabled() || !isDirty(revision)">
@@ -139,16 +275,41 @@ import {
     .revision-list-item span:first-child { display: grid; gap: .15rem; } .revision-list-item small { color: #667168; }
     .revision-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; padding: 1rem;
       border: 1px solid #cddbcc; border-radius: .8rem; background: #f5faf4; }
-    .revision-form h4, .revision-form .revision-editor-heading, .review-checks, .revision-hint, .revision-actions { grid-column: 1 / -1; }
+    .revision-form h4, .revision-form .revision-editor-heading, .property-groups, .revision-hint, .revision-actions { grid-column: 1 / -1; }
     .revision-form mat-form-field:first-of-type { grid-column: 1 / -1; }
-    .review-checks { display: flex; flex-wrap: wrap; gap: .4rem 1rem; border: 1px solid #d7e1d5; border-radius: .65rem; }
-    .review-checks legend { color: #465249; font-weight: 600; }
+    .property-groups { display: grid; gap: .65rem; }
+    .property-group { overflow: hidden; border: 1px solid #d7e1d5; border-radius: .65rem; background: #fff; }
+    .property-group summary { display: flex; justify-content: space-between; gap: .75rem; padding: .8rem .9rem;
+      background: #eef4ed; color: #334737; font-weight: 700; cursor: pointer; }
+    .property-group summary small { color: #68736a; font-weight: 500; }
+    .property-review { padding: .65rem .85rem; border-bottom: 1px solid #e2e8e0; }
+    .property-info { padding: .7rem .85rem 0; color: #58635a; font-size: .84rem; }
+    .allergen-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; padding: .8rem; }
+    .allergen-card { align-self: start; overflow: hidden; border: 1px solid #dfe7dc; border-radius: .65rem; background: #fbfcfa; }
+    .allergen-main { padding: .65rem; }
+    .allergen-name { display: flex; align-items: center; gap: .55rem; font-weight: 600; }
+    .allergen-name strong { display: inline-grid; place-items: center; flex: 0 0 1.7rem; height: 1.7rem; border-radius: .4rem;
+      background: #3f7048; color: #fff; font-size: .85rem; }
+    .allergen-details { border-top: 1px solid #e1e8df; }
+    .allergen-details summary { padding: .6rem .75rem; background: #f2f6f1; font-size: .86rem; }
+    .allergen-children { display: grid; gap: .45rem; padding: .65rem; }
+    .inherited-details { padding: 0 .7rem .65rem; color: #667168; font-size: .8rem; }
+    .secondary-details { margin: 0 .8rem .8rem; border: 1px solid #dfe7dc; border-radius: .6rem; }
+    .secondary-details > summary { padding: .65rem .75rem; background: #f2f6f1; font-size: .88rem; }
+    .origin-main-selection { padding: .8rem; }
+    .origin-main-selection mat-form-field { width: min(100%, 28rem); }
+    .property-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem .8rem; padding: .8rem; }
+    .property-row { display: grid; grid-template-columns: minmax(7rem, 1fr) minmax(9rem, 12rem); align-items: center; gap: .6rem; }
+    .property-row > span { line-height: 1.25; }
+    .property-child > span { padding-left: 1rem; color: #58635a; }
     .revision-hint { color: #58635a; font-size: .85rem; }
     .revision-actions { display: flex; justify-content: flex-end; gap: .4rem; }
     .revision-state { padding: .25rem .55rem; border-radius: 999px; background: #f1e6d5; color: #674a1d; font-size: .78rem; font-weight: 700; }
     .revision-state.published { background: #dcebdd; color: #214b28; }
     .revision-empty { padding: 1rem; border: 1px dashed #b8c4b7; border-radius: .7rem; color: #5b665c; }
-    @media (max-width: 700px) { .revision-form { grid-template-columns: 1fr; } .revision-form > * { grid-column: 1 !important; } }
+    @media (max-width: 800px) { .revision-form, .property-grid, .allergen-grid { grid-template-columns: 1fr; }
+      .revision-form > * { grid-column: 1 !important; } }
+    @media (max-width: 480px) { .property-row { grid-template-columns: 1fr; } }
   `
 })
 export class IngredientRevisionEditorComponent {
@@ -164,6 +325,27 @@ export class IngredientRevisionEditorComponent {
   readonly notice = signal('');
   readonly draftState = IngredientRevisionState.Draft;
   readonly publishedState = IngredientRevisionState.Published;
+  readonly containsState = IngredientPropertyState.Contains;
+  readonly propertyStates = [
+    { value: IngredientPropertyState.Contains, label: 'Enthalten' },
+    { value: IngredientPropertyState.DoesNotContain, label: 'Nicht enthalten' },
+    { value: IngredientPropertyState.MayContain, label: 'Kann enthalten' },
+    { value: IngredientPropertyState.Unknown, label: 'Unbekannt' }
+  ] as const;
+  private readonly allergenLetters: Readonly<Record<string, string>> = {
+    GLUTEN_CEREALS: 'A', CRUSTACEANS: 'B', EGGS: 'C', FISH: 'D', PEANUTS: 'E', SOYBEANS: 'F',
+    MILK: 'G', TREE_NUTS: 'H', CELERY: 'L', MUSTARD: 'M', SESAME: 'N',
+    SULPHUR_DIOXIDE_AND_SULPHITES: 'O', LUPIN: 'P', MOLLUSCS: 'R'
+  };
+  private readonly commonIntoleranceCodes = ['LACTOSE', 'FRUCTOSE', 'HISTAMINE'];
+  private readonly primaryOriginCodes = [
+    'PLANT', 'FUNGI', 'MICROBIAL', 'MINERAL', 'SYNTHETIC',
+    'MEAT', 'POULTRY', 'FISH', 'CRUSTACEAN', 'MOLLUSC', 'DAIRY', 'EGG', 'HONEY', 'INSECT',
+    'UNKNOWN_ORIGIN'
+  ];
+  private readonly additionalOriginCodes = [
+    'ANIMAL_FAT', 'GELATIN', 'ANIMAL_RENNET', 'OTHER_ANIMAL_DERIVED'
+  ];
   createName = '';
   createCategoryId = '';
   createBaseUnitId = '';
@@ -181,6 +363,118 @@ export class IngredientRevisionEditorComponent {
   allReviewed(value: IngredientRevisionDetails) { return this.isReviewed(value.allergenReviewState) &&
     this.isReviewed(value.intoleranceReviewState) && this.isReviewed(value.originReviewState); }
   isDirty(value: IngredientRevisionDetails) { return this.snapshot(value) !== this.selectedSnapshot; }
+  specifiedCount(values: IngredientRevisionPropertyItem[]) { return values.length; }
+  specifiedMainAllergenCount(revision: IngredientRevisionDetails) {
+    return this.mainAllergens().filter(value => this.propertyState(revision.allergens, value.id) !== null).length;
+  }
+  specifiedVisibleIntoleranceCount(revision: IngredientRevisionDetails) {
+    const visibleIds = new Set([...this.commonIntolerances(), ...this.advancedIntolerances()].map(value => value.id));
+    return revision.intolerances.filter(value => visibleIds.has(value.propertyId)).length;
+  }
+  commonIntolerances() {
+    return (this.referenceData()?.intolerances ?? [])
+      .filter(value => this.commonIntoleranceCodes.includes(value.code))
+      .sort((left, right) => this.commonIntoleranceCodes.indexOf(left.code) - this.commonIntoleranceCodes.indexOf(right.code));
+  }
+  advancedIntolerances() {
+    return (this.referenceData()?.intolerances ?? [])
+      .filter(value => value.code !== 'GLUTEN' && !this.commonIntoleranceCodes.includes(value.code));
+  }
+  intoleranceLabel(code: string, name: string) {
+    return code === 'LACTOSE' ? `${name} (nicht Milchallergie)` : name;
+  }
+  primaryOrigins() {
+    return (this.referenceData()?.origins ?? [])
+      .filter(value => this.primaryOriginCodes.includes(value.code))
+      .sort((left, right) => this.primaryOriginCodes.indexOf(left.code) - this.primaryOriginCodes.indexOf(right.code));
+  }
+  additionalOrigins() {
+    return (this.referenceData()?.origins ?? [])
+      .filter(value => this.additionalOriginCodes.includes(value.code))
+      .sort((left, right) => this.additionalOriginCodes.indexOf(left.code) - this.additionalOriginCodes.indexOf(right.code));
+  }
+  primaryOriginId(revision: IngredientRevisionDetails) {
+    const contained = this.primaryOrigins()
+      .filter(value => this.propertyState(revision.origins, value.id) === IngredientPropertyState.Contains);
+    return contained.length === 1 ? contained[0].id : null;
+  }
+  primaryOriginLabel(revision: IngredientRevisionDetails) {
+    const selectedId = this.primaryOriginId(revision);
+    return this.primaryOrigins().find(value => value.id === selectedId)?.name ?? 'Bitte auswählen';
+  }
+  mainAllergens() {
+    return (this.referenceData()?.allergens ?? []).filter(value => value.isEuMajorAllergen)
+      .sort((left, right) => this.allergenLetter(left.code).localeCompare(this.allergenLetter(right.code)));
+  }
+  allergenChildren(parentId: string) {
+    return (this.referenceData()?.allergens ?? []).filter(value => value.parentAllergenId === parentId);
+  }
+  allergenLetter(code: string) { return this.allergenLetters[code] ?? '?'; }
+  propertyStateLabel(state: IngredientPropertyState | null) {
+    return this.propertyStates.find(value => value.value === state)?.label ?? 'Nicht angegeben';
+  }
+  propertyState(values: IngredientRevisionPropertyItem[], propertyId: string) {
+    return values.find(value => value.propertyId === propertyId)?.state ?? null;
+  }
+
+  setPropertyState(
+    revision: IngredientRevisionDetails,
+    group: 'allergens' | 'intolerances' | 'origins',
+    propertyId: string,
+    state: IngredientPropertyState | null)
+  {
+    const values = revision[group];
+    const previousState = this.propertyState(values, propertyId);
+    this.setPropertyValue(values, propertyId, state, IngredientPropertySource.ManuallyVerified);
+    if (group === 'allergens') {
+      const definition = this.referenceData()?.allergens.find(value => value.id === propertyId);
+      const children = definition?.parentAllergenId ? [] : this.allergenChildren(propertyId);
+      if (children.length && state !== IngredientPropertyState.Contains) {
+        for (const child of children)
+          this.setPropertyValue(values, child.id, state, IngredientPropertySource.Derived);
+      } else if (children.length && previousState !== IngredientPropertyState.Contains) {
+        for (const child of children)
+          this.setPropertyValue(values, child.id, IngredientPropertyState.Unknown, IngredientPropertySource.Derived);
+      }
+    }
+    if (group === 'allergens') revision.allergenReviewState = IngredientPropertyReviewState.Unreviewed;
+    else if (group === 'intolerances') revision.intoleranceReviewState = IngredientPropertyReviewState.Unreviewed;
+    else revision.originReviewState = IngredientPropertyReviewState.Unreviewed;
+  }
+
+  setIntoleranceReviewState(revision: IngredientRevisionDetails, reviewed: boolean) {
+    if (reviewed) {
+      for (const property of this.commonIntolerances()) {
+        if (this.propertyState(revision.intolerances, property.id) === null)
+          this.setPropertyValue(revision.intolerances, property.id,
+            IngredientPropertyState.Unknown, IngredientPropertySource.Derived);
+      }
+      for (const property of this.advancedIntolerances()) {
+        if (this.propertyState(revision.intolerances, property.id) === null)
+          this.setPropertyValue(revision.intolerances, property.id,
+            IngredientPropertyState.DoesNotContain, IngredientPropertySource.Derived);
+      }
+    }
+    revision.intoleranceReviewState = this.reviewState(reviewed);
+  }
+
+  setPrimaryOrigin(revision: IngredientRevisionDetails, propertyId: string | null) {
+    if (!propertyId) return;
+    this.applyPrimaryOrigin(revision, propertyId, IngredientPropertySource.ManuallyVerified);
+    revision.originReviewState = IngredientPropertyReviewState.Unreviewed;
+  }
+
+  setOriginReviewState(revision: IngredientRevisionDetails, reviewed: boolean) {
+    if (reviewed) {
+      if (!this.primaryOriginId(revision)) return;
+      for (const property of this.additionalOrigins()) {
+        if (this.propertyState(revision.origins, property.id) === null)
+          this.setPropertyValue(revision.origins, property.id,
+            IngredientPropertyState.DoesNotContain, IngredientPropertySource.Derived);
+      }
+    }
+    revision.originReviewState = this.reviewState(reviewed);
+  }
 
   openCreate() {
     this.createName = '';
@@ -202,7 +496,13 @@ export class IngredientRevisionEditorComponent {
 
   open(revisionId: string) {
     this.error.set(''); this.notice.set('');
-    this.api.get(revisionId).subscribe({ next: value => { this.selectedSnapshot = this.snapshot(value); this.selected.set(value); },
+    this.api.get(revisionId).subscribe({ next: value => { this.selectedSnapshot = this.snapshot(value);
+      if (value.state === this.draftState) {
+        this.normalizeAllergenDetails(value);
+        this.normalizeCommonIntolerances(value);
+        this.normalizePrimaryOrigin(value);
+      }
+      this.selected.set(value); },
       error: () => this.error.set('Die Zutatenrevision konnte nicht geladen werden.') });
   }
 
@@ -211,7 +511,8 @@ export class IngredientRevisionEditorComponent {
     this.submitting.set(true); this.error.set(''); this.notice.set('');
     this.api.save(revision.id, { name: revision.name, categoryId: revision.categoryId, baseUnitId: revision.baseUnitId,
       allergenReviewState: revision.allergenReviewState, intoleranceReviewState: revision.intoleranceReviewState,
-      originReviewState: revision.originReviewState, expectedRowVersion: revision.rowVersion }).subscribe({
+      originReviewState: revision.originReviewState, expectedRowVersion: revision.rowVersion,
+      allergens: revision.allergens, intolerances: revision.intolerances, origins: revision.origins }).subscribe({
       next: result => { revision.rowVersion = result.rowVersion; this.selectedSnapshot = this.snapshot(revision);
         this.selected.set({ ...revision }); this.submitting.set(false);
         this.notice.set('Der Entwurf wurde gespeichert.'); this.refreshList(revision.id, false); },
@@ -220,7 +521,7 @@ export class IngredientRevisionEditorComponent {
   }
 
   publish() {
-    const revision = this.selected(); if (!revision || !this.allReviewed(revision)) return;
+    const revision = this.selected(); if (!revision || this.isDirty(revision) || !this.allReviewed(revision)) return;
     this.submitting.set(true); this.error.set(''); this.notice.set('');
     this.api.publish(revision.id, revision.rowVersion).subscribe({
       next: result => { this.submitting.set(false); revision.rowVersion = result.rowVersion;
@@ -256,6 +557,80 @@ export class IngredientRevisionEditorComponent {
   private snapshot(value: IngredientRevisionDetails) {
     return JSON.stringify({ name: value.name.trim(), categoryId: value.categoryId, baseUnitId: value.baseUnitId,
       allergenReviewState: value.allergenReviewState, intoleranceReviewState: value.intoleranceReviewState,
-      originReviewState: value.originReviewState });
+      originReviewState: value.originReviewState,
+      allergens: this.sortedProperties(value.allergens), intolerances: this.sortedProperties(value.intolerances),
+      origins: this.sortedProperties(value.origins) });
+  }
+
+  private sortedProperties(values: IngredientRevisionPropertyItem[]) {
+    return [...values].sort((left, right) => left.propertyId.localeCompare(right.propertyId));
+  }
+
+  private normalizeAllergenDetails(revision: IngredientRevisionDetails) {
+    let changed = false;
+    for (const parent of this.mainAllergens()) {
+      const children = this.allergenChildren(parent.id);
+      const parentState = this.propertyState(revision.allergens, parent.id);
+      if (!children.length || parentState === null) continue;
+      const inheritedState = parentState === IngredientPropertyState.Contains
+        ? IngredientPropertyState.Unknown : parentState;
+      for (const child of children) {
+        const childState = this.propertyState(revision.allergens, child.id);
+        if ((parentState === IngredientPropertyState.Contains && childState !== null) || childState === inheritedState)
+          continue;
+        this.setPropertyValue(revision.allergens, child.id, inheritedState, IngredientPropertySource.Derived);
+        changed = true;
+      }
+    }
+    if (changed) revision.allergenReviewState = IngredientPropertyReviewState.Unreviewed;
+  }
+
+  private normalizeCommonIntolerances(revision: IngredientRevisionDetails) {
+    let changed = false;
+    for (const property of this.commonIntolerances()) {
+      if (this.propertyState(revision.intolerances, property.id) !== null) continue;
+      this.setPropertyValue(revision.intolerances, property.id,
+        IngredientPropertyState.Unknown, IngredientPropertySource.Derived);
+      changed = true;
+    }
+    if (changed) revision.intoleranceReviewState = IngredientPropertyReviewState.Unreviewed;
+  }
+
+  private normalizePrimaryOrigin(revision: IngredientRevisionDetails) {
+    const primaryOrigins = this.primaryOrigins();
+    if (primaryOrigins.some(value => this.propertyState(revision.origins, value.id) !== null)) return;
+    const unknownOrigin = primaryOrigins.find(value => value.code === 'UNKNOWN_ORIGIN');
+    if (!unknownOrigin) return;
+    this.applyPrimaryOrigin(revision, unknownOrigin.id, IngredientPropertySource.Derived);
+    revision.originReviewState = IngredientPropertyReviewState.Unreviewed;
+  }
+
+  private applyPrimaryOrigin(
+    revision: IngredientRevisionDetails,
+    selectedPropertyId: string,
+    selectedSource: IngredientPropertySource)
+  {
+    for (const property of this.primaryOrigins()) {
+      const selected = property.id === selectedPropertyId;
+      this.setPropertyValue(revision.origins, property.id,
+        selected ? IngredientPropertyState.Contains : IngredientPropertyState.DoesNotContain,
+        selected ? selectedSource : IngredientPropertySource.Derived);
+    }
+  }
+
+  private setPropertyValue(
+    values: IngredientRevisionPropertyItem[],
+    propertyId: string,
+    state: IngredientPropertyState | null,
+    source: IngredientPropertySource)
+  {
+    const index = values.findIndex(value => value.propertyId === propertyId);
+    if (state === null) {
+      if (index >= 0) values.splice(index, 1);
+      return;
+    }
+    const item = { propertyId, state, source };
+    if (index >= 0) values[index] = item;
+    else values.push(item);
   }
 }

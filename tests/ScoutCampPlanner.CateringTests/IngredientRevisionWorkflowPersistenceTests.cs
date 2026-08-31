@@ -59,6 +59,24 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
     {
         await using var fixture = await DatabaseFixture.CreateAsync();
         Seed seed = await fixture.SeedDraftAsync(reviewed: false);
+        Guid allergenId = Guid.NewGuid();
+        Guid intoleranceId = Guid.NewGuid();
+        Guid originId = Guid.NewGuid();
+        fixture.Database.AddRange(
+            new IngredientAllergenDefinitionRecord
+            {
+                Id = allergenId, Code = "TEST_ALLERGEN", Name = "Testallergen", IsEuMajorAllergen = true,
+            },
+            new IngredientIntoleranceDefinitionRecord
+            {
+                Id = intoleranceId, Code = "TEST_INTOLERANCE", Name = "Testunverträglichkeit",
+            },
+            new IngredientOriginPropertyRecord
+            {
+                Id = originId, Code = "TEST_ORIGIN", Name = "Testherkunft",
+            });
+        await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+        fixture.Database.ChangeTracker.Clear();
         var store = new IngredientRevisionWorkflowStore(fixture.Database);
         IngredientRevisionDraftContent content = IngredientRevisionDraftContent.Create(
             "Gelbe Linsen",
@@ -66,13 +84,26 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
             seed.UnitId,
             IngredientPropertyReviewState.Reviewed,
             IngredientPropertyReviewState.Reviewed,
-            IngredientPropertyReviewState.Reviewed);
+            IngredientPropertyReviewState.Reviewed,
+            [new IngredientPropertyValue(allergenId, IngredientPropertyState.MayContain,
+                IngredientPropertySource.ManuallyVerified)],
+            [new IngredientPropertyValue(intoleranceId, IngredientPropertyState.DoesNotContain,
+                IngredientPropertySource.ManuallyVerified)],
+            [new IngredientPropertyValue(originId, IngredientPropertyState.Contains,
+                IngredientPropertySource.ManuallyVerified)]);
 
         IngredientRevisionMutationResult saved = await store.SaveDraftAsync(
             seed.RevisionId, content, 1, seed.ActorId, DateTimeOffset.UtcNow,
             TestContext.Current.CancellationToken);
+        IngredientRevisionDraftContent staleContent = IngredientRevisionDraftContent.Create(
+            "Veraltete Änderung",
+            seed.CategoryId,
+            seed.UnitId,
+            IngredientPropertyReviewState.Unreviewed,
+            IngredientPropertyReviewState.Unreviewed,
+            IngredientPropertyReviewState.Unreviewed);
         IngredientRevisionMutationResult stale = await store.SaveDraftAsync(
-            seed.RevisionId, content, 1, seed.ActorId, DateTimeOffset.UtcNow,
+            seed.RevisionId, staleContent, 1, seed.ActorId, DateTimeOffset.UtcNow,
             TestContext.Current.CancellationToken);
 
         Assert.Equal(IngredientRevisionMutationStatus.Saved, saved.Status);
@@ -83,6 +114,15 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
             .AsNoTracking().SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal("Gelbe Linsen", stored.Name);
         Assert.Equal("GELBE LINSEN", stored.NormalizedName);
+        Assert.Equal((int)IngredientPropertyState.MayContain,
+            Assert.Single(await fixture.Database.Set<IngredientRevisionAllergenRecord>()
+                .AsNoTracking().ToArrayAsync(TestContext.Current.CancellationToken)).State);
+        Assert.Equal(intoleranceId,
+            Assert.Single(await fixture.Database.Set<IngredientRevisionIntoleranceRecord>()
+                .AsNoTracking().ToArrayAsync(TestContext.Current.CancellationToken)).IntoleranceId);
+        Assert.Equal(originId,
+            Assert.Single(await fixture.Database.Set<IngredientRevisionOriginRecord>()
+                .AsNoTracking().ToArrayAsync(TestContext.Current.CancellationToken)).OriginPropertyId);
     }
 
     [Fact]

@@ -99,6 +99,19 @@ public sealed class IngredientSuitabilityEvaluatorTests
     }
 
     [Fact]
+    public void Gluten_free_is_derived_only_from_official_allergen_group()
+    {
+        IngredientRevision revision = ReviewedDraft();
+        revision.SetAllergen(
+            Value(glutenCereals, IngredientPropertyState.DoesNotContain), UserId, Now);
+        revision.SetIntolerance(
+            Value(gluten, IngredientPropertyState.Contains), UserId, Now);
+
+        Assert.Equal(IngredientCompatibility.Compatible,
+            evaluator.EvaluateGlutenFree(revision));
+    }
+
+    [Fact]
     public void May_contain_requires_review_instead_of_positive_result()
     {
         IngredientRevision revision = ReviewedDraft();

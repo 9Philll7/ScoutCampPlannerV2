@@ -105,6 +105,21 @@ feat: Eignungsprüfung und Publish-Validierung für Basiszutaten ergänzen
 
 ## Nächste Arbeitsschritte
 
+### Herkunftseingabe im Revisionseditor
+
+Die Herkunftseingabe wurde fachlich vereinfacht:
+
+- genau eine Hauptherkunft je Basiszutat
+- `UNKNOWN_ORIGIN` als Ausgangswert neuer, noch ungeklärter Zutaten
+- automatische Ableitung der nicht ausgewählten Hauptherkünfte als `does_not_contain`
+- separate, kombinierbare Angaben für tierisches Fett, Gelatine, tierisches Lab
+  und sonstige tierische Bestandteile
+- fehlende Zusatzmerkmale werden erst bei ausdrücklich vollständiger Prüfung
+  als `does_not_contain` abgeleitet
+
+Die Persistenz bleibt beim bestehenden flexiblen Herkunftsmerkmalsmodell; die
+exklusive Hauptherkunft ist eine fachliche Editorregel.
+
 ### 1. Fachlichen Auswertungsservice implementieren – umgesetzt
 
 Der providerunabhängige Domain-Service ist im dritten Domain-Inkrement umgesetzt.
@@ -287,7 +302,24 @@ Erst nach Domain und Migration:
 - Auswahl von Name, Kategorie und Basiseinheit – umgesetzt
 - explizite Bestätigung der drei fachlichen Eigenschaftsgruppen – umgesetzt
 - Schutz vor Veröffentlichung noch nicht gespeicherter UI-Änderungen – umgesetzt
-- noch offen: fachliche Eigenschaftswerte, Varianten und Umrechnungen im Editor
+- Auswahl und transaktionales Speichern konkreter Allergen-, Unverträglichkeits-
+  und Herkunftszustände – umgesetzt
+- manuelle Änderungen werden mit Quelle `ManuallyVerified` gespeichert und
+  setzen die betroffene Gruppe wieder auf `Unreviewed` – umgesetzt
+- Allergene werden im Lagereditor über die 14 österreichischen Hauptgruppen
+  `A` bis `R` erfasst; Gluten- und Schalenfrucht-Untertypen erscheinen nur bei
+  `Contains` als eigene Detailauswahl – umgesetzt
+- bei anderen Zuständen übernehmen die Untertypen den Hauptgruppenzustand mit
+  Quelle `Derived`; bei `Contains` starten noch unbestimmte Details als
+  `Unknown` – umgesetzt
+- häufige Unverträglichkeiten werden direkt, weitere FODMAP-bezogene Einträge
+  in einem Detailbereich angezeigt – umgesetzt
+- Gluten wird nicht mehr doppelt als Unverträglichkeit erfasst; Glutenfreiheit
+  wird ausschließlich aus Allergen A und dessen Untertypen berechnet – umgesetzt
+- Laktose, Fruktose und Histamin starten als `Unknown`; fehlende erweiterte
+  Unverträglichkeiten werden erst bei bestätigtem Review als `DoesNotContain`
+  mit Quelle `Derived` ergänzt – umgesetzt
+- noch offen: Varianten und Umrechnungen im Editor
 - Fork erst beim tatsächlichen lokalen Speichern
 - Anzeige verfügbarer zentraler Updates
 - Konfliktauflösung für Drei-Wege-Merge

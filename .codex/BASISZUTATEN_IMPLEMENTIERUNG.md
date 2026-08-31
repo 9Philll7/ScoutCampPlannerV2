@@ -223,16 +223,20 @@ Initial:
 - FRUCTOSE
 - SORBITOL
 - HISTAMINE
-- GLUTEN
 - FRUCTANS
 - GALACTANS
 - MANNITOL
 - XYLITOL
 - OTHER_POLYOLS
 
+Der bestehende Code `GLUTEN` wird nur noch zur Abwärtskompatibilität gelesen.
+Neue Angaben werden ausschließlich über die Allergen-Hauptgruppe
+`GLUTEN_CEREALS` und ihre Untertypen erfasst; nur diese bestimmen die
+berechnete Glutenfreiheit.
+
 ### Herkunftsmerkmale
 
-Nichttierisch:
+Nichttierische Hauptherkunft:
 
 - PLANT
 - FUNGI
@@ -240,7 +244,7 @@ Nichttierisch:
 - SYNTHETIC
 - MICROBIAL
 
-Tierisch:
+Tierische Hauptherkunft:
 
 - MEAT
 - POULTRY
@@ -251,6 +255,9 @@ Tierisch:
 - EGG
 - HONEY
 - INSECT
+
+Zusätzliche tierische Merkmale:
+
 - ANIMAL_FAT
 - GELATIN
 - ANIMAL_RENNET
@@ -259,6 +266,12 @@ Tierisch:
 Zusätzlich:
 
 - UNKNOWN_ORIGIN
+
+Eine Basiszutat besitzt genau eine Hauptherkunft. Der Editor bildet diese als
+Einzelauswahl ab und speichert die ausgewählte Herkunft als `contains` sowie die
+anderen Hauptherkünfte abgeleitet als `does_not_contain`. Die vier zusätzlichen
+tierischen Merkmale bleiben kombinierbar. Neue Zutaten beginnen mit
+`UNKNOWN_ORIGIN = contains`.
 
 ## Tests
 

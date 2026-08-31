@@ -9,7 +9,10 @@ public sealed record IngredientRevisionDraftContent
         Guid baseUnitId,
         IngredientPropertyReviewState allergenReviewState,
         IngredientPropertyReviewState intoleranceReviewState,
-        IngredientPropertyReviewState originReviewState)
+        IngredientPropertyReviewState originReviewState,
+        IReadOnlyList<IngredientPropertyValue> allergens,
+        IReadOnlyList<IngredientPropertyValue> intolerances,
+        IReadOnlyList<IngredientPropertyValue> origins)
     {
         Name = name;
         NormalizedName = normalizedName;
@@ -18,6 +21,9 @@ public sealed record IngredientRevisionDraftContent
         AllergenReviewState = allergenReviewState;
         IntoleranceReviewState = intoleranceReviewState;
         OriginReviewState = originReviewState;
+        Allergens = allergens;
+        Intolerances = intolerances;
+        Origins = origins;
     }
 
     public string Name { get; }
@@ -27,6 +33,9 @@ public sealed record IngredientRevisionDraftContent
     public IngredientPropertyReviewState AllergenReviewState { get; }
     public IngredientPropertyReviewState IntoleranceReviewState { get; }
     public IngredientPropertyReviewState OriginReviewState { get; }
+    public IReadOnlyList<IngredientPropertyValue> Allergens { get; }
+    public IReadOnlyList<IngredientPropertyValue> Intolerances { get; }
+    public IReadOnlyList<IngredientPropertyValue> Origins { get; }
 
     public static IngredientRevisionDraftContent Create(
         string name,
@@ -34,7 +43,10 @@ public sealed record IngredientRevisionDraftContent
         Guid baseUnitId,
         IngredientPropertyReviewState allergenReviewState,
         IngredientPropertyReviewState intoleranceReviewState,
-        IngredientPropertyReviewState originReviewState)
+        IngredientPropertyReviewState originReviewState,
+        IEnumerable<IngredientPropertyValue>? allergens = null,
+        IEnumerable<IngredientPropertyValue>? intolerances = null,
+        IEnumerable<IngredientPropertyValue>? origins = null)
     {
         (string display, string normalized) = CatalogName.Normalize(name, nameof(name), 200);
         if (categoryId == Guid.Empty)
@@ -53,6 +65,19 @@ public sealed record IngredientRevisionDraftContent
             baseUnitId,
             allergenReviewState,
             intoleranceReviewState,
-            originReviewState);
+            originReviewState,
+            NormalizeProperties(allergens, nameof(allergens)),
+            NormalizeProperties(intolerances, nameof(intolerances)),
+            NormalizeProperties(origins, nameof(origins)));
+    }
+
+    private static IReadOnlyList<IngredientPropertyValue> NormalizeProperties(
+        IEnumerable<IngredientPropertyValue>? values,
+        string parameterName)
+    {
+        IngredientPropertyValue[] result = values?.OrderBy(value => value.PropertyId).ToArray() ?? [];
+        if (result.Select(value => value.PropertyId).Distinct().Count() != result.Length)
+            throw new ArgumentException("Property IDs must be unique.", parameterName);
+        return result;
     }
 }

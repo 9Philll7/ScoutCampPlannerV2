@@ -14,7 +14,10 @@ public sealed record SaveIngredientRevisionDraftRequest(
     IngredientPropertyReviewState AllergenReviewState,
     IngredientPropertyReviewState IntoleranceReviewState,
     IngredientPropertyReviewState OriginReviewState,
-    long ExpectedRowVersion);
+    long ExpectedRowVersion,
+    IReadOnlyList<IngredientRevisionPropertyItem>? Allergens = null,
+    IReadOnlyList<IngredientRevisionPropertyItem>? Intolerances = null,
+    IReadOnlyList<IngredientRevisionPropertyItem>? Origins = null);
 
 public sealed record PublishIngredientRevisionRequest(long ExpectedRowVersion);
 
@@ -237,7 +240,10 @@ public sealed class IngredientRevisionWorkflowService(
                 request.BaseUnitId,
                 request.AllergenReviewState,
                 request.IntoleranceReviewState,
-                request.OriginReviewState);
+                request.OriginReviewState,
+                ToPropertyValues(request.Allergens),
+                ToPropertyValues(request.Intolerances),
+                ToPropertyValues(request.Origins));
         }
         catch (ArgumentException)
         {
@@ -336,4 +342,8 @@ public sealed class IngredientRevisionWorkflowService(
 
     private static Guid Required(Guid value, string parameterName) =>
         value == Guid.Empty ? throw new ArgumentException("ID is required.", parameterName) : value;
+
+    private static IEnumerable<IngredientPropertyValue> ToPropertyValues(
+        IReadOnlyList<IngredientRevisionPropertyItem>? values) =>
+        values?.Select(value => new IngredientPropertyValue(value.PropertyId, value.State, value.Source)) ?? [];
 }

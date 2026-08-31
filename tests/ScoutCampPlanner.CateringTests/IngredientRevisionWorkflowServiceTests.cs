@@ -37,6 +37,7 @@ public sealed class IngredientRevisionWorkflowServiceTests
             store,
             authorization,
             new FixedTimeProvider(new DateTimeOffset(2026, 8, 30, 12, 0, 0, TimeSpan.Zero)));
+        Guid allergenId = Guid.NewGuid();
 
         IngredientRevisionMutationResult result = await service.SaveDraftAsync(
             Guid.NewGuid(),
@@ -47,7 +48,11 @@ public sealed class IngredientRevisionWorkflowServiceTests
                 IngredientPropertyReviewState.Reviewed,
                 IngredientPropertyReviewState.Unreviewed,
                 IngredientPropertyReviewState.Reviewed,
-                4),
+                4,
+                [new IngredientRevisionPropertyItem(
+                    allergenId,
+                    IngredientPropertyState.Contains,
+                    IngredientPropertySource.ManuallyVerified)]),
             Guid.NewGuid(),
             TestContext.Current.CancellationToken);
 
@@ -55,6 +60,7 @@ public sealed class IngredientRevisionWorkflowServiceTests
         Assert.Equal(tenantId, authorization.RequestedTenantId);
         Assert.Equal("Rote Linsen", store.SavedContent!.Name);
         Assert.Equal("ROTE LINSEN", store.SavedContent.NormalizedName);
+        Assert.Equal(allergenId, Assert.Single(store.SavedContent.Allergens).PropertyId);
         Assert.Equal(4, store.ExpectedRowVersion);
     }
 
