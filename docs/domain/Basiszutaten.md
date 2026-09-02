@@ -276,6 +276,11 @@ Archivierte Zutaten bleiben für bestehende Referenzen erhalten.
 
 Jede Basiszutat besitzt genau eine feste Basiseinheit.
 
+Als Basiseinheit sind ausschließlich Gramm, Kilogramm, Milliliter, Liter und
+Stück zulässig. Küchenmaße wie Teelöffel, Esslöffel, Prise oder Bund werden nur
+als zutatenspezifische weitere Einheit mit einer Umrechnung zur Basiseinheit
+hinterlegt.
+
 Beispiele:
 
 | Zutat | Basiseinheit |
@@ -295,6 +300,21 @@ Allgemeine Umrechnungen liegen im zentralen Einheitensystem, z. B.:
 - 1 kg = 1000 g
 - 1 l = 1000 ml
 
+Diese Umrechnungen werden automatisch aus Dimension und Einheitenfaktor
+berechnet. Sie werden nicht als zutatenspezifische weitere Einheit gepflegt.
+
+Der initiale Einheitenkatalog enthält `g`, `kg`, `ml`, `l`, `Stk.`, `TL`,
+`EL`, `Prise` und `Bund`. Gramm und Milliliter sind die Referenzeinheiten
+ihrer Dimension; Kilogramm und Liter besitzen die oben genannten allgemeinen
+Faktoren. Für Stück- und Küchenmaße gibt es ohne konkrete Zutat keinen
+allgemeingültigen Masse- oder Volumenfaktor.
+
+Der initiale Einheitenkatalog enthält `g`, `kg`, `ml`, `l`, `Stk.`, `TL`,
+`EL`, `Prise` und `Bund`. Gramm und Milliliter sind die Referenzeinheiten
+ihrer Dimension; Kilogramm und Liter besitzen die oben genannten allgemeinen
+Faktoren. Für Stück- und Küchenmaße gibt es ohne konkrete Zutat keinen
+allgemeingültigen Masse- oder Volumenfaktor.
+
 ### 7.2 Zutatenspezifische Umrechnungen
 
 Zutatenspezifische Umrechnungen werden revisionsgebunden gespeichert.
@@ -312,6 +332,20 @@ Genauigkeit:
 - `estimated`
 
 Varianten können solche Umrechnungen gezielt überschreiben oder ergänzen.
+
+Im Zutateneditor stehen für zutatenspezifische weitere Einheiten `TL`, `EL`,
+`Prise` und `Bund` sowie Basiseinheiten einer anderen Dimension zur Verfügung.
+Bei einer Masse-Basiseinheit sind beispielsweise Volumen und Stück zulässig,
+nicht jedoch eine zusätzliche Umrechnung zwischen Gramm und Kilogramm. Der
+gespeicherte Faktor bedeutet:
+`1 alternative Einheit = Faktor × Basiseinheit`. Die Basiseinheit selbst wird
+nicht nochmals als Umrechnung gespeichert. Veröffentlichte Umrechnungen werden
+wie alle anderen Revisionsdaten nur über einen neuen Entwurf geändert.
+
+Im Zutateneditor bedeutet der gespeicherte Faktor immer:
+`1 alternative Einheit = Faktor × Basiseinheit`. Die Basiseinheit selbst wird
+nicht nochmals als Umrechnung gespeichert. Veröffentlichte Umrechnungen werden
+wie alle anderen Revisionsdaten nur über einen neuen Entwurf geändert.
 
 ---
 

@@ -319,7 +319,13 @@ Erst nach Domain und Migration:
 - Laktose, Fruktose und Histamin starten als `Unknown`; fehlende erweiterte
   Unverträglichkeiten werden erst bei bestätigtem Review als `DoesNotContain`
   mit Quelle `Derived` ergänzt – umgesetzt
-- noch offen: Varianten und Umrechnungen im Editor
+- revisionsgebundene Umrechnungen im Editor inklusive Basiseinheit,
+  Faktor und Genauigkeit – umgesetzt
+- Standard-Einheiten `g`, `kg`, `ml`, `l`, `Stk.`, `TL`, `EL`, `Prise`
+  und `Bund` werden per Migration bereitgestellt – umgesetzt
+- Folgedraft aus einer veröffentlichten Revision mit vollständiger Kopie der
+  Eigenschaften, Umrechnungen, Varianten und Overrides – umgesetzt
+- noch offen: Varianten im Editor
 - Fork erst beim tatsächlichen lokalen Speichern
 - Anzeige verfügbarer zentraler Updates
 - Konfliktauflösung für Drei-Wege-Merge
@@ -358,7 +364,9 @@ Offline darf keine fehlende Stammdatenreferenz aus der Cloud nachladen müssen.
 - Bestehende Rezepte referenzieren noch keine Zutatenrevision und keinen `variant_key`.
 - `Guid.NewGuid()` wird derzeit beim Kopieren von Varianten in einen neuen Draft verwendet. Vor Persistenzintegration prüfen, ob IDs durch den Application Layer bereitgestellt werden sollen, damit Erzeugung und Tests vollständig deterministisch bleiben.
 - Der vollständige Drei-Wege-Merge und `merged_central_revision_id` sind noch nicht implementiert.
-- Die allgemeinen und zutatenspezifischen Umrechnungen sind noch nicht in das neue Revisionsmodell überführt.
+- Allgemeine Einheiten und revisionsgebundene Zutatenumrechnungen sind in das
+  neue Revisionsmodell überführt; Varianten-Overrides sind persistiert, aber
+  noch nicht im Editor bearbeitbar.
 
 ## Prüfungen nach jedem Inkrement
 

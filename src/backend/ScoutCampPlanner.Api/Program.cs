@@ -730,6 +730,16 @@ app.MapPut("/api/ingredient-revisions/{revisionId:guid}", async (
         cancellationToken);
     return ToIngredientRevisionMutationResult(result);
 }).RequireAuthorization();
+app.MapPost("/api/ingredient-revisions/{revisionId:guid}/draft", async (
+    Guid revisionId,
+    ClaimsPrincipal principal,
+    IngredientRevisionWorkflowService revisions,
+    CancellationToken cancellationToken) =>
+    ToIngredientRevisionCreationResult(await revisions.CreateDraftFromPublishedAsync(
+        revisionId,
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!),
+        cancellationToken)))
+    .RequireAuthorization();
 app.MapPost("/api/ingredient-revisions/{revisionId:guid}/publish", async (
     Guid revisionId,
     PublishIngredientRevisionRequest request,
@@ -829,6 +839,18 @@ static IResult ToIngredientRevisionCreationResult(IngredientRevisionMutationResu
             $"/api/ingredient-revisions/{result.RevisionId}",
             new { result.IngredientId, result.RevisionId, result.RowVersion }),
         IngredientRevisionMutationStatus.Forbidden => Results.Forbid(),
+        IngredientRevisionMutationStatus.NotFound => Results.NotFound(),
+        IngredientRevisionMutationStatus.NotDraft => Results.Conflict(new
+        {
+            code = "ingredient_revision_not_published",
+            result.RowVersion,
+        }),
+        IngredientRevisionMutationStatus.DraftAlreadyExists => Results.Conflict(new
+        {
+            code = "ingredient_revision_draft_exists",
+            result.RevisionId,
+            result.RowVersion,
+        }),
         _ => Results.ValidationProblem(new Dictionary<string, string[]>
         {
             ["ingredientRevision"] = ["Name, Kategorie oder Basiseinheit sind ungültig."],

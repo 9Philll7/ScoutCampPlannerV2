@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, effect, inject, input, signal } from '@angular/core';
+import { Component, effect, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -13,12 +13,14 @@ import { ActionIconComponent } from '../../shared/action-icon.component';
 import {
   IngredientEditorReferenceData,
   IngredientAllergenReference,
+  IngredientConversionPrecision,
   IngredientPropertyReviewState,
   IngredientPropertySource,
   IngredientPropertyState,
   IngredientRevisionApiService,
   IngredientRevisionDetails,
   IngredientRevisionPropertyItem,
+  IngredientRevisionUnitConversionItem,
   IngredientRevisionState,
   IngredientRevisionSummary
 } from './ingredient-revision-api.service';
@@ -55,9 +57,21 @@ import {
           </mat-form-field>
           <mat-form-field appearance="outline"><mat-label>Basiseinheit</mat-label>
             <mat-select name="createIngredientUnit" [(ngModel)]="createBaseUnitId" required>
-              @for (unit of referenceData()?.units ?? []; track unit.id) {
-                <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
-              }
+              <mat-optgroup label="Gewicht">
+                @for (unit of baseUnitsByDimension(0); track unit.id) {
+                  <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
+                }
+              </mat-optgroup>
+              <mat-optgroup label="Volumen">
+                @for (unit of baseUnitsByDimension(1); track unit.id) {
+                  <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
+                }
+              </mat-optgroup>
+              <mat-optgroup label="Anzahl">
+                @for (unit of baseUnitsByDimension(2); track unit.id) {
+                  <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
+                }
+              </mat-optgroup>
             </mat-select>
           </mat-form-field>
           <div class="revision-actions">
@@ -96,13 +110,75 @@ import {
             </mat-select>
           </mat-form-field>
           <mat-form-field appearance="outline"><mat-label>Basiseinheit</mat-label>
-            <mat-select name="revisionUnit" [(ngModel)]="revision.baseUnitId"
+            <mat-select name="revisionUnit" [ngModel]="revision.baseUnitId"
+              (ngModelChange)="setBaseUnit(revision, $event)"
               [disabled]="revision.state === publishedState || disabled()">
-              @for (unit of referenceData()?.units ?? []; track unit.id) {
-                <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
-              }
+              <mat-optgroup label="Gewicht">
+                @for (unit of baseUnitsByDimension(0); track unit.id) {
+                  <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
+                }
+              </mat-optgroup>
+              <mat-optgroup label="Volumen">
+                @for (unit of baseUnitsByDimension(1); track unit.id) {
+                  <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
+                }
+              </mat-optgroup>
+              <mat-optgroup label="Anzahl">
+                @for (unit of baseUnitsByDimension(2); track unit.id) {
+                  <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
+                }
+              </mat-optgroup>
             </mat-select>
           </mat-form-field>
+          <section class="unit-conversions">
+            <div class="unit-conversion-heading">
+              <div>
+                <h4>Weitere Einheiten</h4>
+                <p>Lege Umrechnungen zu Einheiten anderer Klassen oder zu Küchenmaßen fest. Umrechnungen innerhalb der Basiseinheitenklasse erfolgen automatisch.</p>
+              </div>
+              @if (revision.state === draftState && !disabled()) {
+                <button matButton type="button" (click)="addUnitConversion(revision)"
+                  [disabled]="!availableConversionUnits(revision).length">
+                  <scp-action-icon name="add"/>Einheit ergÃ¤nzen
+                </button>
+              }
+            </div>
+            @for (conversion of revision.unitConversions; track conversion.sourceUnitId; let index = $index) {
+              <div class="unit-conversion-row">
+                <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Einheit</mat-label>
+                  <mat-select [(ngModel)]="conversion.sourceUnitId" [name]="'conversionUnit' + index"
+                    [disabled]="revision.state === publishedState || disabled()">
+                    @for (unit of availableConversionUnits(revision, conversion.sourceUnitId); track unit.id) {
+                      <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+                <span class="conversion-formula">1 {{ unitSymbol(conversion.sourceUnitId) }} =</span>
+                <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Menge</mat-label>
+                  <input matInput type="text" inputmode="decimal"
+                    [ngModel]="conversion.factorInput"
+                    (ngModelChange)="setConversionFactor(conversion, $event)"
+                    (blur)="normalizeConversionFactorInput(conversion)" [name]="'conversionFactor' + index"
+                    [disabled]="revision.state === publishedState || disabled()" required>
+                </mat-form-field>
+                <span class="conversion-formula">{{ unitSymbol(revision.baseUnitId) }}</span>
+                <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Genauigkeit</mat-label>
+                  <mat-select [(ngModel)]="conversion.precision" [name]="'conversionPrecision' + index"
+                    [disabled]="revision.state === publishedState || disabled()">
+                    @for (precision of conversionPrecisions; track precision.value) {
+                      <mat-option [value]="precision.value">{{ precision.label }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+                @if (revision.state === draftState && !disabled()) {
+                  <button matIconButton type="button" aria-label="Einheit entfernen"
+                    (click)="removeUnitConversion(revision, index)"><scp-action-icon name="remove"/></button>
+                }
+              </div>
+            } @empty {
+              <p class="unit-conversion-empty">Neben der Basiseinheit sind noch keine weiteren Einheiten hinterlegt.</p>
+            }
+          </section>
           <div class="property-groups">
             <details class="property-group" open>
               <summary><span>Allergene</span><small>{{ specifiedMainAllergenCount(revision) }} von 14 angegeben</small></summary>
@@ -247,14 +323,21 @@ import {
           @if (revision.state === draftState) {
             <p class="revision-hint">„Geprüft“ bedeutet: Auch fehlende Einträge wurden bewusst kontrolliert.</p>
             <div class="revision-actions">
-              <button matButton type="submit" [disabled]="submitting() || disabled() || !isDirty(revision)">
+              <button matButton type="submit"
+                [disabled]="submitting() || disabled() || !isDirty(revision) || !unitConversionsValid(revision)">
                 <scp-action-icon name="save"/>Entwurf speichern</button>
               <button matButton="filled" type="button" (click)="publish()"
-                [disabled]="submitting() || disabled() || isDirty(revision) || !allReviewed(revision)">Veröffentlichen</button>
+                [disabled]="submitting() || disabled() || isDirty(revision) || !allReviewed(revision) || !unitConversionsValid(revision)">Veröffentlichen</button>
             </div>
             @if (isDirty(revision) && allReviewed(revision)) {
               <p class="revision-hint revision-unsaved">Vor dem Veröffentlichen muss der aktuelle Entwurf gespeichert werden.</p>
             }
+          } @else if (!disabled()) {
+            <p class="revision-hint">Veröffentlichte Versionen bleiben unveränderlich. Änderungen erfolgen in einem neuen Entwurf.</p>
+            <div class="revision-actions">
+              <button matButton="filled" type="button" (click)="createNextDraft()" [disabled]="submitting()">
+                <scp-action-icon name="edit"/>Neue Bearbeitung beginnen</button>
+            </div>
           }
         </form>
       }
@@ -275,9 +358,16 @@ import {
     .revision-list-item span:first-child { display: grid; gap: .15rem; } .revision-list-item small { color: #667168; }
     .revision-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; padding: 1rem;
       border: 1px solid #cddbcc; border-radius: .8rem; background: #f5faf4; }
-    .revision-form h4, .revision-form .revision-editor-heading, .property-groups, .revision-hint, .revision-actions { grid-column: 1 / -1; }
+    .revision-form h4, .revision-form .revision-editor-heading, .unit-conversions, .property-groups, .revision-hint, .revision-actions { grid-column: 1 / -1; }
     .revision-form mat-form-field:first-of-type { grid-column: 1 / -1; }
     .property-groups { display: grid; gap: .65rem; }
+    .unit-conversions { display: grid; gap: .65rem; padding: .85rem; border: 1px solid #d7e1d5;
+      border-radius: .65rem; background: #fff; }
+    .unit-conversion-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    .unit-conversion-heading p, .unit-conversion-empty { color: #667168; font-size: .84rem; }
+    .unit-conversion-row { display: grid; grid-template-columns: minmax(10rem, 1.2fr) auto minmax(7rem, .7fr) auto minmax(10rem, 1fr) auto;
+      align-items: center; gap: .55rem; padding: .65rem; border: 1px solid #e0e7de; border-radius: .6rem; background: #f8faf7; }
+    .conversion-formula { white-space: nowrap; color: #536056; font-weight: 600; }
     .property-group { overflow: hidden; border: 1px solid #d7e1d5; border-radius: .65rem; background: #fff; }
     .property-group summary { display: flex; justify-content: space-between; gap: .75rem; padding: .8rem .9rem;
       background: #eef4ed; color: #334737; font-weight: 700; cursor: pointer; }
@@ -309,12 +399,16 @@ import {
     .revision-empty { padding: 1rem; border: 1px dashed #b8c4b7; border-radius: .7rem; color: #5b665c; }
     @media (max-width: 800px) { .revision-form, .property-grid, .allergen-grid { grid-template-columns: 1fr; }
       .revision-form > * { grid-column: 1 !important; } }
+    @media (max-width: 680px) { .unit-conversion-heading { align-items: flex-start; flex-direction: column; }
+      .unit-conversion-row { grid-template-columns: 1fr auto; }
+      .unit-conversion-row mat-form-field { grid-column: 1 / -1; } }
     @media (max-width: 480px) { .property-row { grid-template-columns: 1fr; } }
   `
 })
 export class IngredientRevisionEditorComponent {
   readonly campId = input.required<string>();
   readonly disabled = input(false);
+  readonly published = output<void>();
   readonly revisions = signal<IngredientRevisionSummary[]>([]);
   readonly selected = signal<IngredientRevisionDetails | null>(null);
   readonly referenceData = signal<IngredientEditorReferenceData | null>(null);
@@ -331,6 +425,11 @@ export class IngredientRevisionEditorComponent {
     { value: IngredientPropertyState.DoesNotContain, label: 'Nicht enthalten' },
     { value: IngredientPropertyState.MayContain, label: 'Kann enthalten' },
     { value: IngredientPropertyState.Unknown, label: 'Unbekannt' }
+  ] as const;
+  readonly conversionPrecisions = [
+    { value: IngredientConversionPrecision.Exact, label: 'Exakt' },
+    { value: IngredientConversionPrecision.Average, label: 'Durchschnitt' },
+    { value: IngredientConversionPrecision.Estimated, label: 'GeschÃ¤tzt' }
   ] as const;
   private readonly allergenLetters: Readonly<Record<string, string>> = {
     GLUTEN_CEREALS: 'A', CRUSTACEANS: 'B', EGGS: 'C', FISH: 'D', PEANUTS: 'E', SOYBEANS: 'F',
@@ -357,6 +456,13 @@ export class IngredientRevisionEditorComponent {
   }
 
   canCreate() { return !!this.createName.trim() && !!this.createCategoryId && !!this.createBaseUnitId; }
+  baseUnits() {
+    const allowedSymbols = new Set(['g', 'kg', 'ml', 'l', 'Stk.']);
+    return (this.referenceData()?.units ?? []).filter(value => allowedSymbols.has(value.symbol));
+  }
+  baseUnitsByDimension(dimension: number) {
+    return this.baseUnits().filter(value => value.dimension === dimension);
+  }
   stateLabel(state: IngredientRevisionState) { return state === this.publishedState ? 'Veröffentlicht' : 'Entwurf'; }
   isReviewed(state: IngredientPropertyReviewState) { return state === IngredientPropertyReviewState.Reviewed; }
   reviewState(checked: boolean) { return checked ? IngredientPropertyReviewState.Reviewed : IngredientPropertyReviewState.Unreviewed; }
@@ -415,6 +521,65 @@ export class IngredientRevisionEditorComponent {
   }
   propertyState(values: IngredientRevisionPropertyItem[], propertyId: string) {
     return values.find(value => value.propertyId === propertyId)?.state ?? null;
+  }
+
+  unitSymbol(unitId: string) {
+    return this.referenceData()?.units.find(value => value.id === unitId)?.symbol ?? '?';
+  }
+
+  availableConversionUnits(revision: IngredientRevisionDetails, currentSourceUnitId?: string) {
+    const selectedIds = new Set(revision.unitConversions
+      .filter(value => value.sourceUnitId !== currentSourceUnitId)
+      .map(value => value.sourceUnitId));
+    return (this.referenceData()?.units ?? [])
+      .filter(value => this.isAllowedConversionUnit(revision.baseUnitId, value.id) && !selectedIds.has(value.id));
+  }
+
+  setBaseUnit(revision: IngredientRevisionDetails, baseUnitId: string) {
+    revision.baseUnitId = baseUnitId;
+    revision.unitConversions = revision.unitConversions
+      .filter(value => this.isAllowedConversionUnit(baseUnitId, value.sourceUnitId));
+  }
+
+  addUnitConversion(revision: IngredientRevisionDetails) {
+    const unit = this.availableConversionUnits(revision)[0];
+    if (!unit) return;
+    revision.unitConversions.push({
+      sourceUnitId: unit.id,
+      factorToBaseUnit: 1,
+      precision: IngredientConversionPrecision.Average,
+      factorInput: '1'
+    });
+  }
+
+  removeUnitConversion(revision: IngredientRevisionDetails, index: number) {
+    revision.unitConversions.splice(index, 1);
+  }
+
+  setConversionFactor(conversion: IngredientRevisionUnitConversionItem, input: string) {
+    conversion.factorInput = input;
+    const parsed = Number(input.trim().replace(',', '.'));
+    conversion.factorToBaseUnit = Number.isFinite(parsed) && parsed > 0 ? parsed : Number.NaN;
+  }
+
+  normalizeConversionFactorInput(conversion: IngredientRevisionUnitConversionItem) {
+    if (Number.isFinite(conversion.factorToBaseUnit) && conversion.factorToBaseUnit > 0)
+      conversion.factorInput = String(conversion.factorToBaseUnit).replace('.', ',');
+  }
+
+  unitConversionsValid(revision: IngredientRevisionDetails) {
+    return revision.unitConversions.every(value =>
+      Number.isFinite(value.factorToBaseUnit) && value.factorToBaseUnit > 0 &&
+      this.isAllowedConversionUnit(revision.baseUnitId, value.sourceUnitId));
+  }
+
+  private isAllowedConversionUnit(baseUnitId: string, sourceUnitId: string) {
+    const units = this.referenceData()?.units ?? [];
+    const baseUnit = units.find(value => value.id === baseUnitId);
+    const sourceUnit = units.find(value => value.id === sourceUnitId);
+    if (!baseUnit || !sourceUnit || baseUnit.id === sourceUnit.id) return false;
+    const kitchenMeasureSymbols = new Set(['TL', 'EL', 'Prise', 'Bund']);
+    return kitchenMeasureSymbols.has(sourceUnit.symbol) || sourceUnit.dimension !== baseUnit.dimension;
   }
 
   setPropertyState(
@@ -479,7 +644,7 @@ export class IngredientRevisionEditorComponent {
   openCreate() {
     this.createName = '';
     this.createCategoryId = this.referenceData()?.categories[0]?.id ?? '';
-    this.createBaseUnitId = this.referenceData()?.units[0]?.id ?? '';
+    this.createBaseUnitId = this.baseUnits()[0]?.id ?? '';
     this.createOpen.set(true); this.error.set(''); this.notice.set('');
   }
 
@@ -496,7 +661,8 @@ export class IngredientRevisionEditorComponent {
 
   open(revisionId: string) {
     this.error.set(''); this.notice.set('');
-    this.api.get(revisionId).subscribe({ next: value => { this.selectedSnapshot = this.snapshot(value);
+    this.api.get(revisionId).subscribe({ next: value => { this.initializeConversionFactorInputs(value);
+      this.selectedSnapshot = this.snapshot(value);
       if (value.state === this.draftState) {
         this.normalizeAllergenDetails(value);
         this.normalizeCommonIntolerances(value);
@@ -512,7 +678,12 @@ export class IngredientRevisionEditorComponent {
     this.api.save(revision.id, { name: revision.name, categoryId: revision.categoryId, baseUnitId: revision.baseUnitId,
       allergenReviewState: revision.allergenReviewState, intoleranceReviewState: revision.intoleranceReviewState,
       originReviewState: revision.originReviewState, expectedRowVersion: revision.rowVersion,
-      allergens: revision.allergens, intolerances: revision.intolerances, origins: revision.origins }).subscribe({
+      allergens: revision.allergens, intolerances: revision.intolerances, origins: revision.origins,
+      unitConversions: revision.unitConversions.map(value => ({
+        sourceUnitId: value.sourceUnitId,
+        factorToBaseUnit: value.factorToBaseUnit,
+        precision: value.precision
+      })) }).subscribe({
       next: result => { revision.rowVersion = result.rowVersion; this.selectedSnapshot = this.snapshot(revision);
         this.selected.set({ ...revision }); this.submitting.set(false);
         this.notice.set('Der Entwurf wurde gespeichert.'); this.refreshList(revision.id, false); },
@@ -521,14 +692,34 @@ export class IngredientRevisionEditorComponent {
   }
 
   publish() {
-    const revision = this.selected(); if (!revision || this.isDirty(revision) || !this.allReviewed(revision)) return;
+    const revision = this.selected();
+    if (!revision || this.isDirty(revision) || !this.allReviewed(revision) || !this.unitConversionsValid(revision)) return;
     this.submitting.set(true); this.error.set(''); this.notice.set('');
     this.api.publish(revision.id, revision.rowVersion).subscribe({
       next: result => { this.submitting.set(false); revision.rowVersion = result.rowVersion;
         revision.state = this.publishedState; this.selectedSnapshot = this.snapshot(revision);
         this.selected.set({ ...revision }); this.notice.set('Die Zutat wurde veröffentlicht.');
+        this.published.emit();
         this.refreshList(revision.id, false); },
       error: error => this.handleMutationError(error)
+    });
+  }
+
+  createNextDraft() {
+    const revision = this.selected();
+    if (!revision || revision.state !== this.publishedState || this.submitting()) return;
+    this.submitting.set(true); this.error.set(''); this.notice.set('');
+    this.api.createDraftFromPublished(revision.id).subscribe({
+      next: result => { this.submitting.set(false); this.notice.set('Ein neuer Entwurf wurde aus der veröffentlichten Version erstellt.');
+        if (result.revisionId) this.refreshList(result.revisionId); },
+      error: (error: HttpErrorResponse) => {
+        this.submitting.set(false);
+        if (error.status === 409 && error.error?.code === 'ingredient_revision_draft_exists') {
+          this.notice.set('Für diese Zutat besteht bereits ein Entwurf.');
+          const revisionId = error.error?.revisionId as string | undefined;
+          this.refreshList(revisionId);
+        } else this.error.set('Der neue Zutatenentwurf konnte nicht erstellt werden.');
+      }
     });
   }
 
@@ -559,11 +750,26 @@ export class IngredientRevisionEditorComponent {
       allergenReviewState: value.allergenReviewState, intoleranceReviewState: value.intoleranceReviewState,
       originReviewState: value.originReviewState,
       allergens: this.sortedProperties(value.allergens), intolerances: this.sortedProperties(value.intolerances),
-      origins: this.sortedProperties(value.origins) });
+      origins: this.sortedProperties(value.origins),
+      unitConversions: this.sortedUnitConversions(value.unitConversions) });
   }
 
   private sortedProperties(values: IngredientRevisionPropertyItem[]) {
     return [...values].sort((left, right) => left.propertyId.localeCompare(right.propertyId));
+  }
+
+  private sortedUnitConversions(values: IngredientRevisionUnitConversionItem[]) {
+    return values.map(value => ({
+      sourceUnitId: value.sourceUnitId,
+      factorToBaseUnit: value.factorToBaseUnit,
+      precision: value.precision,
+      factorInput: value.factorInput
+    })).sort((left, right) => left.sourceUnitId.localeCompare(right.sourceUnitId));
+  }
+
+  private initializeConversionFactorInputs(revision: IngredientRevisionDetails) {
+    for (const conversion of revision.unitConversions)
+      conversion.factorInput = String(conversion.factorToBaseUnit).replace('.', ',');
   }
 
   private normalizeAllergenDetails(revision: IngredientRevisionDetails) {

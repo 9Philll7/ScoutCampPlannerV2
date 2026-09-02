@@ -609,7 +609,8 @@ type CampSection = 'general' | 'structure' | 'catering';
                     <section class="settings-section">
                       <div class="section-heading"><div><p class="eyebrow">Zutatenverwaltung</p><h3>Eigene Lagerzutaten</h3></div></div>
                       <p class="context-info">Lagerzutaten werden zuerst als Entwurf angelegt und nach bewusster Prüfung veröffentlicht.</p>
-                      <scp-ingredient-revision-editor [campId]="camp.id" [disabled]="!camp.canEdit || camp.isFrozen"/>
+                      <scp-ingredient-revision-editor [campId]="camp.id" [disabled]="!camp.canEdit || camp.isFrozen"
+                        (published)="loadIngredients(camp.id)"/>
                     </section>
                     <section class="settings-section">
                       <div class="section-heading"><div><p class="eyebrow">Bestehender Zutatenkatalog</p><h3>Verfügbare Zutaten</h3></div>
@@ -1263,7 +1264,7 @@ export class AppComponent {
     }, error: () => this.error.set('Der Mahlzeitenplan konnte nicht geladen werden.') });
   }
 
-  private loadIngredients(campId: string) {
+  loadIngredients(campId: string) {
     this.ingredientsLoading.set(true);
     this.campApi.getCampIngredients(campId).subscribe({
       next: ingredients => { this.ingredients.set(ingredients); this.ingredientsLoading.set(false); },

@@ -55,6 +55,85 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
     }
 
     [Fact]
+    public async Task Create_draft_rejects_kitchen_measure_as_base_unit()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Guid actorId = Guid.NewGuid();
+        var category = new IngredientCategoryRecord
+        {
+            Id = Guid.NewGuid(), Code = "TEST_CATEGORY", Name = "Testkategorie",
+            NormalizedName = "TESTKATEGORIE",
+        };
+        var tablespoon = new MeasurementUnit(
+            Guid.NewGuid(), "Esslöffel", "EL", MeasurementDimension.Count, 1m);
+        fixture.Database.AddRange(category, tablespoon);
+        await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+        var store = new IngredientRevisionWorkflowStore(fixture.Database);
+        IngredientRevisionDraftContent content = IngredientRevisionDraftContent.Create(
+            "Mehl",
+            category.Id,
+            tablespoon.Id,
+            IngredientPropertyReviewState.Unreviewed,
+            IngredientPropertyReviewState.Unreviewed,
+            IngredientPropertyReviewState.Unreviewed);
+
+        IngredientRevisionMutationResult result = await store.CreateDraftAsync(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            new IngredientRevisionScope(IngredientScopeType.Central, null),
+            content,
+            actorId,
+            DateTimeOffset.UtcNow,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(IngredientRevisionMutationStatus.Invalid, result.Status);
+        Assert.Empty(await fixture.Database.Set<IngredientIdentityRecord>()
+            .AsNoTracking().ToArrayAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Specific_conversion_allows_other_dimensions_but_rejects_automatic_same_dimension()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        var category = new IngredientCategoryRecord
+        {
+            Id = Guid.NewGuid(), Code = "TEST_CATEGORY", Name = "Testkategorie",
+            NormalizedName = "TESTKATEGORIE",
+        };
+        var gram = new MeasurementUnit(Guid.NewGuid(), "Gramm", "g", MeasurementDimension.Mass, 1m);
+        var kilogram = new MeasurementUnit(Guid.NewGuid(), "Kilogramm", "kg", MeasurementDimension.Mass, 1_000m);
+        var milliliter = new MeasurementUnit(Guid.NewGuid(), "Milliliter", "ml", MeasurementDimension.Volume, 1m);
+        fixture.Database.AddRange(category, gram, kilogram, milliliter);
+        await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+        var store = new IngredientRevisionWorkflowStore(fixture.Database);
+
+        IngredientRevisionMutationResult sameDimension = await store.CreateDraftAsync(
+            Guid.NewGuid(), Guid.NewGuid(), new IngredientRevisionScope(IngredientScopeType.Central, null),
+            IngredientRevisionDraftContent.Create(
+                "Mehl", category.Id, gram.Id,
+                IngredientPropertyReviewState.Unreviewed,
+                IngredientPropertyReviewState.Unreviewed,
+                IngredientPropertyReviewState.Unreviewed,
+                unitConversions: [new IngredientRevisionUnitConversion(
+                    kilogram.Id, 1_000m, IngredientConversionPrecision.Exact)]),
+            Guid.NewGuid(), DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+
+        IngredientRevisionMutationResult otherDimension = await store.CreateDraftAsync(
+            Guid.NewGuid(), Guid.NewGuid(), new IngredientRevisionScope(IngredientScopeType.Central, null),
+            IngredientRevisionDraftContent.Create(
+                "Honig", category.Id, gram.Id,
+                IngredientPropertyReviewState.Unreviewed,
+                IngredientPropertyReviewState.Unreviewed,
+                IngredientPropertyReviewState.Unreviewed,
+                unitConversions: [new IngredientRevisionUnitConversion(
+                    milliliter.Id, 1.4m, IngredientConversionPrecision.Average)]),
+            Guid.NewGuid(), DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+
+        Assert.Equal(IngredientRevisionMutationStatus.Invalid, sameDimension.Status);
+        Assert.Equal(IngredientRevisionMutationStatus.Created, otherDimension.Status);
+    }
+
+    [Fact]
     public async Task Save_draft_updates_content_and_reports_stale_version()
     {
         await using var fixture = await DatabaseFixture.CreateAsync();
@@ -62,6 +141,7 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
         Guid allergenId = Guid.NewGuid();
         Guid intoleranceId = Guid.NewGuid();
         Guid originId = Guid.NewGuid();
+        Guid conversionUnitId = Guid.NewGuid();
         fixture.Database.AddRange(
             new IngredientAllergenDefinitionRecord
             {
@@ -74,7 +154,8 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
             new IngredientOriginPropertyRecord
             {
                 Id = originId, Code = "TEST_ORIGIN", Name = "Testherkunft",
-            });
+            },
+            new MeasurementUnit(conversionUnitId, "EsslÃ¶ffel", "EL", MeasurementDimension.Count, 1m));
         await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
         fixture.Database.ChangeTracker.Clear();
         var store = new IngredientRevisionWorkflowStore(fixture.Database);
@@ -90,7 +171,9 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
             [new IngredientPropertyValue(intoleranceId, IngredientPropertyState.DoesNotContain,
                 IngredientPropertySource.ManuallyVerified)],
             [new IngredientPropertyValue(originId, IngredientPropertyState.Contains,
-                IngredientPropertySource.ManuallyVerified)]);
+                IngredientPropertySource.ManuallyVerified)],
+            [new IngredientRevisionUnitConversion(
+                conversionUnitId, 15m, IngredientConversionPrecision.Average)]);
 
         IngredientRevisionMutationResult saved = await store.SaveDraftAsync(
             seed.RevisionId, content, 1, seed.ActorId, DateTimeOffset.UtcNow,
@@ -123,6 +206,11 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
         Assert.Equal(originId,
             Assert.Single(await fixture.Database.Set<IngredientRevisionOriginRecord>()
                 .AsNoTracking().ToArrayAsync(TestContext.Current.CancellationToken)).OriginPropertyId);
+        IngredientRevisionUnitConversionRecord storedConversion = Assert.Single(
+            await fixture.Database.Set<IngredientRevisionUnitConversionRecord>()
+                .AsNoTracking().ToArrayAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(conversionUnitId, storedConversion.SourceUnitId);
+        Assert.Equal(15m, storedConversion.FactorToBaseUnit);
     }
 
     [Fact]
@@ -216,6 +304,75 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
         Assert.Equal("lactose_free", variant.VariantKey);
         Assert.Equal(IngredientPropertyState.DoesNotContain,
             Assert.Single(variant.AllergenOverrides).State);
+    }
+
+    [Fact]
+    public async Task Follow_up_draft_copies_complete_published_graph()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Seed seed = await fixture.SeedDraftAsync(reviewed: true);
+        Guid allergenId = Guid.NewGuid();
+        Guid variantId = Guid.NewGuid();
+        var spoon = new MeasurementUnit(Guid.NewGuid(), "Esslöffel", "EL", MeasurementDimension.Count, 1m);
+        fixture.Database.AddRange(
+            spoon,
+            new IngredientAllergenDefinitionRecord
+            {
+                Id = allergenId, Code = "TEST_MILK", Name = "Test-Milch", IsEuMajorAllergen = true,
+            },
+            new IngredientRevisionAllergenRecord
+            {
+                IngredientRevisionId = seed.RevisionId,
+                AllergenId = allergenId,
+                State = (int)IngredientPropertyState.Contains,
+                Source = (int)IngredientPropertySource.ManuallyVerified,
+            },
+            new IngredientRevisionUnitConversionRecord
+            {
+                IngredientRevisionId = seed.RevisionId,
+                SourceUnitId = spoon.Id,
+                FactorToBaseUnit = 12m,
+                Precision = (int)IngredientConversionPrecision.Average,
+            },
+            new IngredientVariantRevisionRecord
+            {
+                Id = variantId,
+                IngredientRevisionId = seed.RevisionId,
+                VariantKey = "fine",
+                Name = "Fein",
+                NormalizedName = "FEIN",
+            },
+            new IngredientVariantAllergenOverrideRecord
+            {
+                VariantRevisionId = variantId,
+                AllergenId = allergenId,
+                State = (int)IngredientPropertyState.DoesNotContain,
+                Source = (int)IngredientPropertySource.ManuallyVerified,
+            });
+        await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+        fixture.Database.ChangeTracker.Clear();
+        var store = new IngredientRevisionWorkflowStore(fixture.Database);
+        Assert.Equal(IngredientRevisionMutationStatus.Published, (await store.PublishAsync(
+            seed.RevisionId, 1, seed.ActorId, DateTimeOffset.UtcNow,
+            TestContext.Current.CancellationToken)).Status);
+        Guid nextRevisionId = Guid.NewGuid();
+
+        IngredientRevisionMutationResult created = await store.CreateDraftFromPublishedAsync(
+            seed.RevisionId, nextRevisionId, seed.ActorId, DateTimeOffset.UtcNow,
+            TestContext.Current.CancellationToken);
+        IngredientRevisionDraftDetails? draft = await store.GetAsync(
+            nextRevisionId, TestContext.Current.CancellationToken);
+
+        Assert.Equal(IngredientRevisionMutationStatus.Created, created.Status);
+        Assert.NotNull(draft);
+        Assert.Equal(IngredientRevisionState.Draft, draft.State);
+        Assert.Equal(seed.RevisionId, draft.BasedOnRevisionId);
+        Assert.Equal(2, draft.RevisionNumber);
+        Assert.Equal(allergenId, Assert.Single(draft.Allergens).PropertyId);
+        Assert.Equal(12m, Assert.Single(draft.UnitConversions).FactorToBaseUnit);
+        Assert.Equal("fine", Assert.Single(draft.Variants).VariantKey);
+        Assert.Equal(IngredientPropertyState.DoesNotContain,
+            Assert.Single(Assert.Single(draft.Variants).AllergenOverrides).State);
     }
 
     [Fact]

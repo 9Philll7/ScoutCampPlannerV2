@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using ScoutCampPlanner.Catering.Application.Ingredients;
 using ScoutCampPlanner.Catering.Domain;
 using ScoutCampPlanner.Catering.Infrastructure;
 using ScoutCampPlanner.Catering.Infrastructure.Ingredients;
@@ -234,6 +235,143 @@ public sealed class IngredientCatalogPersistenceTests
         Assert.Equal(3, camp.Count);
         Assert.DoesNotContain(tenant, value => value.Name == "Fremd");
         Assert.Contains(camp, value => value.Name == "Lagerzutat");
+    }
+
+    [Fact]
+    public async Task Published_revisioned_camp_ingredient_is_available_in_camp_catalog()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Guid tenantId = Guid.NewGuid();
+        Guid campId = Guid.NewGuid();
+        Guid ingredientId = Guid.NewGuid();
+        Guid revisionId = Guid.NewGuid();
+        Guid actorId = Guid.NewGuid();
+        var unit = new MeasurementUnit(Guid.NewGuid(), "Gramm", "g", MeasurementDimension.Mass, 1m);
+        var kilogram = new MeasurementUnit(Guid.NewGuid(), "Kilogramm", "kg", MeasurementDimension.Mass, 1_000m);
+        var category = new IngredientCategoryRecord
+        {
+            Id = Guid.NewGuid(), Code = "TEST", Name = "Test", NormalizedName = "TEST",
+        };
+        var origin = new IngredientOriginPropertyRecord
+        {
+            Id = Guid.NewGuid(), Code = "TEST_PLANT", Name = "Pflanzlich",
+        };
+        var allergen = new IngredientAllergenDefinitionRecord
+        {
+            Id = Guid.NewGuid(), Code = "TEST_ALLERGEN", Name = "Testallergen",
+            IsEuMajorAllergen = true,
+        };
+        var identity = new IngredientIdentityRecord
+        {
+            Id = ingredientId,
+            ScopeType = (int)IngredientScopeType.Camp,
+            ScopeId = campId,
+        };
+        var revision = new IngredientRevisionRecord
+        {
+            Id = revisionId,
+            IngredientId = ingredientId,
+            RevisionNumber = 1,
+            State = (int)IngredientRevisionState.Published,
+            Name = "Veröffentlichte Lagerzutat",
+            NormalizedName = "VERÖFFENTLICHTE LAGERZUTAT",
+            CategoryId = category.Id,
+            BaseUnitId = unit.Id,
+            AllergenReviewState = (int)IngredientPropertyReviewState.Reviewed,
+            IntoleranceReviewState = (int)IngredientPropertyReviewState.Reviewed,
+            OriginReviewState = (int)IngredientPropertyReviewState.Reviewed,
+            RowVersion = 2,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            CreatedBy = actorId,
+            UpdatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedBy = actorId,
+            PublishedAtUtc = DateTimeOffset.UtcNow,
+            PublishedBy = actorId,
+        };
+        fixture.Database.AddRange(unit, kilogram, category, origin, allergen, identity, revision);
+        fixture.Database.AddRange(
+            new IngredientRevisionOriginRecord
+            {
+                IngredientRevisionId = revisionId,
+                OriginPropertyId = origin.Id,
+                State = (int)IngredientPropertyState.Contains,
+                Source = (int)IngredientPropertySource.ManuallyVerified,
+            },
+            new IngredientRevisionAllergenRecord
+            {
+                IngredientRevisionId = revisionId,
+                AllergenId = allergen.Id,
+                State = (int)IngredientPropertyState.Contains,
+                Source = (int)IngredientPropertySource.ManuallyVerified,
+            });
+        await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+        identity.CurrentPublishedRevisionId = revisionId;
+        await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+        fixture.Database.ChangeTracker.Clear();
+
+        IngredientCatalogEntry entry = Assert.Single(await new IngredientCatalogStore(fixture.Database)
+            .ListCampAsync(tenantId, campId, TestContext.Current.CancellationToken));
+
+        Assert.Equal(ingredientId, entry.Id);
+        Assert.Equal("Veröffentlichte Lagerzutat", entry.Name);
+        Assert.Equal(IngredientScopeType.Camp, entry.Scope);
+        Assert.Equal("Pflanzlich", entry.OriginInformation);
+        Assert.Equal(["g", "kg"], entry.Units.Select(value => value.Symbol).Order().ToArray());
+        Assert.Equal(1_000m, entry.Units.Single(value => value.Symbol == "kg").ReferenceQuantityPerUnit);
+        Assert.Equal("Testallergen", Assert.Single(entry.Conflicts).Name);
+    }
+
+    [Fact]
+    public async Task Revisioned_catalog_entry_replaces_legacy_entry_with_same_identity()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Guid ingredientId = Guid.NewGuid();
+        Guid revisionId = Guid.NewGuid();
+        Guid actorId = Guid.NewGuid();
+        var unit = new MeasurementUnit(Guid.NewGuid(), "Gramm", "g", MeasurementDimension.Mass, 1m);
+        var category = new IngredientCategoryRecord
+        {
+            Id = Guid.NewGuid(), Code = "TEST", Name = "Test", NormalizedName = "TEST",
+        };
+        var identity = new IngredientIdentityRecord
+        {
+            Id = ingredientId,
+            ScopeType = (int)IngredientScopeType.Central,
+        };
+        var revision = new IngredientRevisionRecord
+        {
+            Id = revisionId,
+            IngredientId = ingredientId,
+            RevisionNumber = 2,
+            State = (int)IngredientRevisionState.Published,
+            Name = "Aktueller Name",
+            NormalizedName = "AKTUELLER NAME",
+            CategoryId = category.Id,
+            BaseUnitId = unit.Id,
+            RowVersion = 2,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            CreatedBy = actorId,
+            UpdatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedBy = actorId,
+            PublishedAtUtc = DateTimeOffset.UtcNow,
+            PublishedBy = actorId,
+        };
+        fixture.Database.AddRange(
+            unit,
+            category,
+            new BaseIngredient(ingredientId, IngredientScopeType.Central, null, "Alter Name", "Regional"),
+            identity,
+            revision);
+        await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+        identity.CurrentPublishedRevisionId = revisionId;
+        await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+        fixture.Database.ChangeTracker.Clear();
+
+        IngredientCatalogEntry entry = Assert.Single(await new IngredientCatalogStore(fixture.Database)
+            .ListCentralAsync(TestContext.Current.CancellationToken));
+
+        Assert.Equal("Aktueller Name", entry.Name);
+        Assert.Equal("Regional", entry.OriginInformation);
     }
 
     [Fact]

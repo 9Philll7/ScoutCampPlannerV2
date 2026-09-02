@@ -224,6 +224,197 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
             revisionId);
     }
 
+    public async Task<IngredientRevisionMutationResult> CreateDraftFromPublishedAsync(
+        Guid publishedRevisionId,
+        Guid newRevisionId,
+        Guid actorUserId,
+        DateTimeOffset createdAtUtc,
+        CancellationToken cancellationToken = default)
+    {
+        if (publishedRevisionId == Guid.Empty || newRevisionId == Guid.Empty || actorUserId == Guid.Empty)
+            return new(IngredientRevisionMutationStatus.Invalid);
+
+        await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
+        var source = await (
+            from revision in database.Set<IngredientRevisionRecord>().AsNoTracking()
+            join identity in database.Set<IngredientIdentityRecord>().AsNoTracking()
+                on revision.IngredientId equals identity.Id
+            where revision.Id == publishedRevisionId &&
+                  revision.State == (int)IngredientRevisionState.Published &&
+                  identity.CurrentPublishedRevisionId == publishedRevisionId &&
+                  identity.Status == (int)IngredientIdentityStatus.Active
+            select new { Revision = revision, Identity = identity })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (source is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            IngredientRevisionRecord? existing = await database.Set<IngredientRevisionRecord>()
+                .AsNoTracking().SingleOrDefaultAsync(value => value.Id == publishedRevisionId, cancellationToken);
+            return existing is null
+                ? new(IngredientRevisionMutationStatus.NotFound)
+                : new(IngredientRevisionMutationStatus.NotDraft, existing.RowVersion);
+        }
+
+        IngredientRevisionRecord? existingDraft = await database.Set<IngredientRevisionRecord>()
+            .AsNoTracking()
+            .Where(value => value.IngredientId == source.Identity.Id &&
+                            value.State == (int)IngredientRevisionState.Draft)
+            .OrderByDescending(value => value.RevisionNumber)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (existingDraft is not null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return new(
+                IngredientRevisionMutationStatus.DraftAlreadyExists,
+                existingDraft.RowVersion,
+                source.Identity.Id,
+                existingDraft.Id);
+        }
+
+        int revisionNumber = await database.Set<IngredientRevisionRecord>()
+            .Where(value => value.IngredientId == source.Identity.Id)
+            .MaxAsync(value => value.RevisionNumber, cancellationToken) + 1;
+        IngredientRevisionRecord published = source.Revision;
+        database.Add(new IngredientRevisionRecord
+        {
+            Id = newRevisionId,
+            IngredientId = published.IngredientId,
+            RevisionNumber = revisionNumber,
+            State = (int)IngredientRevisionState.Draft,
+            BasedOnRevisionId = published.Id,
+            MergedCentralRevisionId = published.MergedCentralRevisionId,
+            Name = published.Name,
+            NormalizedName = published.NormalizedName,
+            CategoryId = published.CategoryId,
+            BaseUnitId = published.BaseUnitId,
+            AllergenReviewState = published.AllergenReviewState,
+            IntoleranceReviewState = published.IntoleranceReviewState,
+            OriginReviewState = published.OriginReviewState,
+            RowVersion = 1,
+            CreatedAtUtc = createdAtUtc,
+            CreatedBy = actorUserId,
+            UpdatedAtUtc = createdAtUtc,
+            UpdatedBy = actorUserId,
+        });
+
+        IngredientRevisionAllergenRecord[] allergens = await database
+            .Set<IngredientRevisionAllergenRecord>().AsNoTracking()
+            .Where(value => value.IngredientRevisionId == published.Id).ToArrayAsync(cancellationToken);
+        IngredientRevisionIntoleranceRecord[] intolerances = await database
+            .Set<IngredientRevisionIntoleranceRecord>().AsNoTracking()
+            .Where(value => value.IngredientRevisionId == published.Id).ToArrayAsync(cancellationToken);
+        IngredientRevisionOriginRecord[] origins = await database
+            .Set<IngredientRevisionOriginRecord>().AsNoTracking()
+            .Where(value => value.IngredientRevisionId == published.Id).ToArrayAsync(cancellationToken);
+        IngredientRevisionUnitConversionRecord[] conversions = await database
+            .Set<IngredientRevisionUnitConversionRecord>().AsNoTracking()
+            .Where(value => value.IngredientRevisionId == published.Id).ToArrayAsync(cancellationToken);
+        database.AddRange(allergens.Select(value => new IngredientRevisionAllergenRecord
+        {
+            IngredientRevisionId = newRevisionId,
+            AllergenId = value.AllergenId,
+            State = value.State,
+            Source = value.Source,
+        }));
+        database.AddRange(intolerances.Select(value => new IngredientRevisionIntoleranceRecord
+        {
+            IngredientRevisionId = newRevisionId,
+            IntoleranceId = value.IntoleranceId,
+            State = value.State,
+            Source = value.Source,
+        }));
+        database.AddRange(origins.Select(value => new IngredientRevisionOriginRecord
+        {
+            IngredientRevisionId = newRevisionId,
+            OriginPropertyId = value.OriginPropertyId,
+            State = value.State,
+            Source = value.Source,
+        }));
+        database.AddRange(conversions.Select(value => new IngredientRevisionUnitConversionRecord
+        {
+            IngredientRevisionId = newRevisionId,
+            SourceUnitId = value.SourceUnitId,
+            FactorToBaseUnit = value.FactorToBaseUnit,
+            Precision = value.Precision,
+        }));
+
+        IngredientVariantRevisionRecord[] variants = await database.Set<IngredientVariantRevisionRecord>()
+            .AsNoTracking().Where(value => value.IngredientRevisionId == published.Id)
+            .ToArrayAsync(cancellationToken);
+        Guid[] sourceVariantIds = variants.Select(value => value.Id).ToArray();
+        IngredientVariantAllergenOverrideRecord[] allergenOverrides = await database
+            .Set<IngredientVariantAllergenOverrideRecord>().AsNoTracking()
+            .Where(value => sourceVariantIds.Contains(value.VariantRevisionId)).ToArrayAsync(cancellationToken);
+        IngredientVariantIntoleranceOverrideRecord[] intoleranceOverrides = await database
+            .Set<IngredientVariantIntoleranceOverrideRecord>().AsNoTracking()
+            .Where(value => sourceVariantIds.Contains(value.VariantRevisionId)).ToArrayAsync(cancellationToken);
+        IngredientVariantOriginOverrideRecord[] originOverrides = await database
+            .Set<IngredientVariantOriginOverrideRecord>().AsNoTracking()
+            .Where(value => sourceVariantIds.Contains(value.VariantRevisionId)).ToArrayAsync(cancellationToken);
+        IngredientVariantUnitConversionOverrideRecord[] conversionOverrides = await database
+            .Set<IngredientVariantUnitConversionOverrideRecord>().AsNoTracking()
+            .Where(value => sourceVariantIds.Contains(value.VariantRevisionId)).ToArrayAsync(cancellationToken);
+        foreach (IngredientVariantRevisionRecord variant in variants)
+        {
+            Guid variantId = Guid.NewGuid();
+            database.Add(new IngredientVariantRevisionRecord
+            {
+                Id = variantId,
+                IngredientRevisionId = newRevisionId,
+                VariantKey = variant.VariantKey,
+                Name = variant.Name,
+                NormalizedName = variant.NormalizedName,
+                Status = variant.Status,
+                SortOrder = variant.SortOrder,
+            });
+            database.AddRange(allergenOverrides.Where(value => value.VariantRevisionId == variant.Id)
+                .Select(value => new IngredientVariantAllergenOverrideRecord
+                {
+                    VariantRevisionId = variantId,
+                    AllergenId = value.AllergenId,
+                    State = value.State,
+                    Source = value.Source,
+                }));
+            database.AddRange(intoleranceOverrides.Where(value => value.VariantRevisionId == variant.Id)
+                .Select(value => new IngredientVariantIntoleranceOverrideRecord
+                {
+                    VariantRevisionId = variantId,
+                    IntoleranceId = value.IntoleranceId,
+                    State = value.State,
+                    Source = value.Source,
+                }));
+            database.AddRange(originOverrides.Where(value => value.VariantRevisionId == variant.Id)
+                .Select(value => new IngredientVariantOriginOverrideRecord
+                {
+                    VariantRevisionId = variantId,
+                    OriginPropertyId = value.OriginPropertyId,
+                    State = value.State,
+                    Source = value.Source,
+                }));
+            database.AddRange(conversionOverrides.Where(value => value.VariantRevisionId == variant.Id)
+                .Select(value => new IngredientVariantUnitConversionOverrideRecord
+                {
+                    VariantRevisionId = variantId,
+                    SourceUnitId = value.SourceUnitId,
+                    FactorToBaseUnit = value.FactorToBaseUnit,
+                    Precision = value.Precision,
+                }));
+        }
+
+        try
+        {
+            await database.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return new(IngredientRevisionMutationStatus.Created, 1, published.IngredientId, newRevisionId);
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            database.ChangeTracker.Clear();
+            return new(IngredientRevisionMutationStatus.Invalid);
+        }
+    }
+
     public async Task<IngredientRevisionMutationResult> SaveDraftAsync(
         Guid revisionId,
         IngredientRevisionDraftContent content,
@@ -269,6 +460,9 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
         await database.Set<IngredientRevisionOriginRecord>()
             .Where(value => value.IngredientRevisionId == revisionId)
             .ExecuteDeleteAsync(cancellationToken);
+        await database.Set<IngredientRevisionUnitConversionRecord>()
+            .Where(value => value.IngredientRevisionId == revisionId)
+            .ExecuteDeleteAsync(cancellationToken);
 
         database.AddRange(content.Allergens.Select(value => new IngredientRevisionAllergenRecord
         {
@@ -290,6 +484,13 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
             OriginPropertyId = value.PropertyId,
             State = (int)value.State,
             Source = (int)value.Source,
+        }));
+        database.AddRange(content.UnitConversions.Select(value => new IngredientRevisionUnitConversionRecord
+        {
+            IngredientRevisionId = revisionId,
+            SourceUnitId = value.SourceUnitId,
+            FactorToBaseUnit = value.FactorToBaseUnit,
+            Precision = (int)value.Precision,
         }));
 
         try
@@ -424,7 +625,17 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
         await database.Set<IngredientCategoryRecord>().AsNoTracking()
             .AnyAsync(value => value.Id == content.CategoryId, cancellationToken) &&
         await database.MeasurementUnits.AsNoTracking()
-            .AnyAsync(value => value.Id == content.BaseUnitId, cancellationToken) &&
+            .AnyAsync(value => value.Id == content.BaseUnitId &&
+                ((value.Dimension == MeasurementDimension.Mass &&
+                    (value.Symbol == "g" || value.Symbol == "kg")) ||
+                 (value.Dimension == MeasurementDimension.Volume &&
+                    (value.Symbol == "ml" || value.Symbol == "l")) ||
+                 (value.Dimension == MeasurementDimension.Count && value.Symbol == "Stk.")),
+                cancellationToken) &&
+        await AllReferencesExistAsync(content.UnitConversions.Select(value => value.SourceUnitId),
+            database.MeasurementUnits.AsNoTracking().Select(value => value.Id),
+            cancellationToken) &&
+        await AllConversionUnitsAllowedAsync(content.BaseUnitId, content.UnitConversions, cancellationToken) &&
         await AllReferencesExistAsync(content.Allergens.Select(value => value.PropertyId),
             database.Set<IngredientAllergenDefinitionRecord>().Where(value => value.Status == 0).Select(value => value.Id),
             cancellationToken) &&
@@ -444,6 +655,30 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
         if (requested.Length == 0)
             return true;
         return await availableIds.CountAsync(value => requested.Contains(value), cancellationToken) == requested.Length;
+    }
+
+    private async Task<bool> AllConversionUnitsAllowedAsync(
+        Guid baseUnitId,
+        IEnumerable<IngredientRevisionUnitConversion> conversions,
+        CancellationToken cancellationToken)
+    {
+        Guid[] requested = conversions.Select(value => value.SourceUnitId).Distinct().ToArray();
+        if (requested.Length == 0)
+            return true;
+        MeasurementDimension? baseDimension = await database.MeasurementUnits.AsNoTracking()
+            .Where(value => value.Id == baseUnitId)
+            .Select(value => (MeasurementDimension?)value.Dimension)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (!baseDimension.HasValue)
+            return false;
+        return await database.MeasurementUnits.AsNoTracking().CountAsync(
+            value => requested.Contains(value.Id) &&
+                (value.Symbol == "TL" || value.Symbol == "EL" ||
+                 value.Symbol == "Prise" || value.Symbol == "Bund" ||
+                 (value.Symbol == "g" || value.Symbol == "kg" || value.Symbol == "ml" ||
+                  value.Symbol == "l" || value.Symbol == "Stk.") &&
+                    value.Dimension != baseDimension.Value),
+            cancellationToken) == requested.Length;
     }
 
     private async Task<IngredientRevisionMutationResult> DetermineFailureAsync(

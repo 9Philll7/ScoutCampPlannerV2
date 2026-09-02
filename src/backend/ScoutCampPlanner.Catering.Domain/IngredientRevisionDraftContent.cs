@@ -12,7 +12,8 @@ public sealed record IngredientRevisionDraftContent
         IngredientPropertyReviewState originReviewState,
         IReadOnlyList<IngredientPropertyValue> allergens,
         IReadOnlyList<IngredientPropertyValue> intolerances,
-        IReadOnlyList<IngredientPropertyValue> origins)
+        IReadOnlyList<IngredientPropertyValue> origins,
+        IReadOnlyList<IngredientRevisionUnitConversion> unitConversions)
     {
         Name = name;
         NormalizedName = normalizedName;
@@ -24,6 +25,7 @@ public sealed record IngredientRevisionDraftContent
         Allergens = allergens;
         Intolerances = intolerances;
         Origins = origins;
+        UnitConversions = unitConversions;
     }
 
     public string Name { get; }
@@ -36,6 +38,7 @@ public sealed record IngredientRevisionDraftContent
     public IReadOnlyList<IngredientPropertyValue> Allergens { get; }
     public IReadOnlyList<IngredientPropertyValue> Intolerances { get; }
     public IReadOnlyList<IngredientPropertyValue> Origins { get; }
+    public IReadOnlyList<IngredientRevisionUnitConversion> UnitConversions { get; }
 
     public static IngredientRevisionDraftContent Create(
         string name,
@@ -46,7 +49,8 @@ public sealed record IngredientRevisionDraftContent
         IngredientPropertyReviewState originReviewState,
         IEnumerable<IngredientPropertyValue>? allergens = null,
         IEnumerable<IngredientPropertyValue>? intolerances = null,
-        IEnumerable<IngredientPropertyValue>? origins = null)
+        IEnumerable<IngredientPropertyValue>? origins = null,
+        IEnumerable<IngredientRevisionUnitConversion>? unitConversions = null)
     {
         (string display, string normalized) = CatalogName.Normalize(name, nameof(name), 200);
         if (categoryId == Guid.Empty)
@@ -58,6 +62,14 @@ public sealed record IngredientRevisionDraftContent
             !Enum.IsDefined(originReviewState))
             throw new ArgumentOutOfRangeException(nameof(allergenReviewState));
 
+        IngredientRevisionUnitConversion[] normalizedConversions = unitConversions?
+            .OrderBy(value => value.SourceUnitId)
+            .ToArray() ?? [];
+        if (normalizedConversions.Select(value => value.SourceUnitId).Distinct().Count() != normalizedConversions.Length)
+            throw new ArgumentException("Source unit IDs must be unique.", nameof(unitConversions));
+        if (normalizedConversions.Any(value => value.SourceUnitId == baseUnitId))
+            throw new ArgumentException("The base unit must not have an explicit conversion.", nameof(unitConversions));
+
         return new IngredientRevisionDraftContent(
             display,
             normalized,
@@ -68,7 +80,8 @@ public sealed record IngredientRevisionDraftContent
             originReviewState,
             NormalizeProperties(allergens, nameof(allergens)),
             NormalizeProperties(intolerances, nameof(intolerances)),
-            NormalizeProperties(origins, nameof(origins)));
+            NormalizeProperties(origins, nameof(origins)),
+            normalizedConversions);
     }
 
     private static IReadOnlyList<IngredientPropertyValue> NormalizeProperties(

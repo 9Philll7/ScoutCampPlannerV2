@@ -6,6 +6,7 @@ export enum IngredientRevisionState { Draft = 0, Published = 1 }
 export enum IngredientPropertyReviewState { Unreviewed = 0, Reviewed = 1 }
 export enum IngredientPropertyState { Contains = 0, DoesNotContain = 1, MayContain = 2, Unknown = 3 }
 export enum IngredientPropertySource { Inherent = 0, Derived = 1, ManuallyVerified = 2, ArticleDependent = 3 }
+export enum IngredientConversionPrecision { Exact = 0, Average = 1, Estimated = 2 }
 
 export interface IngredientCategoryReference {
   id: string;
@@ -58,6 +59,13 @@ export interface IngredientRevisionPropertyItem {
   source: IngredientPropertySource;
 }
 
+export interface IngredientRevisionUnitConversionItem {
+  sourceUnitId: string;
+  factorToBaseUnit: number;
+  precision: IngredientConversionPrecision;
+  factorInput?: string;
+}
+
 export interface IngredientRevisionSummary {
   ingredientId: string;
   revisionId: string;
@@ -80,6 +88,7 @@ export interface IngredientRevisionDetails {
   allergens: IngredientRevisionPropertyItem[];
   intolerances: IngredientRevisionPropertyItem[];
   origins: IngredientRevisionPropertyItem[];
+  unitConversions: IngredientRevisionUnitConversionItem[];
 }
 
 export interface IngredientRevisionMutationResponse {
@@ -125,6 +134,7 @@ export class IngredientRevisionApiService {
     allergens: IngredientRevisionPropertyItem[];
     intolerances: IngredientRevisionPropertyItem[];
     origins: IngredientRevisionPropertyItem[];
+    unitConversions: IngredientRevisionUnitConversionItem[];
   }) {
     return this.http.put<IngredientRevisionMutationResponse>(
       `${this.baseUrl}/api/ingredient-revisions/${revisionId}`, request, this.options);
@@ -134,5 +144,10 @@ export class IngredientRevisionApiService {
     return this.http.post<IngredientRevisionMutationResponse>(
       `${this.baseUrl}/api/ingredient-revisions/${revisionId}/publish`,
       { expectedRowVersion }, this.options);
+  }
+
+  createDraftFromPublished(revisionId: string) {
+    return this.http.post<IngredientRevisionMutationResponse>(
+      `${this.baseUrl}/api/ingredient-revisions/${revisionId}/draft`, {}, this.options);
   }
 }

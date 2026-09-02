@@ -38,6 +38,7 @@ public sealed class IngredientRevisionWorkflowServiceTests
             authorization,
             new FixedTimeProvider(new DateTimeOffset(2026, 8, 30, 12, 0, 0, TimeSpan.Zero)));
         Guid allergenId = Guid.NewGuid();
+        Guid sourceUnitId = Guid.NewGuid();
 
         IngredientRevisionMutationResult result = await service.SaveDraftAsync(
             Guid.NewGuid(),
@@ -52,7 +53,11 @@ public sealed class IngredientRevisionWorkflowServiceTests
                 [new IngredientRevisionPropertyItem(
                     allergenId,
                     IngredientPropertyState.Contains,
-                    IngredientPropertySource.ManuallyVerified)]),
+                    IngredientPropertySource.ManuallyVerified)],
+                UnitConversions: [new IngredientRevisionUnitConversionItem(
+                    sourceUnitId,
+                    12m,
+                    IngredientConversionPrecision.Average)]),
             Guid.NewGuid(),
             TestContext.Current.CancellationToken);
 
@@ -61,6 +66,9 @@ public sealed class IngredientRevisionWorkflowServiceTests
         Assert.Equal("Rote Linsen", store.SavedContent!.Name);
         Assert.Equal("ROTE LINSEN", store.SavedContent.NormalizedName);
         Assert.Equal(allergenId, Assert.Single(store.SavedContent.Allergens).PropertyId);
+        IngredientRevisionUnitConversion conversion = Assert.Single(store.SavedContent.UnitConversions);
+        Assert.Equal(sourceUnitId, conversion.SourceUnitId);
+        Assert.Equal(12m, conversion.FactorToBaseUnit);
         Assert.Equal(4, store.ExpectedRowVersion);
     }
 
@@ -78,6 +86,25 @@ public sealed class IngredientRevisionWorkflowServiceTests
 
         Assert.Equal(IngredientRevisionMutationStatus.Forbidden, result.Status);
         Assert.False(store.PublishCalled);
+    }
+
+    [Fact]
+    public async Task Authorized_actor_can_create_follow_up_draft_from_published_revision()
+    {
+        Guid publishedRevisionId = Guid.NewGuid();
+        var store = new FakeStore(new IngredientRevisionScope(IngredientScopeType.Central, null));
+        var service = new IngredientRevisionWorkflowService(
+            store,
+            new FakeAuthorization { CentralAllowed = true },
+            TimeProvider.System);
+
+        IngredientRevisionMutationResult result = await service.CreateDraftFromPublishedAsync(
+            publishedRevisionId,
+            Guid.NewGuid(),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(IngredientRevisionMutationStatus.Created, result.Status);
+        Assert.Equal(publishedRevisionId, store.PublishedRevisionIdForDraft);
     }
 
     [Fact]
@@ -111,6 +138,7 @@ public sealed class IngredientRevisionWorkflowServiceTests
         public bool PublishCalled { get; private set; }
         public IngredientRevisionScope? CreatedScope { get; private set; }
         public IngredientRevisionDraftContent? CreatedContent { get; private set; }
+        public Guid? PublishedRevisionIdForDraft { get; private set; }
 
         public Task<IngredientRevisionScope?> GetScopeAsync(Guid revisionId, CancellationToken cancellationToken = default) =>
             Task.FromResult(scope);
@@ -153,6 +181,18 @@ public sealed class IngredientRevisionWorkflowServiceTests
             return Task.FromResult(new IngredientRevisionMutationResult(
                 IngredientRevisionMutationStatus.Saved,
                 expectedRowVersion + 1));
+        }
+
+        public Task<IngredientRevisionMutationResult> CreateDraftFromPublishedAsync(
+            Guid publishedRevisionId,
+            Guid newRevisionId,
+            Guid actorUserId,
+            DateTimeOffset createdAtUtc,
+            CancellationToken cancellationToken = default)
+        {
+            PublishedRevisionIdForDraft = publishedRevisionId;
+            return Task.FromResult(new IngredientRevisionMutationResult(
+                IngredientRevisionMutationStatus.Created, 1, Guid.NewGuid(), newRevisionId));
         }
 
         public Task<IngredientRevisionMutationResult> PublishAsync(

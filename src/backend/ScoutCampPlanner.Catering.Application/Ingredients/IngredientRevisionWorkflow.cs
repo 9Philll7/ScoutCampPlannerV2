@@ -17,7 +17,8 @@ public sealed record SaveIngredientRevisionDraftRequest(
     long ExpectedRowVersion,
     IReadOnlyList<IngredientRevisionPropertyItem>? Allergens = null,
     IReadOnlyList<IngredientRevisionPropertyItem>? Intolerances = null,
-    IReadOnlyList<IngredientRevisionPropertyItem>? Origins = null);
+    IReadOnlyList<IngredientRevisionPropertyItem>? Origins = null,
+    IReadOnlyList<IngredientRevisionUnitConversionItem>? UnitConversions = null);
 
 public sealed record PublishIngredientRevisionRequest(long ExpectedRowVersion);
 
@@ -93,6 +94,7 @@ public enum IngredientRevisionMutationStatus
     NotFound,
     NotDraft,
     ConcurrencyConflict,
+    DraftAlreadyExists,
     Forbidden,
     Invalid,
 }
@@ -124,6 +126,13 @@ public interface IIngredientRevisionWorkflowStore
         Guid revisionId,
         IngredientRevisionScope scope,
         IngredientRevisionDraftContent content,
+        Guid actorUserId,
+        DateTimeOffset createdAtUtc,
+        CancellationToken cancellationToken = default);
+
+    Task<IngredientRevisionMutationResult> CreateDraftFromPublishedAsync(
+        Guid publishedRevisionId,
+        Guid newRevisionId,
         Guid actorUserId,
         DateTimeOffset createdAtUtc,
         CancellationToken cancellationToken = default);
@@ -243,7 +252,8 @@ public sealed class IngredientRevisionWorkflowService(
                 request.OriginReviewState,
                 ToPropertyValues(request.Allergens),
                 ToPropertyValues(request.Intolerances),
-                ToPropertyValues(request.Origins));
+                ToPropertyValues(request.Origins),
+                ToUnitConversions(request.UnitConversions));
         }
         catch (ArgumentException)
         {
@@ -260,6 +270,27 @@ public sealed class IngredientRevisionWorkflowService(
             revisionId,
             content,
             request.ExpectedRowVersion,
+            actorUserId,
+            timeProvider.GetUtcNow(),
+            cancellationToken);
+    }
+
+    public async Task<IngredientRevisionMutationResult> CreateDraftFromPublishedAsync(
+        Guid publishedRevisionId,
+        Guid actorUserId,
+        CancellationToken cancellationToken = default)
+    {
+        Required(publishedRevisionId, nameof(publishedRevisionId));
+        Required(actorUserId, nameof(actorUserId));
+        IngredientRevisionScope? scope = await store.GetScopeAsync(publishedRevisionId, cancellationToken);
+        if (scope is null)
+            return new(IngredientRevisionMutationStatus.NotFound);
+        if (!await IsAuthorizedAsync(actorUserId, scope, cancellationToken))
+            return new(IngredientRevisionMutationStatus.Forbidden);
+
+        return await store.CreateDraftFromPublishedAsync(
+            publishedRevisionId,
+            Guid.NewGuid(),
             actorUserId,
             timeProvider.GetUtcNow(),
             cancellationToken);
@@ -346,4 +377,11 @@ public sealed class IngredientRevisionWorkflowService(
     private static IEnumerable<IngredientPropertyValue> ToPropertyValues(
         IReadOnlyList<IngredientRevisionPropertyItem>? values) =>
         values?.Select(value => new IngredientPropertyValue(value.PropertyId, value.State, value.Source)) ?? [];
+
+    private static IEnumerable<IngredientRevisionUnitConversion> ToUnitConversions(
+        IReadOnlyList<IngredientRevisionUnitConversionItem>? values) =>
+        values?.Select(value => new IngredientRevisionUnitConversion(
+            value.SourceUnitId,
+            value.FactorToBaseUnit,
+            value.Precision)) ?? [];
 }
