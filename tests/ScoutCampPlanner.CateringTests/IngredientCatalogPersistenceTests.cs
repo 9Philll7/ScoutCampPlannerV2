@@ -124,17 +124,14 @@ public sealed class IngredientCatalogPersistenceTests
         Guid ingredientId = Guid.NewGuid();
         Guid actorId = Guid.NewGuid();
         var unit = new MeasurementUnit(Guid.NewGuid(), "Gramm", "g", MeasurementDimension.Mass, 1m);
-        var category = new IngredientCategoryRecord
-        {
-            Id = Guid.NewGuid(), Code = "OTHER", Name = "Sonstiges", NormalizedName = "SONSTIGES",
-        };
-        fixture.Database.AddRange(unit, category, new IngredientIdentityRecord
+        Guid categoryId = Guid.Parse("51111111-1111-1111-1111-000000000018");
+        fixture.Database.AddRange(unit, new IngredientIdentityRecord
         {
             Id = ingredientId, ScopeType = (int)IngredientScopeType.Central,
         });
         fixture.Database.AddRange(
-            DraftRecord(Guid.NewGuid(), ingredientId, category.Id, unit.Id, actorId, 1),
-            DraftRecord(Guid.NewGuid(), ingredientId, category.Id, unit.Id, actorId, 2));
+            DraftRecord(Guid.NewGuid(), ingredientId, categoryId, unit.Id, actorId, 1),
+            DraftRecord(Guid.NewGuid(), ingredientId, categoryId, unit.Id, actorId, 2));
 
         await Assert.ThrowsAsync<DbUpdateException>(() =>
             fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken));

@@ -2,70 +2,79 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ScoutCampPlanner.Catering.Infrastructure;
 
 #nullable disable
 
-namespace ScoutCampPlanner.Migrations.Sqlite.Catering
+namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
 {
     [DbContext(typeof(CateringDbContext))]
-    partial class CateringDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260902210702_SeedIngredientCategories")]
+    partial class SeedIngredientCategories
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.5");
+            modelBuilder
+                .HasDefaultSchema("catering")
+                .HasAnnotation("ProductVersion", "10.0.5")
+                .HasAnnotation("Relational:MaxIdentifierLength", 63);
+
+            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.Allergen", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("NormalizedName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.HasKey("Id");
 
                     b.HasIndex("NormalizedName")
                         .IsUnique();
 
-                    b.ToTable("Allergens", (string)null);
+                    b.ToTable("Allergens", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.BaseIngredient", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("NormalizedName")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("OriginInformation")
                         .HasMaxLength(2000)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(2000)");
 
                     b.Property<Guid?>("ScopeId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("ScopeType")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -79,7 +88,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .IsUnique()
                         .HasFilter("\"ScopeId\" IS NOT NULL");
 
-                    b.ToTable("BaseIngredients", null, t =>
+                    b.ToTable("BaseIngredients", "catering", t =>
                         {
                             t.HasCheckConstraint("CK_BaseIngredients_ScopeOwner", "(\"ScopeType\" = 0 AND \"ScopeId\" IS NULL) OR (\"ScopeType\" IN (1, 2) AND \"ScopeId\" IS NOT NULL)");
                         });
@@ -88,65 +97,65 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.BaseIngredientAllergen", b =>
                 {
                     b.Property<Guid>("BaseIngredientId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("AllergenId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("BaseIngredientId", "AllergenId");
 
                     b.HasIndex("AllergenId");
 
-                    b.ToTable("BaseIngredientAllergens", (string)null);
+                    b.ToTable("BaseIngredientAllergens", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.BaseIngredientDietaryRequirement", b =>
                 {
                     b.Property<Guid>("BaseIngredientId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("DietaryRequirementId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("BaseIngredientId", "DietaryRequirementId");
 
                     b.HasIndex("DietaryRequirementId");
 
-                    b.ToTable("BaseIngredientDietaryRequirements", (string)null);
+                    b.ToTable("BaseIngredientDietaryRequirements", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.BaseIngredientIntolerance", b =>
                 {
                     b.Property<Guid>("BaseIngredientId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("IntoleranceId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("BaseIngredientId", "IntoleranceId");
 
                     b.HasIndex("IntoleranceId");
 
-                    b.ToTable("BaseIngredientIntolerances", (string)null);
+                    b.ToTable("BaseIngredientIntolerances", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CampMeal", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("CampId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<DateOnly>("Date")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("date");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
                     b.Property<Guid>("MealTypeId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -155,30 +164,30 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.HasIndex("CampId", "Date", "MealTypeId")
                         .IsUnique();
 
-                    b.ToTable("CampMeals", (string)null);
+                    b.ToTable("CampMeals", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CampMealType", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("CampId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("NormalizedName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<int>("SortOrder")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -188,29 +197,29 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.HasIndex("CampId", "SortOrder")
                         .IsUnique();
 
-                    b.ToTable("CampMealTypes", (string)null);
+                    b.ToTable("CampMealTypes", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CampStageFoodFactor", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("CampId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("CampStageId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<decimal>("Factor")
                         .HasPrecision(5, 2)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("numeric(5,2)");
 
                     b.Property<string>("StageName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.HasKey("Id");
 
@@ -219,50 +228,50 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.HasIndex("CampId", "CampStageId")
                         .IsUnique();
 
-                    b.ToTable("CampStageFoodFactors", (string)null);
+                    b.ToTable("CampStageFoodFactors", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.DietaryRequirement", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("NormalizedName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.HasKey("Id");
 
                     b.HasIndex("NormalizedName")
                         .IsUnique();
 
-                    b.ToTable("DietaryRequirements", (string)null);
+                    b.ToTable("DietaryRequirements", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.IngredientUnitConversion", b =>
                 {
                     b.Property<Guid>("BaseIngredientId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("UnitId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<decimal>("ReferenceQuantityPerUnit")
                         .HasPrecision(18, 6)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("numeric(18,6)");
 
                     b.HasKey("BaseIngredientId", "UnitId");
 
                     b.HasIndex("UnitId");
 
-                    b.ToTable("IngredientUnitConversions", null, t =>
+                    b.ToTable("IngredientUnitConversions", "catering", t =>
                         {
                             t.HasCheckConstraint("CK_IngredientUnitConversions_Factor_Positive", "\"ReferenceQuantityPerUnit\" > 0");
                         });
@@ -272,101 +281,101 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("BaseIngredientId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("NormalizedName")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(200)");
 
                     b.HasKey("Id");
 
                     b.HasIndex("BaseIngredientId", "NormalizedName")
                         .IsUnique();
 
-                    b.ToTable("IngredientVariants", (string)null);
+                    b.ToTable("IngredientVariants", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.Intolerance", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("NormalizedName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.HasKey("Id");
 
                     b.HasIndex("NormalizedName")
                         .IsUnique();
 
-                    b.ToTable("Intolerances", (string)null);
+                    b.ToTable("Intolerances", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.MealPlan", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("CampId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(200)");
 
                     b.HasKey("Id");
 
                     b.HasIndex("CampId");
 
-                    b.ToTable("MealPlans", (string)null);
+                    b.ToTable("MealPlans", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.MeasurementUnit", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<decimal>("BaseUnitFactor")
                         .HasPrecision(18, 6)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("numeric(18,6)");
 
                     b.Property<int>("Dimension")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("NormalizedName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("Symbol")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(20)");
 
                     b.HasKey("Id");
 
@@ -376,7 +385,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.HasIndex("Dimension", "Symbol")
                         .IsUnique();
 
-                    b.ToTable("MeasurementUnits", null, t =>
+                    b.ToTable("MeasurementUnits", "catering", t =>
                         {
                             t.HasCheckConstraint("CK_MeasurementUnits_BaseUnitFactor_Positive", "\"BaseUnitFactor\" > 0");
                         });
@@ -386,57 +395,57 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<decimal>("Factor")
                         .HasPrecision(5, 2)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("numeric(5,2)");
 
                     b.Property<string>("NormalizedStageName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("StageName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId", "NormalizedStageName")
                         .IsUnique();
 
-                    b.ToTable("TenantStageFoodFactors", (string)null);
+                    b.ToTable("TenantStageFoodFactors", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientAllergenDefinitionRecord", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<bool>("IsEuMajorAllergen")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(150)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(150)");
 
                     b.Property<Guid?>("ParentAllergenId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("Status")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -445,7 +454,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
 
                     b.HasIndex("ParentAllergenId");
 
-                    b.ToTable("IngredientAllergenDefinitions", (string)null);
+                    b.ToTable("IngredientAllergenDefinitions", "catering");
 
                     b.HasData(
                         new
@@ -701,28 +710,28 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(80)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(80)");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(150)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(150)");
 
                     b.Property<string>("NormalizedName")
                         .IsRequired()
                         .HasMaxLength(150)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(150)");
 
                     b.Property<Guid?>("ParentCategoryId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("Status")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -734,7 +743,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
 
                     b.HasIndex("ParentCategoryId");
 
-                    b.ToTable("IngredientCategories", (string)null);
+                    b.ToTable("IngredientCategories", "catering");
 
                     b.HasData(
                         new
@@ -887,25 +896,25 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("CurrentPublishedRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("ScopeId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("ScopeType")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<Guid?>("SourceIngredientId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("SourceRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("Status")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -917,7 +926,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
 
                     b.HasIndex("SourceIngredientId", "SourceRevisionId");
 
-                    b.ToTable("IngredientIdentities", null, t =>
+                    b.ToTable("IngredientIdentities", "catering", t =>
                         {
                             t.HasCheckConstraint("CK_IngredientIdentities_ScopeOwner", "(\"ScopeType\" = 0 AND \"ScopeId\" IS NULL) OR (\"ScopeType\" IN (1, 2) AND \"ScopeId\" IS NOT NULL)");
                         });
@@ -927,30 +936,30 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<bool>("IsQuantityDependent")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(150)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(150)");
 
                     b.Property<int>("Status")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
                         .IsUnique();
 
-                    b.ToTable("IngredientIntoleranceDefinitions", (string)null);
+                    b.ToTable("IngredientIntoleranceDefinitions", "catering");
 
                     b.HasData(
                         new
@@ -1039,30 +1048,30 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<bool>("IsAnimalOrigin")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(150)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(150)");
 
                     b.Property<int>("Status")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
                         .IsUnique();
 
-                    b.ToTable("IngredientOriginProperties", (string)null);
+                    b.ToTable("IngredientOriginProperties", "catering");
 
                     b.HasData(
                         new
@@ -1222,133 +1231,133 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionAllergenRecord", b =>
                 {
                     b.Property<Guid>("IngredientRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("AllergenId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("Source")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<int>("State")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("IngredientRevisionId", "AllergenId");
 
                     b.HasIndex("AllergenId");
 
-                    b.ToTable("IngredientRevisionAllergens", (string)null);
+                    b.ToTable("IngredientRevisionAllergens", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionIntoleranceRecord", b =>
                 {
                     b.Property<Guid>("IngredientRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("IntoleranceId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("Source")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<int>("State")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("IngredientRevisionId", "IntoleranceId");
 
                     b.HasIndex("IntoleranceId");
 
-                    b.ToTable("IngredientRevisionIntolerances", (string)null);
+                    b.ToTable("IngredientRevisionIntolerances", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionOriginRecord", b =>
                 {
                     b.Property<Guid>("IngredientRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("OriginPropertyId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("Source")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<int>("State")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("IngredientRevisionId", "OriginPropertyId");
 
                     b.HasIndex("OriginPropertyId");
 
-                    b.ToTable("IngredientRevisionOrigins", (string)null);
+                    b.ToTable("IngredientRevisionOrigins", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionRecord", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("AllergenReviewState")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<Guid>("BaseUnitId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("BasedOnRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("CategoryId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("CreatedAtUtc")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("CreatedBy")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("IngredientId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("IntoleranceReviewState")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<Guid?>("MergedCentralRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("NormalizedName")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(200)");
 
                     b.Property<int>("OriginReviewState")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<DateTimeOffset?>("PublishedAtUtc")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("PublishedBy")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("RevisionNumber")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<long>("RowVersion")
                         .IsConcurrencyToken()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("bigint");
 
                     b.Property<int>("State")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<DateTimeOffset>("UpdatedAtUtc")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("UpdatedBy")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -1367,7 +1376,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.HasIndex("IngredientId", "RevisionNumber")
                         .IsUnique();
 
-                    b.ToTable("IngredientRevisions", null, t =>
+                    b.ToTable("IngredientRevisions", "catering", t =>
                         {
                             t.HasCheckConstraint("CK_IngredientRevisions_Number_Positive", "\"RevisionNumber\" > 0");
                         });
@@ -1376,23 +1385,23 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionUnitConversionRecord", b =>
                 {
                     b.Property<Guid>("IngredientRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("SourceUnitId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<decimal>("FactorToBaseUnit")
                         .HasPrecision(18, 8)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("numeric(18,8)");
 
                     b.Property<int>("Precision")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("IngredientRevisionId", "SourceUnitId");
 
                     b.HasIndex("SourceUnitId");
 
-                    b.ToTable("IngredientRevisionUnitConversions", null, t =>
+                    b.ToTable("IngredientRevisionUnitConversions", "catering", t =>
                         {
                             t.HasCheckConstraint("CK_IngredientRevisionUnitConversions_Factor_Positive", "\"FactorToBaseUnit\" > 0");
                         });
@@ -1401,95 +1410,95 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientVariantAllergenOverrideRecord", b =>
                 {
                     b.Property<Guid>("VariantRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("AllergenId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("Source")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<int>("State")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("VariantRevisionId", "AllergenId");
 
                     b.HasIndex("AllergenId");
 
-                    b.ToTable("IngredientVariantAllergenOverrides", (string)null);
+                    b.ToTable("IngredientVariantAllergenOverrides", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientVariantIntoleranceOverrideRecord", b =>
                 {
                     b.Property<Guid>("VariantRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("IntoleranceId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("Source")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<int>("State")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("VariantRevisionId", "IntoleranceId");
 
                     b.HasIndex("IntoleranceId");
 
-                    b.ToTable("IngredientVariantIntoleranceOverrides", (string)null);
+                    b.ToTable("IngredientVariantIntoleranceOverrides", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientVariantOriginOverrideRecord", b =>
                 {
                     b.Property<Guid>("VariantRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("OriginPropertyId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("Source")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<int>("State")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("VariantRevisionId", "OriginPropertyId");
 
                     b.HasIndex("OriginPropertyId");
 
-                    b.ToTable("IngredientVariantOriginOverrides", (string)null);
+                    b.ToTable("IngredientVariantOriginOverrides", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientVariantRevisionRecord", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("IngredientRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("NormalizedName")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(200)");
 
                     b.Property<int>("SortOrder")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<int>("Status")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<string>("VariantKey")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.HasKey("Id");
 
@@ -1499,29 +1508,29 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.HasIndex("IngredientRevisionId", "VariantKey")
                         .IsUnique();
 
-                    b.ToTable("IngredientVariantRevisions", (string)null);
+                    b.ToTable("IngredientVariantRevisions", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientVariantUnitConversionOverrideRecord", b =>
                 {
                     b.Property<Guid>("VariantRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("SourceUnitId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<decimal>("FactorToBaseUnit")
                         .HasPrecision(18, 8)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("numeric(18,8)");
 
                     b.Property<int>("Precision")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("VariantRevisionId", "SourceUnitId");
 
                     b.HasIndex("SourceUnitId");
 
-                    b.ToTable("IngredientVariantUnitConversionOverrides", null, t =>
+                    b.ToTable("IngredientVariantUnitConversionOverrides", "catering", t =>
                         {
                             t.HasCheckConstraint("CK_IngredientVariantUnitConversionOverrides_Factor_Positive", "\"FactorToBaseUnit\" > 0");
                         });
@@ -1531,28 +1540,28 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("CampId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("CampRecipeId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("CreatedAtUtc")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("CreatedBy")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("UpdatedAtUtc")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("UpdatedBy")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("UpstreamRecipeRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -1568,7 +1577,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .IsUnique()
                         .HasFilter("\"UpstreamRecipeRevisionId\" IS NOT NULL");
 
-                    b.ToTable("CampRecipeEntries", null, t =>
+                    b.ToTable("CampRecipeEntries", "catering", t =>
                         {
                             t.HasCheckConstraint("CK_CampRecipeEntries_Source", "(\"UpstreamRecipeRevisionId\" IS NOT NULL AND \"CampRecipeId\" IS NULL) OR (\"UpstreamRecipeRevisionId\" IS NULL AND \"CampRecipeId\" IS NOT NULL)");
                         });
@@ -1578,73 +1587,73 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("CampRecipeEntryId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("CreatedAtUtc")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("CreatedBy")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset?>("DeletedAtUtc")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("DeletedBy")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Text")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<DateTimeOffset>("UpdatedAtUtc")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("UpdatedBy")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
                     b.HasIndex("CampRecipeEntryId", "CreatedAtUtc");
 
-                    b.ToTable("CampRecipeNotes", (string)null);
+                    b.ToTable("CampRecipeNotes", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.CentralRecipeChangeSubmissionRecord", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("CentralRecipeId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("ResultingCentralRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset?>("ReviewedAtUtc")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("ReviewedBy")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("SourceCentralRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("Status")
                         .IsConcurrencyToken()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<DateTimeOffset>("SubmittedAtUtc")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("SubmittedBy")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("SubmittedLocalRecipeRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -1659,86 +1668,86 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
 
                     b.HasIndex("Status", "SubmittedAtUtc");
 
-                    b.ToTable("CentralRecipeChangeSubmissions", (string)null);
+                    b.ToTable("CentralRecipeChangeSubmissions", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeDraftTagRecord", b =>
                 {
                     b.Property<Guid>("RecipeId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Value")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.HasKey("RecipeId", "Value");
 
-                    b.ToTable("RecipeDraftTags", (string)null);
+                    b.ToTable("RecipeDraftTags", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeGroupRecord", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(200)");
 
                     b.Property<Guid>("RecipeId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("SortOrder")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
                     b.HasIndex("RecipeId", "SortOrder")
                         .IsUnique();
 
-                    b.ToTable("RecipeGroups", (string)null);
+                    b.ToTable("RecipeGroups", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeIngredientPositionRecord", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("AgeGroupScaling")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<Guid?>("BaseIngredientId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("GroupId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<decimal?>("Quantity")
                         .HasPrecision(18, 6)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("numeric(18,6)");
 
                     b.Property<decimal?>("QuantityPerStep")
                         .HasPrecision(18, 6)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("numeric(18,6)");
 
                     b.Property<Guid>("RecipeId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("ScalingMode")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<int>("SortOrder")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<decimal?>("StepSize")
                         .HasPrecision(18, 6)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("numeric(18,6)");
 
                     b.Property<Guid?>("UnitId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -1766,72 +1775,72 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .IsUnique()
                         .HasFilter("\"GroupId\" IS NOT NULL");
 
-                    b.ToTable("RecipeIngredientPositions", (string)null);
+                    b.ToTable("RecipeIngredientPositions", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeIngredientReplacementAllergenRecord", b =>
                 {
                     b.Property<Guid>("ReplacementId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("AllergenId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("ReplacementId", "AllergenId");
 
                     b.HasIndex("AllergenId");
 
-                    b.ToTable("RecipeIngredientReplacementAllergens", (string)null);
+                    b.ToTable("RecipeIngredientReplacementAllergens", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeIngredientReplacementDietaryRequirementRecord", b =>
                 {
                     b.Property<Guid>("ReplacementId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("DietaryRequirementId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("ReplacementId", "DietaryRequirementId");
 
                     b.HasIndex("DietaryRequirementId");
 
-                    b.ToTable("RecipeIngredientReplacementDietaryRequirements", (string)null);
+                    b.ToTable("RecipeIngredientReplacementDietaryRequirements", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeIngredientReplacementIntoleranceRecord", b =>
                 {
                     b.Property<Guid>("ReplacementId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("IntoleranceId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("ReplacementId", "IntoleranceId");
 
                     b.HasIndex("IntoleranceId");
 
-                    b.ToTable("RecipeIngredientReplacementIntolerances", (string)null);
+                    b.ToTable("RecipeIngredientReplacementIntolerances", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeIngredientReplacementRecord", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("IngredientPositionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("ReplacementBaseIngredientId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<decimal?>("ReplacementQuantity")
                         .HasPrecision(18, 6)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("numeric(18,6)");
 
                     b.Property<Guid?>("ReplacementUnitId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -1841,116 +1850,116 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
 
                     b.HasIndex("ReplacementUnitId");
 
-                    b.ToTable("RecipeIngredientReplacements", (string)null);
+                    b.ToTable("RecipeIngredientReplacements", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRecord", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset?>("ArchivedAtUtc")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("ArchivedBy")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<decimal?>("AuthoringStageFactor")
                         .HasPrecision(18, 6)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("numeric(18,6)");
 
                     b.Property<Guid?>("AuthoringStageId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("AuthoringStageName")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<Guid?>("CentralSourceRecipeId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("CentralSourceRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("CreatedAtUtc")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("CreatedBy")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<bool?>("DefaultAgeGroupScalingApplies")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
                     b.Property<Guid?>("DerivedFromRecipeId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("DerivedFromRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Description")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<long>("DraftVersion")
                         .IsConcurrencyToken()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("bigint");
 
                     b.Property<string>("InternalNotes")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("NormalizedName")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(200)");
 
                     b.Property<DateTimeOffset?>("ReactivatedAtUtc")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("ReactivatedBy")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("RecipeType")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<decimal?>("ReferenceQuantity")
                         .HasPrecision(18, 6)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("numeric(18,6)");
 
                     b.Property<decimal?>("ReferenceServings")
                         .HasPrecision(18, 6)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("numeric(18,6)");
 
                     b.Property<Guid?>("ReferenceUnitId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("ScopeId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("ScopeType")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<string>("Source")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<int>("Status")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<Guid?>("TenantSourceRecipeId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("TenantSourceRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("UpdatedAtUtc")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("UpdatedBy")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -1968,7 +1977,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .IsUnique()
                         .HasFilter("\"ScopeId\" IS NOT NULL");
 
-                    b.ToTable("Recipes", null, t =>
+                    b.ToTable("Recipes", "catering", t =>
                         {
                             t.HasCheckConstraint("CK_Recipes_ScopeOwner", "(\"ScopeType\" = 0 AND \"ScopeId\" IS NULL) OR (\"ScopeType\" IN (1, 2) AND \"ScopeId\" IS NOT NULL)");
                         });
@@ -1978,36 +1987,36 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("CentralSubmissionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("ChangeNote")
                         .HasMaxLength(2000)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(2000)");
 
                     b.Property<DateTimeOffset>("PublishedAtUtc")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("PublishedBy")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("RecipeId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("RestoredFromRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("RevisionNumber")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<string>("SnapshotJson")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("jsonb");
 
                     b.Property<int>("SnapshotSchemaVersion")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -2016,7 +2025,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.HasIndex("RecipeId", "RevisionNumber")
                         .IsUnique();
 
-                    b.ToTable("RecipeRevisions", null, t =>
+                    b.ToTable("RecipeRevisions", "catering", t =>
                         {
                             t.HasCheckConstraint("CK_RecipeRevisions_Number_Positive", "\"RevisionNumber\" > 0");
 
@@ -2028,78 +2037,78 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("AcknowledgedAtUtc")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("AcknowledgedBy")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("ConflictId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int?>("ConflictType")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<string>("ContextJson")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("jsonb");
 
                     b.Property<string>("Message")
                         .IsRequired()
                         .HasMaxLength(1000)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(1000)");
 
                     b.Property<Guid>("RecipeRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("SnapshotPositionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("SnapshotReplacementId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("WarningCode")
                         .IsRequired()
                         .HasMaxLength(150)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(150)");
 
                     b.HasKey("Id");
 
                     b.HasIndex("RecipeRevisionId");
 
-                    b.ToTable("RecipeRevisionWarnings", (string)null);
+                    b.ToTable("RecipeRevisionWarnings", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeSubrecipePositionRecord", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("GroupId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("RecipeId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("RecipeRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<decimal?>("RequiredQuantity")
                         .HasPrecision(18, 6)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("numeric(18,6)");
 
                     b.Property<decimal?>("RequiredServings")
                         .HasPrecision(18, 6)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("numeric(18,6)");
 
                     b.Property<Guid?>("RequiredUnitId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("SortOrder")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -2127,76 +2136,76 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .IsUnique()
                         .HasFilter("\"GroupId\" IS NOT NULL");
 
-                    b.ToTable("RecipeSubrecipePositions", (string)null);
+                    b.ToTable("RecipeSubrecipePositions", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeSubrecipeReplacementAllergenRecord", b =>
                 {
                     b.Property<Guid>("ReplacementId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("AllergenId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("ReplacementId", "AllergenId");
 
                     b.HasIndex("AllergenId");
 
-                    b.ToTable("RecipeSubrecipeReplacementAllergens", (string)null);
+                    b.ToTable("RecipeSubrecipeReplacementAllergens", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeSubrecipeReplacementDietaryRequirementRecord", b =>
                 {
                     b.Property<Guid>("ReplacementId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("DietaryRequirementId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("ReplacementId", "DietaryRequirementId");
 
                     b.HasIndex("DietaryRequirementId");
 
-                    b.ToTable("RecipeSubrecipeReplacementDietaryRequirements", (string)null);
+                    b.ToTable("RecipeSubrecipeReplacementDietaryRequirements", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeSubrecipeReplacementIntoleranceRecord", b =>
                 {
                     b.Property<Guid>("ReplacementId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("IntoleranceId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("ReplacementId", "IntoleranceId");
 
                     b.HasIndex("IntoleranceId");
 
-                    b.ToTable("RecipeSubrecipeReplacementIntolerances", (string)null);
+                    b.ToTable("RecipeSubrecipeReplacementIntolerances", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeSubrecipeReplacementRecord", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<decimal?>("ReplacementQuantity")
                         .HasPrecision(18, 6)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("numeric(18,6)");
 
                     b.Property<Guid?>("ReplacementRecipeRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<decimal?>("ReplacementServings")
                         .HasPrecision(18, 6)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("numeric(18,6)");
 
                     b.Property<Guid?>("ReplacementUnitId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("SubrecipePositionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -2206,35 +2215,35 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
 
                     b.HasIndex("SubrecipePositionId");
 
-                    b.ToTable("RecipeSubrecipeReplacements", (string)null);
+                    b.ToTable("RecipeSubrecipeReplacements", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.TenantRecipeEntryRecord", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("CentralRecipeRevisionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("CreatedAtUtc")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("CreatedBy")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("TenantRecipeId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("UpdatedAtUtc")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("UpdatedBy")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -2250,7 +2259,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .IsUnique()
                         .HasFilter("\"TenantRecipeId\" IS NOT NULL");
 
-                    b.ToTable("TenantRecipeEntries", null, t =>
+                    b.ToTable("TenantRecipeEntries", "catering", t =>
                         {
                             t.HasCheckConstraint("CK_TenantRecipeEntries_Source", "(\"CentralRecipeRevisionId\" IS NOT NULL AND \"TenantRecipeId\" IS NULL) OR (\"CentralRecipeRevisionId\" IS NULL AND \"TenantRecipeId\" IS NOT NULL)");
                         });

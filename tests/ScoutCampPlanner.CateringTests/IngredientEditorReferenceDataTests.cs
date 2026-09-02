@@ -40,7 +40,11 @@ public sealed class IngredientEditorReferenceDataTests
         Assert.Equal(19, result.Origins.Count);
         Assert.Equal(13, result.Origins.Count(value => value.IsAnimalOrigin));
         Assert.Contains(result.Origins, value => value.Code == "UNKNOWN_ORIGIN" && !value.IsAnimalOrigin);
-        Assert.Equal(category.Id, Assert.Single(result.Categories).Id);
+        Assert.Equal(19, result.Categories.Count);
+        Assert.Contains(result.Categories, value => value.Id == category.Id);
+        Assert.Contains(result.Categories, value => value.Code == "CEREALS_GRAIN_PRODUCTS"
+            && value.Name == "Getreide & Getreideprodukte");
+        Assert.Contains(result.Categories, value => value.Code == "OTHER" && value.Name == "Sonstiges");
         Assert.Equal(unit.Id, Assert.Single(result.Units).Id);
     }
 }

@@ -275,13 +275,13 @@ Kompatibilitätsmigration erzeugte `UNKNOWN_ORIGIN`-Identität wird dabei
 weiterverwendet.
 
 Zusätzlich stellt `/api/ingredient-reference-data` die aktiven Kataloge,
-vorhandenen Kategorien und Maßeinheiten für den Editor bereit.
+vorhandenen Kategorien und Maßeinheiten für den Editor bereit. Ein initialer,
+flacher Grundkatalog mit 18 Zutatenkategorien und stabilen IDs/Codes wird für
+SQLite und PostgreSQL angelegt. Die optionale Elternbeziehung bleibt für eine
+spätere Hierarchisierung erhalten.
 
 Noch offen:
 
-- fachliche Startliste für Zutatenkategorien; die Dokumentation definiert
-  bisher nur die vorhandene Legacy-Auffangkategorie
-- produktive Startliste für Maßeinheiten und Dimensionen
 - fachliche Festlegung, welche Unverträglichkeitsauslöser als
   mengenabhängig markiert werden; bis dahin bleibt der dokumentierte
   Schema-Standard `false`

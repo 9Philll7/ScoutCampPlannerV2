@@ -437,13 +437,9 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
             Guid revisionId = Guid.NewGuid();
             Guid actorId = Guid.NewGuid();
             var unit = new MeasurementUnit(Guid.NewGuid(), "Gramm", "g", MeasurementDimension.Mass, 1m);
-            var category = new IngredientCategoryRecord
-            {
-                Id = Guid.NewGuid(), Code = "LEGUMES", Name = "Hülsenfrüchte", NormalizedName = "HÜLSENFRÜCHTE",
-            };
+            Guid categoryId = Guid.Parse("51111111-1111-1111-1111-000000000002");
             Database.AddRange(
                 unit,
-                category,
                 new IngredientIdentityRecord
                 {
                     Id = ingredientId,
@@ -458,7 +454,7 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
                     State = (int)IngredientRevisionState.Draft,
                     Name = "Linsen",
                     NormalizedName = "LINSEN",
-                    CategoryId = category.Id,
+                    CategoryId = categoryId,
                     BaseUnitId = unit.Id,
                     AllergenReviewState = reviewed ? 1 : 0,
                     IntoleranceReviewState = reviewed ? 1 : 0,
@@ -471,7 +467,7 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
                 });
             await Database.SaveChangesAsync(TestContext.Current.CancellationToken);
             Database.ChangeTracker.Clear();
-            return new Seed(revisionId, category.Id, unit.Id, actorId);
+            return new Seed(revisionId, categoryId, unit.Id, actorId);
         }
 
         public async Task<(Guid CategoryId, Guid UnitId)> AddReferencesAsync()

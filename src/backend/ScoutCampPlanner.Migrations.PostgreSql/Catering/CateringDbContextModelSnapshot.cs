@@ -741,6 +741,152 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                     b.HasIndex("ParentCategoryId");
 
                     b.ToTable("IngredientCategories", "catering");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("51111111-1111-1111-1111-000000000001"),
+                            Code = "CEREALS_GRAIN_PRODUCTS",
+                            Name = "Getreide & Getreideprodukte",
+                            NormalizedName = "GETREIDE & GETREIDEPRODUKTE",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("51111111-1111-1111-1111-000000000002"),
+                            Code = "LEGUMES",
+                            Name = "Hülsenfrüchte",
+                            NormalizedName = "HÜLSENFRÜCHTE",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("51111111-1111-1111-1111-000000000003"),
+                            Code = "VEGETABLES",
+                            Name = "Gemüse",
+                            NormalizedName = "GEMÜSE",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("51111111-1111-1111-1111-000000000004"),
+                            Code = "FRUIT",
+                            Name = "Obst",
+                            NormalizedName = "OBST",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("51111111-1111-1111-1111-000000000005"),
+                            Code = "NUTS_SEEDS",
+                            Name = "Nüsse & Samen",
+                            NormalizedName = "NÜSSE & SAMEN",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("51111111-1111-1111-1111-000000000006"),
+                            Code = "HERBS_SPICES",
+                            Name = "Kräuter & Gewürze",
+                            NormalizedName = "KRÄUTER & GEWÜRZE",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("51111111-1111-1111-1111-000000000007"),
+                            Code = "MEAT_SAUSAGE",
+                            Name = "Fleisch & Wurstwaren",
+                            NormalizedName = "FLEISCH & WURSTWAREN",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("51111111-1111-1111-1111-000000000008"),
+                            Code = "FISH_SEAFOOD",
+                            Name = "Fisch & Meeresfrüchte",
+                            NormalizedName = "FISCH & MEERESFRÜCHTE",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("51111111-1111-1111-1111-000000000009"),
+                            Code = "DAIRY",
+                            Name = "Milchprodukte",
+                            NormalizedName = "MILCHPRODUKTE",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("51111111-1111-1111-1111-000000000010"),
+                            Code = "EGGS",
+                            Name = "Eier",
+                            NormalizedName = "EIER",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("51111111-1111-1111-1111-000000000011"),
+                            Code = "FATS_OILS",
+                            Name = "Fette & Öle",
+                            NormalizedName = "FETTE & ÖLE",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("51111111-1111-1111-1111-000000000012"),
+                            Code = "SWEETENERS",
+                            Name = "Süßungsmittel",
+                            NormalizedName = "SÜßUNGSMITTEL",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("51111111-1111-1111-1111-000000000013"),
+                            Code = "BAKING_INGREDIENTS",
+                            Name = "Backzutaten",
+                            NormalizedName = "BACKZUTATEN",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("51111111-1111-1111-1111-000000000014"),
+                            Code = "BEVERAGES",
+                            Name = "Getränke",
+                            NormalizedName = "GETRÄNKE",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("51111111-1111-1111-1111-000000000015"),
+                            Code = "PREPARED_PRESERVED",
+                            Name = "Fertigprodukte & Konserven",
+                            NormalizedName = "FERTIGPRODUKTE & KONSERVEN",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("51111111-1111-1111-1111-000000000016"),
+                            Code = "SAUCES_CONDIMENTS",
+                            Name = "Saucen & Würzmittel",
+                            NormalizedName = "SAUCEN & WÜRZMITTEL",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("51111111-1111-1111-1111-000000000017"),
+                            Code = "YEAST_CULTURES",
+                            Name = "Hefen & Kulturen",
+                            NormalizedName = "HEFEN & KULTUREN",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("51111111-1111-1111-1111-000000000018"),
+                            Code = "OTHER",
+                            Name = "Sonstiges",
+                            NormalizedName = "SONSTIGES",
+                            Status = 0
+                        });
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientIdentityRecord", b =>

@@ -47,7 +47,11 @@ public sealed class DatabaseMigrationTests
 
         Assert.Equal(7, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_platform"));
         Assert.Equal(8, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_camp"));
-        Assert.Equal(13, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_catering"));
+        Assert.Equal(15, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_catering"));
+        Assert.Equal(9, await ScalarAsync<long>(connection,
+            "SELECT COUNT(*) FROM MeasurementUnits WHERE NormalizedName IN ('GRAMM', 'KILOGRAMM', 'MILLILITER', 'LITER', 'STÜCK', 'TEELÖFFEL', 'ESSLÖFFEL', 'PRISE', 'BUND')"));
+        Assert.Equal(18, await ScalarAsync<long>(connection,
+            "SELECT COUNT(*) FROM IngredientCategories WHERE Id LIKE '51111111-1111-1111-1111-%'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_Camps_TenantId_Name'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_Camps_TenantId_NormalizedName_StartDate_EndDate'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'StructureNodes'"));
@@ -99,7 +103,11 @@ public sealed class DatabaseMigrationTests
 
         Assert.Equal(7, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM platform.\"__EFMigrationsHistory\""));
         Assert.Equal(8, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM camp.\"__EFMigrationsHistory\""));
-        Assert.Equal(13, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM catering.\"__EFMigrationsHistory\""));
+        Assert.Equal(15, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM catering.\"__EFMigrationsHistory\""));
+        Assert.Equal(9, await ScalarAsync<long>(connection,
+            "SELECT COUNT(*) FROM catering.\"MeasurementUnits\" WHERE \"NormalizedName\" IN ('GRAMM', 'KILOGRAMM', 'MILLILITER', 'LITER', 'STÜCK', 'TEELÖFFEL', 'ESSLÖFFEL', 'PRISE', 'BUND')"));
+        Assert.Equal(18, await ScalarAsync<long>(connection,
+            "SELECT COUNT(*) FROM catering.\"IngredientCategories\" WHERE \"Id\"::text LIKE '51111111-1111-1111-1111-%'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'camp' AND indexname = 'IX_Camps_TenantId_Name'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'camp' AND indexname = 'IX_Camps_TenantId_NormalizedName_StartDate_EndDate'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'camp' AND table_name = 'StructureNodes'"));

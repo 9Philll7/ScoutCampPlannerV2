@@ -261,6 +261,34 @@ Eine Basiszutat gehört genau einer fachlichen Kategorie an.
 
 Kategorien dienen Suche und Gruppierung und definieren keine Austauschbarkeit.
 
+Der initiale Kategorienkatalog ist bewusst flach. Die stabilen Codes erlauben,
+später Elternkategorien einzuführen, ohne bestehende Zutatenrevisionen
+umzuschreiben:
+
+| Code | Bezeichnung |
+|---|---|
+| `CEREALS_GRAIN_PRODUCTS` | Getreide & Getreideprodukte |
+| `LEGUMES` | Hülsenfrüchte |
+| `VEGETABLES` | Gemüse |
+| `FRUIT` | Obst |
+| `NUTS_SEEDS` | Nüsse & Samen |
+| `HERBS_SPICES` | Kräuter & Gewürze |
+| `MEAT_SAUSAGE` | Fleisch & Wurstwaren |
+| `FISH_SEAFOOD` | Fisch & Meeresfrüchte |
+| `DAIRY` | Milchprodukte |
+| `EGGS` | Eier |
+| `FATS_OILS` | Fette & Öle |
+| `SWEETENERS` | Süßungsmittel |
+| `BAKING_INGREDIENTS` | Backzutaten |
+| `BEVERAGES` | Getränke |
+| `PREPARED_PRESERVED` | Fertigprodukte & Konserven |
+| `SAUCES_CONDIMENTS` | Saucen & Würzmittel |
+| `YEAST_CULTURES` | Hefen & Kulturen |
+| `OTHER` | Sonstiges |
+
+`LEGACY_UNCLASSIFIED` bleibt ausschließlich als technische Auffangkategorie
+für migrierte Altdaten bestehen und gehört nicht zum fachlichen Grundkatalog.
+
 ### 6.3 Status
 
 Für die stabile Zutatenidentität:

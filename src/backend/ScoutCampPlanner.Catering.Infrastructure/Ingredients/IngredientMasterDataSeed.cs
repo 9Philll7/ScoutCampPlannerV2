@@ -8,6 +8,26 @@ internal static class IngredientMasterDataSeed
 
     public static void Configure(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<IngredientCategoryRecord>().HasData(
+            Category(1, "CEREALS_GRAIN_PRODUCTS", "Getreide & Getreideprodukte"),
+            Category(2, "LEGUMES", "Hülsenfrüchte"),
+            Category(3, "VEGETABLES", "Gemüse"),
+            Category(4, "FRUIT", "Obst"),
+            Category(5, "NUTS_SEEDS", "Nüsse & Samen"),
+            Category(6, "HERBS_SPICES", "Kräuter & Gewürze"),
+            Category(7, "MEAT_SAUSAGE", "Fleisch & Wurstwaren"),
+            Category(8, "FISH_SEAFOOD", "Fisch & Meeresfrüchte"),
+            Category(9, "DAIRY", "Milchprodukte"),
+            Category(10, "EGGS", "Eier"),
+            Category(11, "FATS_OILS", "Fette & Öle"),
+            Category(12, "SWEETENERS", "Süßungsmittel"),
+            Category(13, "BAKING_INGREDIENTS", "Backzutaten"),
+            Category(14, "BEVERAGES", "Getränke"),
+            Category(15, "PREPARED_PRESERVED", "Fertigprodukte & Konserven"),
+            Category(16, "SAUCES_CONDIMENTS", "Saucen & Würzmittel"),
+            Category(17, "YEAST_CULTURES", "Hefen & Kulturen"),
+            Category(18, "OTHER", "Sonstiges"));
+
         IngredientAllergenDefinitionRecord glutenCereals = Allergen(1, "GLUTEN_CEREALS", "Glutenhaltiges Getreide", true);
         IngredientAllergenDefinitionRecord treeNuts = Allergen(8, "TREE_NUTS", "Schalenfrüchte", true);
         modelBuilder.Entity<IngredientAllergenDefinitionRecord>().HasData(
@@ -74,6 +94,15 @@ internal static class IngredientMasterDataSeed
             Origin(18, "OTHER_ANIMAL_DERIVED", "Sonstiger tierischer Ursprung", true),
             Origin(19, "UNKNOWN_ORIGIN", "Ungeklärter Ursprung", false));
     }
+
+    private static IngredientCategoryRecord Category(int number, string code, string name) => new()
+    {
+        Id = Id("51111111", number),
+        Code = code,
+        Name = name,
+        NormalizedName = name.ToUpperInvariant(),
+        Status = Active,
+    };
 
     private static IngredientAllergenDefinitionRecord Allergen(
         int number,
