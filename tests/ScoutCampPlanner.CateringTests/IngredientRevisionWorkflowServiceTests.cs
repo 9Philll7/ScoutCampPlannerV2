@@ -39,6 +39,7 @@ public sealed class IngredientRevisionWorkflowServiceTests
             new FixedTimeProvider(new DateTimeOffset(2026, 8, 30, 12, 0, 0, TimeSpan.Zero)));
         Guid allergenId = Guid.NewGuid();
         Guid sourceUnitId = Guid.NewGuid();
+        Guid variantId = Guid.NewGuid();
 
         IngredientRevisionMutationResult result = await service.SaveDraftAsync(
             Guid.NewGuid(),
@@ -57,7 +58,9 @@ public sealed class IngredientRevisionWorkflowServiceTests
                 UnitConversions: [new IngredientRevisionUnitConversionItem(
                     sourceUnitId,
                     12m,
-                    IngredientConversionPrecision.Average)]),
+                    IngredientConversionPrecision.Average)],
+                Variants: [new IngredientVariantDraftItem(
+                    variantId, " SMOKED ", "  Geräuchert ", true, 0)]),
             Guid.NewGuid(),
             TestContext.Current.CancellationToken);
 
@@ -69,6 +72,10 @@ public sealed class IngredientRevisionWorkflowServiceTests
         IngredientRevisionUnitConversion conversion = Assert.Single(store.SavedContent.UnitConversions);
         Assert.Equal(sourceUnitId, conversion.SourceUnitId);
         Assert.Equal(12m, conversion.FactorToBaseUnit);
+        IngredientVariantDraftContent variant = Assert.Single(store.SavedContent.Variants!);
+        Assert.Equal(variantId, variant.Id);
+        Assert.Equal("smoked", variant.VariantKey);
+        Assert.Equal("Geräuchert", variant.Name);
         Assert.Equal(4, store.ExpectedRowVersion);
     }
 

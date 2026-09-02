@@ -21,6 +21,7 @@ import {
   IngredientRevisionDetails,
   IngredientRevisionPropertyItem,
   IngredientRevisionUnitConversionItem,
+  IngredientVariantRevisionItem,
   IngredientRevisionState,
   IngredientRevisionSummary
 } from './ingredient-revision-api.service';
@@ -179,6 +180,40 @@ import {
               <p class="unit-conversion-empty">Neben der Basiseinheit sind noch keine weiteren Einheiten hinterlegt.</p>
             }
           </section>
+          <section class="ingredient-variants">
+            <div class="unit-conversion-heading">
+              <div>
+                <h4>Varianten</h4>
+                <p>Varianten sind Ausprägungen derselben Zutat, zum Beispiel „laktosefrei“ oder „geräuchert“.</p>
+              </div>
+              @if (revision.state === draftState && !disabled()) {
+                <button matButton type="button" (click)="addVariant(revision)">
+                  <scp-action-icon name="add"/>Variante hinzufügen
+                </button>
+              }
+            </div>
+            @for (variant of revision.variants; track variant.id; let index = $index) {
+              <div class="variant-row" [class.inactive]="!variant.isActive">
+                <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Bezeichnung</mat-label>
+                  <input matInput [ngModel]="variant.name" (ngModelChange)="setVariantName(revision, variant, $event)"
+                    [name]="'variantName' + index" maxlength="200" required
+                    [disabled]="revision.state === publishedState || disabled()">
+                </mat-form-field>
+                <mat-checkbox [(ngModel)]="variant.isActive" [name]="'variantActive' + index"
+                  [disabled]="revision.state === publishedState || disabled()">Aktiv</mat-checkbox>
+                @if (revision.state === draftState && !disabled()) {
+                  <div class="variant-actions">
+                    @if (variant.isNew) {
+                      <button matIconButton type="button" aria-label="Neue Variante verwerfen"
+                        (click)="removeNewVariant(revision, index)"><scp-action-icon name="remove"/></button>
+                    }
+                  </div>
+                }
+              </div>
+            } @empty {
+              <p class="unit-conversion-empty">Für diese Zutat sind noch keine Varianten angelegt.</p>
+            }
+          </section>
           <div class="property-groups">
             <details class="property-group" open>
               <summary><span>Allergene</span><small>{{ specifiedMainAllergenCount(revision) }} von 14 angegeben</small></summary>
@@ -324,10 +359,10 @@ import {
             <p class="revision-hint">„Geprüft“ bedeutet: Auch fehlende Einträge wurden bewusst kontrolliert.</p>
             <div class="revision-actions">
               <button matButton type="submit"
-                [disabled]="submitting() || disabled() || !isDirty(revision) || !unitConversionsValid(revision)">
+                [disabled]="submitting() || disabled() || !isDirty(revision) || !unitConversionsValid(revision) || !variantsValid(revision)">
                 <scp-action-icon name="save"/>Entwurf speichern</button>
               <button matButton="filled" type="button" (click)="publish()"
-                [disabled]="submitting() || disabled() || isDirty(revision) || !allReviewed(revision) || !unitConversionsValid(revision)">Veröffentlichen</button>
+                [disabled]="submitting() || disabled() || isDirty(revision) || !allReviewed(revision) || !unitConversionsValid(revision) || !variantsValid(revision)">Veröffentlichen</button>
             </div>
             @if (isDirty(revision) && allReviewed(revision)) {
               <p class="revision-hint revision-unsaved">Vor dem Veröffentlichen muss der aktuelle Entwurf gespeichert werden.</p>
@@ -358,16 +393,22 @@ import {
     .revision-list-item span:first-child { display: grid; gap: .15rem; } .revision-list-item small { color: #667168; }
     .revision-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; padding: 1rem;
       border: 1px solid #cddbcc; border-radius: .8rem; background: #f5faf4; }
-    .revision-form h4, .revision-form .revision-editor-heading, .unit-conversions, .property-groups, .revision-hint, .revision-actions { grid-column: 1 / -1; }
+    .revision-form h4, .revision-form .revision-editor-heading, .unit-conversions, .ingredient-variants, .property-groups, .revision-hint, .revision-actions { grid-column: 1 / -1; }
     .revision-form mat-form-field:first-of-type { grid-column: 1 / -1; }
     .property-groups { display: grid; gap: .65rem; }
     .unit-conversions { display: grid; gap: .65rem; padding: .85rem; border: 1px solid #d7e1d5;
+      border-radius: .65rem; background: #fff; }
+    .ingredient-variants { display: grid; gap: .65rem; padding: .85rem; border: 1px solid #d7e1d5;
       border-radius: .65rem; background: #fff; }
     .unit-conversion-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
     .unit-conversion-heading p, .unit-conversion-empty { color: #667168; font-size: .84rem; }
     .unit-conversion-row { display: grid; grid-template-columns: minmax(10rem, 1.2fr) auto minmax(7rem, .7fr) auto minmax(10rem, 1fr) auto;
       align-items: center; gap: .55rem; padding: .65rem; border: 1px solid #e0e7de; border-radius: .6rem; background: #f8faf7; }
     .conversion-formula { white-space: nowrap; color: #536056; font-weight: 600; }
+    .variant-row { display: grid; grid-template-columns: minmax(12rem, 1fr) auto auto; align-items: center; gap: .7rem;
+      padding: .65rem; border: 1px solid #e0e7de; border-radius: .6rem; background: #f8faf7; }
+    .variant-row.inactive { background: #f3f3f1; color: #69706a; }
+    .variant-actions { display: flex; align-items: center; }
     .property-group { overflow: hidden; border: 1px solid #d7e1d5; border-radius: .65rem; background: #fff; }
     .property-group summary { display: flex; justify-content: space-between; gap: .75rem; padding: .8rem .9rem;
       background: #eef4ed; color: #334737; font-weight: 700; cursor: pointer; }
@@ -401,7 +442,9 @@ import {
       .revision-form > * { grid-column: 1 !important; } }
     @media (max-width: 680px) { .unit-conversion-heading { align-items: flex-start; flex-direction: column; }
       .unit-conversion-row { grid-template-columns: 1fr auto; }
-      .unit-conversion-row mat-form-field { grid-column: 1 / -1; } }
+      .unit-conversion-row mat-form-field { grid-column: 1 / -1; }
+      .variant-row { grid-template-columns: 1fr auto; }
+      .variant-row mat-form-field { grid-column: 1 / -1; } }
     @media (max-width: 480px) { .property-row { grid-template-columns: 1fr; } }
   `
 })
@@ -573,6 +616,43 @@ export class IngredientRevisionEditorComponent {
       this.isAllowedConversionUnit(revision.baseUnitId, value.sourceUnitId));
   }
 
+  variantsValid(revision: IngredientRevisionDetails) {
+    const names = revision.variants.map(value => value.name.trim().toLocaleUpperCase('de'));
+    const keys = revision.variants.map(value => value.variantKey);
+    return revision.variants.every(value => !!value.name.trim() && !!value.variantKey) &&
+      new Set(names).size === names.length && new Set(keys).size === keys.length;
+  }
+
+  addVariant(revision: IngredientRevisionDetails) {
+    revision.variants.push({
+      id: crypto.randomUUID(),
+      variantKey: '',
+      name: '',
+      isActive: true,
+      sortOrder: Math.max(-1, ...revision.variants.map(value => value.sortOrder)) + 1,
+      allergenOverrides: [],
+      intoleranceOverrides: [],
+      originOverrides: [],
+      unitConversionOverrides: [],
+      isNew: true
+    });
+  }
+
+  setVariantName(
+    revision: IngredientRevisionDetails,
+    variant: IngredientVariantRevisionItem,
+    name: string)
+  {
+    variant.name = name;
+    if (variant.isNew)
+      variant.variantKey = this.uniqueVariantKey(revision, variant, name);
+  }
+
+  removeNewVariant(revision: IngredientRevisionDetails, index: number) {
+    if (!revision.variants[index]?.isNew) return;
+    revision.variants.splice(index, 1);
+  }
+
   private isAllowedConversionUnit(baseUnitId: string, sourceUnitId: string) {
     const units = this.referenceData()?.units ?? [];
     const baseUnit = units.find(value => value.id === baseUnitId);
@@ -683,8 +763,15 @@ export class IngredientRevisionEditorComponent {
         sourceUnitId: value.sourceUnitId,
         factorToBaseUnit: value.factorToBaseUnit,
         precision: value.precision
+      })), variants: revision.variants.map(value => ({
+        id: value.id,
+        variantKey: value.variantKey,
+        name: value.name,
+        isActive: value.isActive,
+        sortOrder: value.sortOrder
       })) }).subscribe({
       next: result => { revision.rowVersion = result.rowVersion; this.selectedSnapshot = this.snapshot(revision);
+        revision.variants.forEach(value => value.isNew = false);
         this.selected.set({ ...revision }); this.submitting.set(false);
         this.notice.set('Der Entwurf wurde gespeichert.'); this.refreshList(revision.id, false); },
       error: error => this.handleMutationError(error)
@@ -693,7 +780,8 @@ export class IngredientRevisionEditorComponent {
 
   publish() {
     const revision = this.selected();
-    if (!revision || this.isDirty(revision) || !this.allReviewed(revision) || !this.unitConversionsValid(revision)) return;
+    if (!revision || this.isDirty(revision) || !this.allReviewed(revision) ||
+        !this.unitConversionsValid(revision) || !this.variantsValid(revision)) return;
     this.submitting.set(true); this.error.set(''); this.notice.set('');
     this.api.publish(revision.id, revision.rowVersion).subscribe({
       next: result => { this.submitting.set(false); revision.rowVersion = result.rowVersion;
@@ -751,7 +839,9 @@ export class IngredientRevisionEditorComponent {
       originReviewState: value.originReviewState,
       allergens: this.sortedProperties(value.allergens), intolerances: this.sortedProperties(value.intolerances),
       origins: this.sortedProperties(value.origins),
-      unitConversions: this.sortedUnitConversions(value.unitConversions) });
+      unitConversions: this.sortedUnitConversions(value.unitConversions),
+      variants: value.variants.map(variant => ({ id: variant.id, variantKey: variant.variantKey,
+        name: variant.name.trim(), isActive: variant.isActive, sortOrder: variant.sortOrder })) });
   }
 
   private sortedProperties(values: IngredientRevisionPropertyItem[]) {
@@ -770,6 +860,20 @@ export class IngredientRevisionEditorComponent {
   private initializeConversionFactorInputs(revision: IngredientRevisionDetails) {
     for (const conversion of revision.unitConversions)
       conversion.factorInput = String(conversion.factorToBaseUnit).replace('.', ',');
+  }
+
+  private uniqueVariantKey(
+    revision: IngredientRevisionDetails,
+    current: IngredientVariantRevisionItem,
+    name: string)
+  {
+    const normalized = name.trim().toLocaleLowerCase('de').replaceAll('ß', 'ss')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'variante';
+    const used = new Set(revision.variants.filter(value => value !== current).map(value => value.variantKey));
+    let candidate = normalized;
+    for (let suffix = 2; used.has(candidate); suffix++) candidate = `${normalized}_${suffix}`;
+    return candidate;
   }
 
   private normalizeAllergenDetails(revision: IngredientRevisionDetails) {

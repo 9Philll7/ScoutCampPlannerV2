@@ -18,7 +18,8 @@ public sealed record SaveIngredientRevisionDraftRequest(
     IReadOnlyList<IngredientRevisionPropertyItem>? Allergens = null,
     IReadOnlyList<IngredientRevisionPropertyItem>? Intolerances = null,
     IReadOnlyList<IngredientRevisionPropertyItem>? Origins = null,
-    IReadOnlyList<IngredientRevisionUnitConversionItem>? UnitConversions = null);
+    IReadOnlyList<IngredientRevisionUnitConversionItem>? UnitConversions = null,
+    IReadOnlyList<IngredientVariantDraftItem>? Variants = null);
 
 public sealed record PublishIngredientRevisionRequest(long ExpectedRowVersion);
 
@@ -31,6 +32,13 @@ public sealed record IngredientRevisionUnitConversionItem(
     Guid SourceUnitId,
     decimal FactorToBaseUnit,
     IngredientConversionPrecision Precision);
+
+public sealed record IngredientVariantDraftItem(
+    Guid Id,
+    string VariantKey,
+    string Name,
+    bool IsActive,
+    int SortOrder);
 
 public sealed record IngredientVariantRevisionItem(
     Guid Id,
@@ -253,7 +261,8 @@ public sealed class IngredientRevisionWorkflowService(
                 ToPropertyValues(request.Allergens),
                 ToPropertyValues(request.Intolerances),
                 ToPropertyValues(request.Origins),
-                ToUnitConversions(request.UnitConversions));
+                ToUnitConversions(request.UnitConversions),
+                ToVariants(request.Variants));
         }
         catch (ArgumentException)
         {
@@ -384,4 +393,13 @@ public sealed class IngredientRevisionWorkflowService(
             value.SourceUnitId,
             value.FactorToBaseUnit,
             value.Precision)) ?? [];
+
+    private static IEnumerable<IngredientVariantDraftContent>? ToVariants(
+        IReadOnlyList<IngredientVariantDraftItem>? values) =>
+        values?.Select(value => new IngredientVariantDraftContent(
+            value.Id,
+            value.VariantKey,
+            value.Name,
+            value.IsActive,
+            value.SortOrder));
 }

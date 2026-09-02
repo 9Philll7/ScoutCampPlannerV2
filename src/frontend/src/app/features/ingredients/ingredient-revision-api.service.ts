@@ -66,6 +66,19 @@ export interface IngredientRevisionUnitConversionItem {
   factorInput?: string;
 }
 
+export interface IngredientVariantRevisionItem {
+  id: string;
+  variantKey: string;
+  name: string;
+  isActive: boolean;
+  sortOrder: number;
+  allergenOverrides: IngredientRevisionPropertyItem[];
+  intoleranceOverrides: IngredientRevisionPropertyItem[];
+  originOverrides: IngredientRevisionPropertyItem[];
+  unitConversionOverrides: IngredientRevisionUnitConversionItem[];
+  isNew?: boolean;
+}
+
 export interface IngredientRevisionSummary {
   ingredientId: string;
   revisionId: string;
@@ -89,6 +102,7 @@ export interface IngredientRevisionDetails {
   intolerances: IngredientRevisionPropertyItem[];
   origins: IngredientRevisionPropertyItem[];
   unitConversions: IngredientRevisionUnitConversionItem[];
+  variants: IngredientVariantRevisionItem[];
 }
 
 export interface IngredientRevisionMutationResponse {
@@ -135,6 +149,7 @@ export class IngredientRevisionApiService {
     intolerances: IngredientRevisionPropertyItem[];
     origins: IngredientRevisionPropertyItem[];
     unitConversions: IngredientRevisionUnitConversionItem[];
+    variants: { id: string; variantKey: string; name: string; isActive: boolean; sortOrder: number }[];
   }) {
     return this.http.put<IngredientRevisionMutationResponse>(
       `${this.baseUrl}/api/ingredient-revisions/${revisionId}`, request, this.options);

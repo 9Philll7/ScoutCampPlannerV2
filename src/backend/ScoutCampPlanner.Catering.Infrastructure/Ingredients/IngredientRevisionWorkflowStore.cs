@@ -492,6 +492,13 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
             FactorToBaseUnit = value.FactorToBaseUnit,
             Precision = (int)value.Precision,
         }));
+        if (content.Variants is not null &&
+            !await SynchronizeVariantsAsync(revisionId, content.Variants, cancellationToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            database.ChangeTracker.Clear();
+            return new(IngredientRevisionMutationStatus.Invalid, expectedRowVersion);
+        }
 
         try
         {
@@ -505,6 +512,45 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
             database.ChangeTracker.Clear();
             return new(IngredientRevisionMutationStatus.Invalid, expectedRowVersion);
         }
+    }
+
+    private async Task<bool> SynchronizeVariantsAsync(
+        Guid revisionId,
+        IReadOnlyList<IngredientVariantDraftContent> variants,
+        CancellationToken cancellationToken)
+    {
+        Dictionary<Guid, IngredientVariantRevisionRecord> existing = await database
+            .Set<IngredientVariantRevisionRecord>()
+            .Where(value => value.IngredientRevisionId == revisionId)
+            .ToDictionaryAsync(value => value.Id, cancellationToken);
+
+        foreach (IngredientVariantDraftContent variant in variants)
+        {
+            if (existing.Remove(variant.Id, out IngredientVariantRevisionRecord? record))
+            {
+                if (!string.Equals(record.VariantKey, variant.VariantKey, StringComparison.Ordinal))
+                    return false;
+                record.Name = variant.Name;
+                record.NormalizedName = variant.NormalizedName;
+                record.Status = variant.IsActive ? 0 : 1;
+                record.SortOrder = variant.SortOrder;
+                continue;
+            }
+
+            database.Add(new IngredientVariantRevisionRecord
+            {
+                Id = variant.Id,
+                IngredientRevisionId = revisionId,
+                VariantKey = variant.VariantKey,
+                Name = variant.Name,
+                NormalizedName = variant.NormalizedName,
+                Status = variant.IsActive ? 0 : 1,
+                SortOrder = variant.SortOrder,
+            });
+        }
+
+        database.RemoveRange(existing.Values);
+        return true;
     }
 
     public async Task<IngredientRevisionMutationResult> PublishAsync(

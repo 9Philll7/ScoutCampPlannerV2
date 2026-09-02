@@ -325,12 +325,17 @@ Erst nach Domain und Migration:
   und `Bund` werden per Migration bereitgestellt – umgesetzt
 - Folgedraft aus einer veröffentlichten Revision mit vollständiger Kopie der
   Eigenschaften, Umrechnungen, Varianten und Overrides – umgesetzt
-- noch offen: Varianten im Editor
+- Varianten im Editor anlegen, umbenennen sowie aktiv/inaktiv setzen – umgesetzt
+- stabile `variant_key`-Werte werden beim erstmaligen Anlegen automatisch
+  erzeugt und können nach dem Speichern nicht mehr verändert werden – umgesetzt
+- eine manuelle Variantenreihenfolge ist fachlich nicht erforderlich; die
+  Anlagereihenfolge bleibt lediglich als technische Sortierung erhalten
+- noch offen: Eigenschafts- und Einheiten-Overrides von Varianten im Editor
 - Fork erst beim tatsächlichen lokalen Speichern
 - Anzeige verfügbarer zentraler Updates
 - Konfliktauflösung für Drei-Wege-Merge
 - Auswahl der Eigenschaftszustände und Quellen
-- Variantenerstellung und Overrides
+- Varianten-Overrides
 
 Kein Auto-Save einführen.
 

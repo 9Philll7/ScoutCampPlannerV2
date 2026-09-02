@@ -214,6 +214,61 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
     }
 
     [Fact]
+    public async Task Save_draft_synchronizes_variants_and_preserves_stable_key()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Seed seed = await fixture.SeedDraftAsync(reviewed: false);
+        var store = new IngredientRevisionWorkflowStore(fixture.Database);
+        Guid variantId = Guid.NewGuid();
+        IngredientRevisionDraftContent initial = IngredientRevisionDraftContent.Create(
+            "Linsen",
+            seed.CategoryId,
+            seed.UnitId,
+            IngredientPropertyReviewState.Unreviewed,
+            IngredientPropertyReviewState.Unreviewed,
+            IngredientPropertyReviewState.Unreviewed,
+            variants: [new IngredientVariantDraftContent(variantId, "red_lentils", "Rote Linsen", true, 0)]);
+
+        IngredientRevisionMutationResult created = await store.SaveDraftAsync(
+            seed.RevisionId, initial, 1, seed.ActorId, DateTimeOffset.UtcNow,
+            TestContext.Current.CancellationToken);
+        IngredientRevisionDraftContent renamed = IngredientRevisionDraftContent.Create(
+            "Linsen",
+            seed.CategoryId,
+            seed.UnitId,
+            IngredientPropertyReviewState.Unreviewed,
+            IngredientPropertyReviewState.Unreviewed,
+            IngredientPropertyReviewState.Unreviewed,
+            variants: [new IngredientVariantDraftContent(variantId, "red_lentils", "Rote Linsen, geschält", false, 0)]);
+        IngredientRevisionMutationResult updated = await store.SaveDraftAsync(
+            seed.RevisionId, renamed, 2, seed.ActorId, DateTimeOffset.UtcNow,
+            TestContext.Current.CancellationToken);
+        IngredientRevisionDraftContent changedKey = IngredientRevisionDraftContent.Create(
+            "Linsen",
+            seed.CategoryId,
+            seed.UnitId,
+            IngredientPropertyReviewState.Unreviewed,
+            IngredientPropertyReviewState.Unreviewed,
+            IngredientPropertyReviewState.Unreviewed,
+            variants: [new IngredientVariantDraftContent(variantId, "changed_key", "Rote Linsen, geschält", false, 0)]);
+        IngredientRevisionMutationResult rejected = await store.SaveDraftAsync(
+            seed.RevisionId, changedKey, 3, seed.ActorId, DateTimeOffset.UtcNow,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(IngredientRevisionMutationStatus.Saved, created.Status);
+        Assert.Equal(IngredientRevisionMutationStatus.Saved, updated.Status);
+        Assert.Equal(IngredientRevisionMutationStatus.Invalid, rejected.Status);
+        IngredientVariantRevisionRecord stored = Assert.Single(await fixture.Database
+            .Set<IngredientVariantRevisionRecord>().AsNoTracking()
+            .ToArrayAsync(TestContext.Current.CancellationToken));
+        Assert.Equal("red_lentils", stored.VariantKey);
+        Assert.Equal("Rote Linsen, geschält", stored.Name);
+        Assert.Equal(1, stored.Status);
+        Assert.Equal(3, (await fixture.Database.Set<IngredientRevisionRecord>().AsNoTracking()
+            .SingleAsync(TestContext.Current.CancellationToken)).RowVersion);
+    }
+
+    [Fact]
     public async Task List_prefers_editable_draft_over_current_published_revision()
     {
         await using var fixture = await DatabaseFixture.CreateAsync();
