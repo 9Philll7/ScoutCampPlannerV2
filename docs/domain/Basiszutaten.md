@@ -67,6 +67,12 @@ Eine zentrale Zutat:
 - kann direkt referenziert werden,
 - wird durch lokale Nutzung nicht kopiert.
 
+Zentrale Zutaten werden in der eigenen Verwaltungsansicht `Zutatenstamm`
+angelegt, bearbeitet und veröffentlicht. Diese Ansicht und die zugehörigen
+API-Operationen stehen nur Konten mit der Plattformberechtigung
+`ingredients.central.manage` zur Verfügung. Das initial eingerichtete
+Administratorkonto besitzt diese Berechtigung.
+
 ### 2.2 Lokale Kopie / Fork
 
 Eine lokale Kopie entsteht erst, wenn ein Mandant eine zentrale Zutat tatsächlich lokal verändern und speichern möchte.
@@ -79,6 +85,12 @@ Der lokale Datensatz erhält:
 - eine eigene Revisionshistorie.
 
 Eine reine Verwendung einer zentralen Zutat erzeugt **keine** lokale Kopie.
+
+Im Lagereditor wird eine zentrale veröffentlichte Revision zunächst nur als
+bearbeitbare Vorschau geöffnet. Erst wenn mindestens ein fachlicher Wert
+geändert und ausdrücklich gespeichert wird, entsteht ein Lager-Fork mit einem
+eigenen Entwurf. Das bloße Öffnen oder unveränderte Speichern erzeugt keine
+lokale Zutatenidentität.
 
 ### 2.3 Lokale Eigenanlage
 

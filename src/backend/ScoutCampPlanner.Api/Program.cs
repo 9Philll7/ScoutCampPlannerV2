@@ -198,6 +198,7 @@ app.MapPost("/api/setup", async (
 app.MapPost("/api/session", async (
     SignInRequest request,
     IPasswordAuthenticationService authentication,
+    PlatformRecipeAuthorization authorization,
     HttpContext httpContext,
     TimeProvider timeProvider,
     CancellationToken cancellationToken) =>
@@ -222,17 +223,21 @@ app.MapPost("/api/session", async (
             IssuedUtc = now,
             ExpiresUtc = now.AddHours(12),
         });
-    return Results.Ok(result.User);
+    bool canManageCentralIngredients = await authorization.CanManageCentralAsync(
+        result.User.UserId, cancellationToken);
+    return Results.Ok(new { result.User.UserId, result.User.Email, canManageCentralIngredients });
 }).RequireRateLimiting("sign-in");
 app.MapGet("/api/session", async (
     ClaimsPrincipal principal,
     PlatformDbContext database,
+    PlatformRecipeAuthorization authorization,
     CancellationToken cancellationToken) =>
 {
     Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
     string email = await database.UserAccounts.Where(value => value.Id == userId)
         .Select(value => value.Email).SingleAsync(cancellationToken);
-    return Results.Ok(new { userId, email });
+    bool canManageCentralIngredients = await authorization.CanManageCentralAsync(userId, cancellationToken);
+    return Results.Ok(new { userId, email, canManageCentralIngredients });
 }).RequireAuthorization();
 app.MapDelete("/api/session", async (
     ClaimsPrincipal principal,
@@ -629,6 +634,16 @@ app.MapPost("/api/ingredients/central/revisions", async (
         Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!),
         cancellationToken)))
     .RequireAuthorization();
+app.MapGet("/api/ingredients/central/revisions", async (
+    ClaimsPrincipal principal,
+    IngredientRevisionWorkflowService revisions,
+    CancellationToken cancellationToken) =>
+{
+    IngredientRevisionListResult result = await revisions.ListCentralAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!),
+        cancellationToken);
+    return result.IsAuthorized ? Results.Ok(result.Revisions) : Results.Forbid();
+}).RequireAuthorization();
 app.MapPost("/api/tenants/{tenantId:guid}/ingredient-revisions", async (
     Guid tenantId,
     CreateIngredientRevisionDraftRequest request,
@@ -665,6 +680,39 @@ app.MapGet("/api/camps/{campId:guid}/ingredient-revisions", async (
         cancellationToken);
     return result.IsAuthorized ? Results.Ok(result.Revisions) : Results.Forbid();
 }).RequireAuthorization();
+app.MapGet("/api/camps/{campId:guid}/ingredient-revisions/{sourceRevisionId:guid}/fork-preview", async (
+    Guid campId,
+    Guid sourceRevisionId,
+    ClaimsPrincipal principal,
+    IngredientRevisionWorkflowService revisions,
+    CancellationToken cancellationToken) =>
+{
+    IngredientRevisionQueryResult result = await revisions.GetCampForkSourceAsync(
+        campId,
+        sourceRevisionId,
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!),
+        cancellationToken);
+    return result.Status switch
+    {
+        IngredientRevisionQueryStatus.Found => Results.Ok(result.Revision),
+        IngredientRevisionQueryStatus.Forbidden => Results.Forbid(),
+        _ => Results.NotFound(),
+    };
+}).RequireAuthorization();
+app.MapPost("/api/camps/{campId:guid}/ingredient-revisions/{sourceRevisionId:guid}/fork", async (
+    Guid campId,
+    Guid sourceRevisionId,
+    CreateIngredientForkRequest request,
+    ClaimsPrincipal principal,
+    IngredientRevisionWorkflowService revisions,
+    CancellationToken cancellationToken) =>
+    ToIngredientRevisionCreationResult(await revisions.CreateCampForkAsync(
+        campId,
+        sourceRevisionId,
+        request,
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!),
+        cancellationToken)))
+    .RequireAuthorization();
 app.MapGet("/api/tenants/{tenantId:guid}/ingredients", async (
     Guid tenantId, ClaimsPrincipal principal, IngredientCatalogService ingredients,
     CancellationToken cancellationToken) =>
@@ -787,6 +835,7 @@ app.Run();
 static object ToIngredientResponse(IngredientCatalogEntry entry) => new
 {
     entry.Id,
+    entry.RevisionId,
     entry.Name,
     Scope = entry.Scope.ToString(),
     entry.ScopeId,
@@ -850,6 +899,10 @@ static IResult ToIngredientRevisionCreationResult(IngredientRevisionMutationResu
             code = "ingredient_revision_draft_exists",
             result.RevisionId,
             result.RowVersion,
+        }),
+        IngredientRevisionMutationStatus.NoChanges => Results.Conflict(new
+        {
+            code = "ingredient_fork_requires_changes",
         }),
         _ => Results.ValidationProblem(new Dictionary<string, string[]>
         {

@@ -35,7 +35,7 @@ public sealed class IngredientManagementStore(CateringDbContext database) : IIng
         }
 
         return new(IngredientMutationStatus.Created, new IngredientCatalogEntry(
-            ingredient.Id, ingredient.Name, ingredient.ScopeType, ingredient.ScopeId,
+            ingredient.Id, null, ingredient.Name, ingredient.ScopeType, ingredient.ScopeId,
             ingredient.OriginInformation,
             variants.Select(value => new IngredientVariantItem(value.Id, value.Name)).ToArray(),
             [], []));

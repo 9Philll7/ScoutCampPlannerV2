@@ -18,6 +18,17 @@ Die Repository-Dokumentation hat Vorrang vor dieser Übergabe und vor früheren 
 
 ## Aktueller Implementierungsstand
 
+### Aktuelles Integrationsinkrement, noch zu committen
+
+- Plattform-Administratoren erhalten den eigenen Bereich `Zutatenstamm`.
+- Zentrale Zutaten können dort revisionsfähig angelegt, bearbeitet und
+  veröffentlicht werden.
+- Der Zugriff wird über `ingredients.central.manage` serverseitig geschützt;
+  die Oberfläche zeigt den Bereich nur bei vorhandener Berechtigung.
+- Veröffentlichte zentrale Zutaten werden im Lagerkatalog angezeigt.
+- Eine Lageranpassung wird als Vorschau geöffnet und erst nach einer
+  tatsächlichen Änderung als lokaler Fork gespeichert.
+
 ### Bereits committet
 
 Das erste Domain-Inkrement enthält:
@@ -335,7 +346,8 @@ Erst nach Domain und Migration:
   Herkunftsregeln – umgesetzt
 - Einheiten-Overrides von Varianten für bereits auf der Basisrevision
   vorhandene Umrechnungen – umgesetzt
-- Fork erst beim tatsächlichen lokalen Speichern
+- Lager-Fork einer zentralen Zutat erst beim ersten tatsächlich veränderten
+  Speichern; reine Vorschau erzeugt keine lokale Kopie – umgesetzt
 - Anzeige verfügbarer zentraler Updates
 - Konfliktauflösung für Drei-Wege-Merge
 

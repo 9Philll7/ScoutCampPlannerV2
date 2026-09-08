@@ -102,6 +102,36 @@ public sealed class IngredientRevisionWorkflowServiceTests
     }
 
     [Fact]
+    public async Task Platform_administrator_can_list_central_revisions()
+    {
+        var store = new FakeStore(null);
+        var service = new IngredientRevisionWorkflowService(
+            store,
+            new FakeAuthorization { CentralAllowed = true },
+            TimeProvider.System);
+
+        IngredientRevisionListResult result = await service.ListCentralAsync(
+            Guid.NewGuid(), TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsAuthorized);
+        Assert.Equal(IngredientScopeType.Central, store.ListedScope!.ScopeType);
+        Assert.Null(store.ListedScope.ScopeId);
+    }
+
+    [Fact]
+    public async Task Actor_without_platform_permission_cannot_list_central_revisions()
+    {
+        var store = new FakeStore(null);
+        var service = new IngredientRevisionWorkflowService(store, new FakeAuthorization(), TimeProvider.System);
+
+        IngredientRevisionListResult result = await service.ListCentralAsync(
+            Guid.NewGuid(), TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsAuthorized);
+        Assert.Null(store.ListedScope);
+    }
+
+    [Fact]
     public async Task Authorized_actor_can_create_follow_up_draft_from_published_revision()
     {
         Guid publishedRevisionId = Guid.NewGuid();
@@ -118,6 +148,39 @@ public sealed class IngredientRevisionWorkflowServiceTests
 
         Assert.Equal(IngredientRevisionMutationStatus.Created, result.Status);
         Assert.Equal(publishedRevisionId, store.PublishedRevisionIdForDraft);
+    }
+
+    [Fact]
+    public async Task Camp_fork_is_not_created_until_source_content_is_changed()
+    {
+        Guid sourceRevisionId = Guid.NewGuid();
+        Guid categoryId = Guid.NewGuid();
+        Guid unitId = Guid.NewGuid();
+        var store = new FakeStore(new IngredientRevisionScope(IngredientScopeType.Central, null))
+        {
+            Revision = new IngredientRevisionDraftDetails(
+                sourceRevisionId, Guid.NewGuid(), IngredientScopeType.Central, null, 1,
+                IngredientRevisionState.Published, null, "Linsen", categoryId, unitId,
+                IngredientPropertyReviewState.Reviewed, IngredientPropertyReviewState.Reviewed,
+                IngredientPropertyReviewState.Reviewed, 3, [], [], [], [], []),
+        };
+        var service = new IngredientRevisionWorkflowService(
+            store, new FakeAuthorization { CampAllowed = true }, TimeProvider.System);
+        var unchanged = new CreateIngredientForkRequest(
+            "Linsen", categoryId, unitId,
+            IngredientPropertyReviewState.Reviewed, IngredientPropertyReviewState.Reviewed,
+            IngredientPropertyReviewState.Reviewed, 3);
+
+        IngredientRevisionMutationResult ignored = await service.CreateCampForkAsync(
+            Guid.NewGuid(), sourceRevisionId, unchanged, Guid.NewGuid(),
+            TestContext.Current.CancellationToken);
+        IngredientRevisionMutationResult created = await service.CreateCampForkAsync(
+            Guid.NewGuid(), sourceRevisionId, unchanged with { Name = "Rote Linsen" }, Guid.NewGuid(),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(IngredientRevisionMutationStatus.NoChanges, ignored.Status);
+        Assert.Equal(IngredientRevisionMutationStatus.Created, created.Status);
+        Assert.True(store.ForkCalled);
     }
 
     [Fact]
@@ -152,6 +215,9 @@ public sealed class IngredientRevisionWorkflowServiceTests
         public IngredientRevisionScope? CreatedScope { get; private set; }
         public IngredientRevisionDraftContent? CreatedContent { get; private set; }
         public Guid? PublishedRevisionIdForDraft { get; private set; }
+        public IngredientRevisionDraftDetails? Revision { get; init; }
+        public bool ForkCalled { get; private set; }
+        public IngredientRevisionScope? ListedScope { get; private set; }
 
         public Task<IngredientRevisionScope?> GetScopeAsync(Guid revisionId, CancellationToken cancellationToken = default) =>
             Task.FromResult(scope);
@@ -159,12 +225,15 @@ public sealed class IngredientRevisionWorkflowServiceTests
         public Task<IngredientRevisionDraftDetails?> GetAsync(
             Guid revisionId,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<IngredientRevisionDraftDetails?>(null);
+            Task.FromResult(Revision);
 
         public Task<IReadOnlyList<IngredientRevisionSummary>> ListAsync(
             IngredientRevisionScope revisionScope,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<IngredientRevisionSummary>>([]);
+            CancellationToken cancellationToken = default)
+        {
+            ListedScope = revisionScope;
+            return Task.FromResult<IReadOnlyList<IngredientRevisionSummary>>([]);
+        }
 
         public Task<IngredientRevisionMutationResult> CreateDraftAsync(
             Guid ingredientId,
@@ -208,6 +277,22 @@ public sealed class IngredientRevisionWorkflowServiceTests
                 IngredientRevisionMutationStatus.Created, 1, Guid.NewGuid(), newRevisionId));
         }
 
+        public Task<IngredientRevisionMutationResult> CreateForkDraftAsync(
+            Guid sourceRevisionId,
+            long expectedSourceRowVersion,
+            Guid ingredientId,
+            Guid revisionId,
+            IngredientRevisionScope revisionScope,
+            IngredientRevisionDraftContent content,
+            Guid actorUserId,
+            DateTimeOffset createdAtUtc,
+            CancellationToken cancellationToken = default)
+        {
+            ForkCalled = true;
+            return Task.FromResult(new IngredientRevisionMutationResult(
+                IngredientRevisionMutationStatus.Created, 1, ingredientId, revisionId));
+        }
+
         public Task<IngredientRevisionMutationResult> PublishAsync(
             Guid revisionId,
             long expectedRowVersion,
@@ -226,6 +311,7 @@ public sealed class IngredientRevisionWorkflowServiceTests
     {
         public bool CentralAllowed { get; init; }
         public bool TenantAllowed { get; init; }
+        public bool CampAllowed { get; init; }
         public Guid? RequestedTenantId { get; private set; }
 
         public Task<bool> CanManageCentralAsync(Guid actorUserId, CancellationToken cancellationToken = default) =>
@@ -240,7 +326,7 @@ public sealed class IngredientRevisionWorkflowServiceTests
 
         public Task<bool> CanManageCampAsync(
             Guid actorUserId, Guid campId, CancellationToken cancellationToken = default) =>
-            Task.FromResult(false);
+            Task.FromResult(CampAllowed);
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider

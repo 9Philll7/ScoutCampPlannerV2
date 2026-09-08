@@ -23,6 +23,20 @@ public sealed record SaveIngredientRevisionDraftRequest(
 
 public sealed record PublishIngredientRevisionRequest(long ExpectedRowVersion);
 
+public sealed record CreateIngredientForkRequest(
+    string Name,
+    Guid CategoryId,
+    Guid BaseUnitId,
+    IngredientPropertyReviewState AllergenReviewState,
+    IngredientPropertyReviewState IntoleranceReviewState,
+    IngredientPropertyReviewState OriginReviewState,
+    long ExpectedSourceRowVersion,
+    IReadOnlyList<IngredientRevisionPropertyItem>? Allergens = null,
+    IReadOnlyList<IngredientRevisionPropertyItem>? Intolerances = null,
+    IReadOnlyList<IngredientRevisionPropertyItem>? Origins = null,
+    IReadOnlyList<IngredientRevisionUnitConversionItem>? UnitConversions = null,
+    IReadOnlyList<IngredientVariantDraftItem>? Variants = null);
+
 public sealed record IngredientRevisionPropertyItem(
     Guid PropertyId,
     IngredientPropertyState State,
@@ -108,6 +122,7 @@ public enum IngredientRevisionMutationStatus
     ConcurrencyConflict,
     DraftAlreadyExists,
     Forbidden,
+    NoChanges,
     Invalid,
 }
 
@@ -145,6 +160,17 @@ public interface IIngredientRevisionWorkflowStore
     Task<IngredientRevisionMutationResult> CreateDraftFromPublishedAsync(
         Guid publishedRevisionId,
         Guid newRevisionId,
+        Guid actorUserId,
+        DateTimeOffset createdAtUtc,
+        CancellationToken cancellationToken = default);
+
+    Task<IngredientRevisionMutationResult> CreateForkDraftAsync(
+        Guid sourceRevisionId,
+        long expectedSourceRowVersion,
+        Guid ingredientId,
+        Guid revisionId,
+        IngredientRevisionScope scope,
+        IngredientRevisionDraftContent content,
         Guid actorUserId,
         DateTimeOffset createdAtUtc,
         CancellationToken cancellationToken = default);
@@ -227,6 +253,26 @@ public sealed class IngredientRevisionWorkflowService(
             : new(IngredientRevisionQueryStatus.Found, revision);
     }
 
+    public async Task<IngredientRevisionQueryResult> GetCampForkSourceAsync(
+        Guid campId,
+        Guid sourceRevisionId,
+        Guid actorUserId,
+        CancellationToken cancellationToken = default)
+    {
+        Required(campId, nameof(campId));
+        Required(sourceRevisionId, nameof(sourceRevisionId));
+        Required(actorUserId, nameof(actorUserId));
+        if (!await authorization.CanManageCampAsync(actorUserId, campId, cancellationToken))
+            return new(IngredientRevisionQueryStatus.Forbidden);
+        IngredientRevisionScope? sourceScope = await store.GetScopeAsync(sourceRevisionId, cancellationToken);
+        if (sourceScope?.ScopeType != IngredientScopeType.Central)
+            return new(IngredientRevisionQueryStatus.NotFound);
+        IngredientRevisionDraftDetails? source = await store.GetAsync(sourceRevisionId, cancellationToken);
+        return source is { State: IngredientRevisionState.Published }
+            ? new(IngredientRevisionQueryStatus.Found, source)
+            : new(IngredientRevisionQueryStatus.NotFound);
+    }
+
     public async Task<IngredientRevisionListResult> ListCampAsync(
         Guid campId,
         Guid actorUserId,
@@ -235,6 +281,17 @@ public sealed class IngredientRevisionWorkflowService(
         Required(campId, nameof(campId));
         Required(actorUserId, nameof(actorUserId));
         var scope = new IngredientRevisionScope(IngredientScopeType.Camp, campId);
+        if (!await IsAuthorizedAsync(actorUserId, scope, cancellationToken))
+            return new(false, []);
+        return new(true, await store.ListAsync(scope, cancellationToken));
+    }
+
+    public async Task<IngredientRevisionListResult> ListCentralAsync(
+        Guid actorUserId,
+        CancellationToken cancellationToken = default)
+    {
+        Required(actorUserId, nameof(actorUserId));
+        var scope = new IngredientRevisionScope(IngredientScopeType.Central, null);
         if (!await IsAuthorizedAsync(actorUserId, scope, cancellationToken))
             return new(false, []);
         return new(true, await store.ListAsync(scope, cancellationToken));
@@ -286,6 +343,53 @@ public sealed class IngredientRevisionWorkflowService(
             actorUserId,
             timeProvider.GetUtcNow(),
             cancellationToken);
+    }
+
+    public async Task<IngredientRevisionMutationResult> CreateCampForkAsync(
+        Guid campId,
+        Guid sourceRevisionId,
+        CreateIngredientForkRequest request,
+        Guid actorUserId,
+        CancellationToken cancellationToken = default)
+    {
+        Required(campId, nameof(campId));
+        Required(sourceRevisionId, nameof(sourceRevisionId));
+        Required(actorUserId, nameof(actorUserId));
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.ExpectedSourceRowVersion <= 0)
+            return new(IngredientRevisionMutationStatus.Invalid);
+        if (!await authorization.CanManageCampAsync(actorUserId, campId, cancellationToken))
+            return new(IngredientRevisionMutationStatus.Forbidden);
+
+        IngredientRevisionScope? sourceScope = await store.GetScopeAsync(sourceRevisionId, cancellationToken);
+        if (sourceScope?.ScopeType != IngredientScopeType.Central)
+            return new(IngredientRevisionMutationStatus.Invalid);
+        IngredientRevisionDraftDetails? source = await store.GetAsync(sourceRevisionId, cancellationToken);
+        if (source is not { State: IngredientRevisionState.Published })
+            return new(IngredientRevisionMutationStatus.NotFound);
+
+        IngredientRevisionDraftContent content;
+        try
+        {
+            content = IngredientRevisionDraftContent.Create(
+                request.Name, request.CategoryId, request.BaseUnitId,
+                request.AllergenReviewState, request.IntoleranceReviewState, request.OriginReviewState,
+                ToPropertyValues(request.Allergens), ToPropertyValues(request.Intolerances),
+                ToPropertyValues(request.Origins), ToUnitConversions(request.UnitConversions),
+                ToVariants(request.Variants));
+        }
+        catch (ArgumentException)
+        {
+            return new(IngredientRevisionMutationStatus.Invalid);
+        }
+
+        if (ContentEquals(source, content))
+            return new(IngredientRevisionMutationStatus.NoChanges);
+
+        return await store.CreateForkDraftAsync(
+            sourceRevisionId, request.ExpectedSourceRowVersion, Guid.NewGuid(), Guid.NewGuid(),
+            new IngredientRevisionScope(IngredientScopeType.Camp, campId), content,
+            actorUserId, timeProvider.GetUtcNow(), cancellationToken);
     }
 
     public async Task<IngredientRevisionMutationResult> CreateDraftFromPublishedAsync(
@@ -410,4 +514,50 @@ public sealed class IngredientRevisionWorkflowService(
             ToPropertyValues(value.IntoleranceOverrides),
             ToPropertyValues(value.OriginOverrides),
             ToUnitConversions(value.UnitConversionOverrides)));
+
+    private static bool ContentEquals(
+        IngredientRevisionDraftDetails source,
+        IngredientRevisionDraftContent content) =>
+        source.Name == content.Name && source.CategoryId == content.CategoryId &&
+        source.BaseUnitId == content.BaseUnitId &&
+        source.AllergenReviewState == content.AllergenReviewState &&
+        source.IntoleranceReviewState == content.IntoleranceReviewState &&
+        source.OriginReviewState == content.OriginReviewState &&
+        PropertiesEqual(source.Allergens, content.Allergens) &&
+        PropertiesEqual(source.Intolerances, content.Intolerances) &&
+        PropertiesEqual(source.Origins, content.Origins) &&
+        ConversionsEqual(source.UnitConversions, content.UnitConversions) &&
+        VariantsEqual(source.Variants, content.Variants ?? []);
+
+    private static bool PropertiesEqual(
+        IEnumerable<IngredientRevisionPropertyItem> left,
+        IEnumerable<IngredientPropertyValue> right) =>
+        left.OrderBy(value => value.PropertyId).Select(value => (value.PropertyId, value.State, value.Source))
+            .SequenceEqual(right.OrderBy(value => value.PropertyId)
+                .Select(value => (value.PropertyId, value.State, value.Source)));
+
+    private static bool ConversionsEqual(
+        IEnumerable<IngredientRevisionUnitConversionItem> left,
+        IEnumerable<IngredientRevisionUnitConversion> right) =>
+        left.OrderBy(value => value.SourceUnitId)
+            .Select(value => (value.SourceUnitId, value.FactorToBaseUnit, value.Precision))
+            .SequenceEqual(right.OrderBy(value => value.SourceUnitId)
+                .Select(value => (value.SourceUnitId, value.FactorToBaseUnit, value.Precision)));
+
+    private static bool VariantsEqual(
+        IEnumerable<IngredientVariantRevisionItem> left,
+        IEnumerable<IngredientVariantDraftContent> right)
+    {
+        IngredientVariantRevisionItem[] source = left.OrderBy(value => value.VariantKey).ToArray();
+        IngredientVariantDraftContent[] candidate = right.OrderBy(value => value.VariantKey).ToArray();
+        if (source.Length != candidate.Length) return false;
+        return source.Zip(candidate).All(pair =>
+            pair.First.VariantKey == pair.Second.VariantKey &&
+            pair.First.Name == pair.Second.Name && pair.First.IsActive == pair.Second.IsActive &&
+            pair.First.SortOrder == pair.Second.SortOrder &&
+            PropertiesEqual(pair.First.AllergenOverrides, pair.Second.AllergenOverrides) &&
+            PropertiesEqual(pair.First.IntoleranceOverrides, pair.Second.IntoleranceOverrides) &&
+            PropertiesEqual(pair.First.OriginOverrides, pair.Second.OriginOverrides) &&
+            ConversionsEqual(pair.First.UnitConversionOverrides, pair.Second.UnitConversionOverrides));
+    }
 }

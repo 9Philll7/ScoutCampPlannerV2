@@ -5,6 +5,7 @@ import { API_BASE_URL } from '../../core/api-base-url';
 export interface AuthenticatedUser {
   userId: string;
   email: string;
+  canManageCentralIngredients: boolean;
 }
 
 @Injectable({ providedIn: 'root' })

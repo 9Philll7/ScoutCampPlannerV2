@@ -10,6 +10,7 @@ public sealed record IngredientUnitItem(
 public sealed record IngredientConflictItem(ConflictType Type, Guid Id, string Name);
 public sealed record IngredientCatalogEntry(
     Guid Id,
+    Guid? RevisionId,
     string Name,
     IngredientScopeType Scope,
     Guid? ScopeId,

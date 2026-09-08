@@ -127,9 +127,24 @@ export class IngredientRevisionApiService {
       `${this.baseUrl}/api/camps/${campId}/ingredient-revisions`, this.options);
   }
 
+  listCentral() {
+    return this.http.get<IngredientRevisionSummary[]>(
+      `${this.baseUrl}/api/ingredients/central/revisions`, this.options);
+  }
+
+  getCampForkPreview(campId: string, sourceRevisionId: string) {
+    return this.http.get<IngredientRevisionDetails>(
+      `${this.baseUrl}/api/camps/${campId}/ingredient-revisions/${sourceRevisionId}/fork-preview`, this.options);
+  }
+
   createCamp(campId: string, request: { name: string; categoryId: string; baseUnitId: string }) {
     return this.http.post<IngredientRevisionMutationResponse>(
       `${this.baseUrl}/api/camps/${campId}/ingredient-revisions`, request, this.options);
+  }
+
+  createCentral(request: { name: string; categoryId: string; baseUnitId: string }) {
+    return this.http.post<IngredientRevisionMutationResponse>(
+      `${this.baseUrl}/api/ingredients/central/revisions`, request, this.options);
   }
 
   get(revisionId: string) {
@@ -163,6 +178,34 @@ export class IngredientRevisionApiService {
   }) {
     return this.http.put<IngredientRevisionMutationResponse>(
       `${this.baseUrl}/api/ingredient-revisions/${revisionId}`, request, this.options);
+  }
+
+  createCampFork(campId: string, sourceRevisionId: string, request: {
+    name: string;
+    categoryId: string;
+    baseUnitId: string;
+    allergenReviewState: IngredientPropertyReviewState;
+    intoleranceReviewState: IngredientPropertyReviewState;
+    originReviewState: IngredientPropertyReviewState;
+    expectedSourceRowVersion: number;
+    allergens: IngredientRevisionPropertyItem[];
+    intolerances: IngredientRevisionPropertyItem[];
+    origins: IngredientRevisionPropertyItem[];
+    unitConversions: IngredientRevisionUnitConversionItem[];
+    variants: {
+      id: string;
+      variantKey: string;
+      name: string;
+      isActive: boolean;
+      sortOrder: number;
+      allergenOverrides: IngredientRevisionPropertyItem[];
+      intoleranceOverrides: IngredientRevisionPropertyItem[];
+      originOverrides: IngredientRevisionPropertyItem[];
+      unitConversionOverrides: IngredientRevisionUnitConversionItem[];
+    }[];
+  }) {
+    return this.http.post<IngredientRevisionMutationResponse>(
+      `${this.baseUrl}/api/camps/${campId}/ingredient-revisions/${sourceRevisionId}/fork`, request, this.options);
   }
 
   publish(revisionId: string, expectedRowVersion: number) {

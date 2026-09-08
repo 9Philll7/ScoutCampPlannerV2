@@ -63,7 +63,7 @@ public sealed class IngredientCatalogStore(CateringDbContext database) : IIngred
             .ToDictionaryAsync(value => value.Id, value => value.Name, cancellationToken);
 
         IngredientCatalogEntry[] legacyEntries = ingredients.Select(ingredient => new IngredientCatalogEntry(
-                ingredient.Id, ingredient.Name, ingredient.ScopeType, ingredient.ScopeId,
+                ingredient.Id, null, ingredient.Name, ingredient.ScopeType, ingredient.ScopeId,
                 ingredient.OriginInformation,
                 variants.Where(value => value.BaseIngredientId == ingredient.Id)
                     .OrderBy(value => value.Name, StringComparer.OrdinalIgnoreCase)
@@ -180,6 +180,7 @@ public sealed class IngredientCatalogStore(CateringDbContext database) : IIngred
 
             return new IngredientCatalogEntry(
                 header.IngredientId,
+                header.Revision.Id,
                 header.Revision.Name,
                 header.Scope,
                 header.ScopeId,

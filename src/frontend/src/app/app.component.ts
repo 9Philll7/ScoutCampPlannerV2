@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
@@ -21,7 +21,7 @@ import { SetupApiService } from './features/setup/setup-api.service';
 import { ActionIconComponent } from './shared/action-icon.component';
 
 type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
-type ApplicationSection = 'camps' | 'organization';
+type ApplicationSection = 'camps' | 'organization' | 'centralIngredients';
 type CampSection = 'general' | 'structure' | 'catering';
 
 @Component({
@@ -40,6 +40,10 @@ type CampSection = 'general' | 'structure' | 'catering';
             <scp-action-icon name="camp"/>Lager</button>
           <button matButton [class.active]="applicationSection() === 'organization'" (click)="showSection('organization')">
             <scp-action-icon name="organization"/>Organisation</button>
+          @if (user()?.canManageCentralIngredients) {
+            <button matButton [class.active]="applicationSection() === 'centralIngredients'" (click)="showSection('centralIngredients')">
+              <scp-action-icon name="planning"/>Zutatenstamm</button>
+          }
         </nav>
         @if (applicationSection() === 'camps' && openedCampId()) {
           <button matButton type="button" class="toolbar-back" (click)="closeCamp()">
@@ -106,10 +110,13 @@ type CampSection = 'general' | 'structure' | 'catering';
                 <h1>{{ openedCamp()?.name }}</h1>
               } @else {
               <p class="eyebrow">{{ selectedTenant()?.name ?? 'ScoutCampPlanner' }}</p>
-              <h1>{{ applicationSection() === 'camps' ? 'Lager' : 'Organisation' }}</h1>
+              <h1>{{ applicationSection() === 'camps' ? 'Lager'
+                : applicationSection() === 'organization' ? 'Organisation' : 'Zutatenstamm' }}</h1>
               <p class="page-description">{{ applicationSection() === 'camps'
                 ? 'Lager anlegen, öffnen und für den Offlinebetrieb vorbereiten.'
-                : 'Mandantenweite Vorgaben für zukünftige Lager verwalten.' }}</p>
+                : applicationSection() === 'organization'
+                  ? 'Mandantenweite Vorgaben für zukünftige Lager verwalten.'
+                  : 'Gemeinsame Basiszutaten für alle Organisationen verwalten.' }}</p>
               }
             </div>
             @if (tenants().length > 1) {
@@ -182,6 +189,16 @@ type CampSection = 'general' | 'structure' | 'catering';
               </mat-card-content>
             </mat-card>
           }
+          } @else if (applicationSection() === 'centralIngredients') {
+            <mat-card class="content-card">
+              <mat-card-header>
+                <mat-card-title>Zentrale Basiszutaten</mat-card-title>
+                <mat-card-subtitle>Veröffentlichte Zutaten stehen anschließend allen Organisationen und Lagern zur Verfügung.</mat-card-subtitle>
+              </mat-card-header>
+              <mat-card-content>
+                <scp-ingredient-revision-editor scope="central"/>
+              </mat-card-content>
+            </mat-card>
           } @else {
           @if (openedCamp(); as opened) {
             <nav class="section-navigation camp-navigation" aria-label="Lagernavigation">
@@ -628,7 +645,12 @@ type CampSection = 'general' | 'structure' | 'catering';
                           @for (ingredient of filteredIngredients(); track ingredient.id) {
                             <article class="ingredient-card">
                               <header><div><span class="scope-badge" [class]="'scope-badge scope-' + ingredient.scope.toLowerCase()">
-                                {{ ingredientScopeLabel(ingredient.scope) }}</span><h4>{{ ingredient.name }}</h4></div></header>
+                                {{ ingredientScopeLabel(ingredient.scope) }}</span><h4>{{ ingredient.name }}</h4></div>
+                                @if (ingredient.scope === 'Central' && ingredient.revisionId && camp.canEdit && !camp.isFrozen) {
+                                  <button matButton type="button" (click)="prepareIngredientFork(ingredient.revisionId)">
+                                    <scp-action-icon name="edit"/>Für Lager anpassen</button>
+                                }
+                              </header>
                               @if (ingredient.originInformation) { <p class="ingredient-origin">{{ ingredient.originInformation }}</p> }
                               <div class="ingredient-detail"><strong>Einheiten</strong>
                                 @if (ingredient.units.length) {
@@ -685,6 +707,7 @@ export class AppComponent {
   private readonly setupApi = inject(SetupApiService);
   private readonly authenticationApi = inject(AuthenticationApiService);
   private readonly campApi = inject(CampApiService);
+  private readonly ingredientRevisionEditor = viewChild(IngredientRevisionEditorComponent);
   readonly state = signal<ViewState>('loading');
   readonly submitting = signal(false);
   readonly error = signal<string | null>(null);
@@ -1271,6 +1294,10 @@ export class AppComponent {
       error: () => { this.ingredients.set([]); this.ingredientsLoading.set(false);
         this.error.set('Der Zutatenkatalog konnte nicht geladen werden.'); }
     });
+  }
+
+  prepareIngredientFork(sourceRevisionId: string) {
+    this.ingredientRevisionEditor()?.prepareCampFork(sourceRevisionId);
   }
 
   ingredientScopeLabel(scope: IngredientScope) {

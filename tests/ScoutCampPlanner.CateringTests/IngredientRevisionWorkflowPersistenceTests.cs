@@ -467,6 +467,55 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
     }
 
     [Fact]
+    public async Task Camp_fork_is_created_from_current_central_revision_on_first_changed_save()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Seed seed = await fixture.SeedDraftAsync(reviewed: true);
+        var store = new IngredientRevisionWorkflowStore(fixture.Database);
+        Assert.Equal(IngredientRevisionMutationStatus.Published, (await store.PublishAsync(
+            seed.RevisionId, 1, seed.ActorId, DateTimeOffset.UtcNow,
+            TestContext.Current.CancellationToken)).Status);
+        Guid campId = Guid.NewGuid();
+        Guid forkIngredientId = Guid.NewGuid();
+        Guid forkRevisionId = Guid.NewGuid();
+        IngredientRevisionDraftContent changed = IngredientRevisionDraftContent.Create(
+            "Rote Linsen",
+            seed.CategoryId,
+            seed.UnitId,
+            IngredientPropertyReviewState.Reviewed,
+            IngredientPropertyReviewState.Reviewed,
+            IngredientPropertyReviewState.Reviewed);
+
+        IngredientRevisionMutationResult result = await store.CreateForkDraftAsync(
+            seed.RevisionId, 2, forkIngredientId, forkRevisionId,
+            new IngredientRevisionScope(IngredientScopeType.Camp, campId),
+            changed, seed.ActorId, DateTimeOffset.UtcNow,
+            TestContext.Current.CancellationToken);
+        IngredientRevisionMutationResult duplicate = await store.CreateForkDraftAsync(
+            seed.RevisionId, 2, Guid.NewGuid(), Guid.NewGuid(),
+            new IngredientRevisionScope(IngredientScopeType.Camp, campId),
+            changed, seed.ActorId, DateTimeOffset.UtcNow,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(IngredientRevisionMutationStatus.Created, result.Status);
+        Assert.Equal(IngredientRevisionMutationStatus.DraftAlreadyExists, duplicate.Status);
+        Assert.Equal(forkRevisionId, duplicate.RevisionId);
+        IngredientIdentityRecord fork = await fixture.Database.Set<IngredientIdentityRecord>()
+            .AsNoTracking().SingleAsync(value => value.Id == forkIngredientId,
+                TestContext.Current.CancellationToken);
+        Assert.Equal((int)IngredientScopeType.Camp, fork.ScopeType);
+        Assert.Equal(campId, fork.ScopeId);
+        Assert.Equal(seed.IngredientId, fork.SourceIngredientId);
+        Assert.Equal(seed.RevisionId, fork.SourceRevisionId);
+        IngredientRevisionRecord draft = await fixture.Database.Set<IngredientRevisionRecord>()
+            .AsNoTracking().SingleAsync(value => value.Id == forkRevisionId,
+                TestContext.Current.CancellationToken);
+        Assert.Equal("Rote Linsen", draft.Name);
+        Assert.Equal(seed.RevisionId, draft.BasedOnRevisionId);
+        Assert.Equal(seed.RevisionId, draft.MergedCentralRevisionId);
+    }
+
+    [Fact]
     public async Task Publish_is_transactional_and_updates_identity_pointer()
     {
         await using var fixture = await DatabaseFixture.CreateAsync();
@@ -558,7 +607,7 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
                 });
             await Database.SaveChangesAsync(TestContext.Current.CancellationToken);
             Database.ChangeTracker.Clear();
-            return new Seed(revisionId, categoryId, unit.Id, actorId);
+            return new Seed(ingredientId, revisionId, categoryId, unit.Id, actorId);
         }
 
         public async Task<(Guid CategoryId, Guid UnitId)> AddReferencesAsync()
@@ -582,5 +631,5 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
         }
     }
 
-    private sealed record Seed(Guid RevisionId, Guid CategoryId, Guid UnitId, Guid ActorId);
+    private sealed record Seed(Guid IngredientId, Guid RevisionId, Guid CategoryId, Guid UnitId, Guid ActorId);
 }

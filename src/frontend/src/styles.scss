@@ -77,6 +77,7 @@ button.icon-only scp-action-icon { margin-right: 0; }
 .catalog-count { color: #667168; font-size: 0.85rem; }
 .ingredient-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 1rem; }
 .ingredient-card { display: grid; align-content: start; gap: 0.85rem; padding: 1rem; border: 1px solid #dce4da; border-radius: 0.8rem; background: #f8faf7; }
+.ingredient-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
 .ingredient-card h4 { margin: 0.4rem 0 0; font-size: 1.1rem; }
 .ingredient-origin { margin: 0; color: #58635a; }
 .ingredient-detail { display: grid; gap: 0.4rem; }

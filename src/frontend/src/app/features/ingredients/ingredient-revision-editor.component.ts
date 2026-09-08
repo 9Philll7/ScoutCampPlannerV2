@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, effect, inject, input, output, signal } from '@angular/core';
+import { Component, effect, ElementRef, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -33,9 +33,9 @@ import {
     MatInputModule, MatProgressSpinnerModule, MatSelectModule, ActionIconComponent],
   template: `
     <div class="revision-editor-heading">
-      <div><h4>Lagerzutaten verwalten</h4><p>Entwürfe explizit speichern und nach der Prüfung veröffentlichen.</p></div>
+      <div><h4>{{ managementTitle() }}</h4><p>Entwürfe explizit speichern und nach der Prüfung veröffentlichen.</p></div>
       @if (!disabled() && !createOpen()) {
-        <button matButton type="button" (click)="openCreate()"><scp-action-icon name="add"/>Neue Lagerzutat</button>
+        <button matButton type="button" (click)="openCreate()"><scp-action-icon name="add"/>{{ createButtonLabel() }}</button>
       }
     </div>
     @if (error()) { <p class="revision-message revision-error" role="alert">{{ error() }}</p> }
@@ -45,7 +45,7 @@ import {
     } @else {
       @if (createOpen()) {
         <form class="revision-form" (ngSubmit)="create()">
-          <h4>Neue Lagerzutat</h4>
+          <h4>{{ createButtonLabel() }}</h4>
           <mat-form-field appearance="outline"><mat-label>Name</mat-label>
             <input matInput name="createIngredientName" [(ngModel)]="createName" maxlength="200" required>
           </mat-form-field>
@@ -90,13 +90,15 @@ import {
             <span><strong>{{ revision.name }}</strong><small>{{ stateLabel(revision.state) }}</small></span>
             <scp-action-icon name="edit"/>
           </button>
-        } @empty { <p class="revision-empty">Noch keine revisionsfähigen Lagerzutaten vorhanden.</p> }
+        } @empty { <p class="revision-empty">{{ emptyListLabel() }}</p> }
       </div>
 
       @if (selected(); as revision) {
         <form class="revision-form revision-details" (ngSubmit)="save()">
-          <div class="revision-editor-heading"><div><h4>{{ revision.name }}</h4><p>Version {{ revision.rowVersion }}</p></div>
-            <span class="revision-state" [class.published]="revision.state === publishedState">{{ stateLabel(revision.state) }}</span>
+          <div class="revision-editor-heading"><div><h4>{{ revision.name }}</h4>
+            <p>{{ pendingForkSourceRevisionId() ? 'Zentrale Vorlage · Lagerkopie entsteht erst beim Speichern' : 'Version ' + revision.rowVersion }}</p></div>
+            <span class="revision-state" [class.published]="revision.state === publishedState">
+              {{ pendingForkSourceRevisionId() ? 'Neue Lageranpassung' : stateLabel(revision.state) }}</span>
           </div>
           <mat-form-field appearance="outline"><mat-label>Name</mat-label>
             <input matInput name="revisionName" [(ngModel)]="revision.name" maxlength="200" required
@@ -479,9 +481,11 @@ import {
             <div class="revision-actions">
               <button matButton type="submit"
                 [disabled]="submitting() || disabled() || !isDirty(revision) || !unitConversionsValid(revision) || !variantsValid(revision)">
-                <scp-action-icon name="save"/>Entwurf speichern</button>
-              <button matButton="filled" type="button" (click)="publish()"
-                [disabled]="submitting() || disabled() || isDirty(revision) || !allReviewed(revision) || !unitConversionsValid(revision) || !variantsValid(revision)">Veröffentlichen</button>
+                <scp-action-icon name="save"/>{{ pendingForkSourceRevisionId() ? 'Als Lageranpassung speichern' : 'Entwurf speichern' }}</button>
+              @if (!pendingForkSourceRevisionId()) {
+                <button matButton="filled" type="button" (click)="publish()"
+                  [disabled]="submitting() || disabled() || isDirty(revision) || !allReviewed(revision) || !unitConversionsValid(revision) || !variantsValid(revision)">Veröffentlichen</button>
+              }
             </div>
             @if (isDirty(revision) && allReviewed(revision)) {
               <p class="revision-hint revision-unsaved">Vor dem Veröffentlichen muss der aktuelle Entwurf gespeichert werden.</p>
@@ -586,7 +590,8 @@ import {
   `
 })
 export class IngredientRevisionEditorComponent {
-  readonly campId = input.required<string>();
+  readonly scope = input<'camp' | 'central'>('camp');
+  readonly campId = input('');
   readonly disabled = input(false);
   readonly published = output<void>();
   readonly revisions = signal<IngredientRevisionSummary[]>([]);
@@ -597,6 +602,7 @@ export class IngredientRevisionEditorComponent {
   readonly createOpen = signal(false);
   readonly error = signal('');
   readonly notice = signal('');
+  readonly pendingForkSourceRevisionId = signal<string | null>(null);
   readonly draftState = IngredientRevisionState.Draft;
   readonly publishedState = IngredientRevisionState.Published;
   readonly containsState = IngredientPropertyState.Contains;
@@ -630,9 +636,22 @@ export class IngredientRevisionEditorComponent {
   createBaseUnitId = '';
   private selectedSnapshot = '';
   private readonly api = inject(IngredientRevisionApiService);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   constructor() {
-    effect(() => { const campId = this.campId(); if (campId) this.load(campId); });
+    effect(() => {
+      const scope = this.scope();
+      const campId = this.campId();
+      if (scope === 'central' || campId) this.load();
+    });
+  }
+
+  managementTitle() { return this.scope() === 'central' ? 'Zentrale Zutaten verwalten' : 'Lagerzutaten verwalten'; }
+  createButtonLabel() { return this.scope() === 'central' ? 'Neue zentrale Zutat' : 'Neue Lagerzutat'; }
+  emptyListLabel() {
+    return this.scope() === 'central'
+      ? 'Noch keine revisionsfähigen zentralen Zutaten vorhanden.'
+      : 'Noch keine revisionsfähigen Lagerzutaten vorhanden.';
   }
 
   canCreate() { return !!this.createName.trim() && !!this.createCategoryId && !!this.createBaseUnitId; }
@@ -992,8 +1011,12 @@ export class IngredientRevisionEditorComponent {
   create() {
     if (!this.canCreate() || this.submitting()) return;
     this.submitting.set(true); this.error.set('');
-    this.api.createCamp(this.campId(), { name: this.createName.trim(), categoryId: this.createCategoryId,
-      baseUnitId: this.createBaseUnitId }).subscribe({
+    const request = { name: this.createName.trim(), categoryId: this.createCategoryId,
+      baseUnitId: this.createBaseUnitId };
+    const creation = this.scope() === 'central'
+      ? this.api.createCentral(request)
+      : this.api.createCamp(this.campId(), request);
+    creation.subscribe({
       next: result => { this.submitting.set(false); this.createOpen.set(false); this.notice.set('Der Zutatenentwurf wurde angelegt.');
         this.refreshList(result.revisionId); },
       error: () => { this.submitting.set(false); this.error.set('Der Zutatenentwurf konnte nicht angelegt werden.'); }
@@ -1001,6 +1024,7 @@ export class IngredientRevisionEditorComponent {
   }
 
   open(revisionId: string) {
+    this.pendingForkSourceRevisionId.set(null);
     this.error.set(''); this.notice.set('');
     this.api.get(revisionId).subscribe({ next: value => { this.initializeConversionFactorInputs(value);
       this.selectedSnapshot = this.snapshot(value);
@@ -1013,12 +1037,31 @@ export class IngredientRevisionEditorComponent {
       error: () => this.error.set('Die Zutatenrevision konnte nicht geladen werden.') });
   }
 
+  prepareCampFork(sourceRevisionId: string) {
+    if (this.submitting() || this.disabled()) return;
+    this.submitting.set(true); this.error.set(''); this.notice.set('');
+    this.api.getCampForkPreview(this.campId(), sourceRevisionId).subscribe({
+      next: value => {
+        value.state = this.draftState;
+        this.initializeConversionFactorInputs(value);
+        this.selectedSnapshot = this.snapshot(value);
+        this.pendingForkSourceRevisionId.set(sourceRevisionId);
+        this.selected.set(value);
+        this.submitting.set(false);
+        this.notice.set('Die zentrale Zutat wurde zur Anpassung geöffnet. Noch wurde keine Lagerkopie angelegt.');
+        this.host.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      },
+      error: () => { this.submitting.set(false);
+        this.error.set('Die zentrale Zutat konnte nicht zur Anpassung geöffnet werden.'); }
+    });
+  }
+
   save() {
     const revision = this.selected(); if (!revision || revision.state !== this.draftState) return;
     this.submitting.set(true); this.error.set(''); this.notice.set('');
-    this.api.save(revision.id, { name: revision.name, categoryId: revision.categoryId, baseUnitId: revision.baseUnitId,
+    const payload = { name: revision.name, categoryId: revision.categoryId, baseUnitId: revision.baseUnitId,
       allergenReviewState: revision.allergenReviewState, intoleranceReviewState: revision.intoleranceReviewState,
-      originReviewState: revision.originReviewState, expectedRowVersion: revision.rowVersion,
+      originReviewState: revision.originReviewState,
       allergens: revision.allergens, intolerances: revision.intolerances, origins: revision.origins,
       unitConversions: revision.unitConversions.map(value => ({
         sourceUnitId: value.sourceUnitId,
@@ -1038,7 +1081,31 @@ export class IngredientRevisionEditorComponent {
           factorToBaseUnit: conversion.factorToBaseUnit,
           precision: conversion.precision
         }))
-      })) }).subscribe({
+      })) };
+    const sourceRevisionId = this.pendingForkSourceRevisionId();
+    if (sourceRevisionId) {
+      this.api.createCampFork(this.campId(), sourceRevisionId,
+        { ...payload, expectedSourceRowVersion: revision.rowVersion }).subscribe({
+        next: result => {
+          this.pendingForkSourceRevisionId.set(null);
+          this.submitting.set(false);
+          this.notice.set('Die angepasste Lagerzutat wurde als Entwurf angelegt.');
+          if (result.revisionId) this.refreshList(result.revisionId);
+        },
+        error: (error: HttpErrorResponse) => {
+          this.submitting.set(false);
+          if (error.status === 409 && error.error?.code === 'ingredient_revision_draft_exists') {
+            this.pendingForkSourceRevisionId.set(null);
+            this.notice.set('Für diese zentrale Zutat besteht bereits eine Lageranpassung.');
+            this.refreshList(error.error?.revisionId as string | undefined);
+          } else if (error.status === 409 && error.error?.code === 'ingredient_fork_requires_changes') {
+            this.error.set('Ändere mindestens eine Angabe, bevor eine Lagerkopie angelegt wird.');
+          } else this.error.set('Die Lageranpassung konnte nicht gespeichert werden.');
+        }
+      });
+      return;
+    }
+    this.api.save(revision.id, { ...payload, expectedRowVersion: revision.rowVersion }).subscribe({
       next: result => { revision.rowVersion = result.rowVersion; this.selectedSnapshot = this.snapshot(revision);
         revision.variants.forEach(value => value.isNew = false);
         this.selected.set({ ...revision }); this.submitting.set(false);
@@ -1080,16 +1147,19 @@ export class IngredientRevisionEditorComponent {
     });
   }
 
-  private load(campId: string) {
-    this.loading.set(true); this.selected.set(null); this.selectedSnapshot = ''; this.error.set('');
-    forkJoin({ referenceData: this.api.getReferenceData(), revisions: this.api.listCamp(campId) }).subscribe({
+  private load() {
+    this.loading.set(true); this.selected.set(null); this.pendingForkSourceRevisionId.set(null);
+    this.selectedSnapshot = ''; this.error.set('');
+    const revisions = this.scope() === 'central' ? this.api.listCentral() : this.api.listCamp(this.campId());
+    forkJoin({ referenceData: this.api.getReferenceData(), revisions }).subscribe({
       next: result => { this.referenceData.set(result.referenceData); this.revisions.set(result.revisions); this.loading.set(false); },
       error: () => { this.loading.set(false); this.error.set('Die Zutatenverwaltung konnte nicht geladen werden.'); }
     });
   }
 
   private refreshList(openRevisionId?: string, openAfter = true) {
-    this.api.listCamp(this.campId()).subscribe({ next: values => { this.revisions.set(values);
+    const revisions = this.scope() === 'central' ? this.api.listCentral() : this.api.listCamp(this.campId());
+    revisions.subscribe({ next: values => { this.revisions.set(values);
       if (openRevisionId && openAfter) this.open(openRevisionId); },
       error: () => this.error.set('Die Zutatenliste konnte nicht aktualisiert werden.') });
   }

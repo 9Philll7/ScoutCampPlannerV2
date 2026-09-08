@@ -36,6 +36,7 @@ export type MeasurementDimension = 'Mass' | 'Volume' | 'Count';
 export type IngredientConflictType = 'Allergen' | 'Intolerance' | 'DietaryRequirement';
 export interface IngredientCatalogEntry {
   id: string;
+  revisionId: string | null;
   name: string;
   scope: IngredientScope;
   scopeId: string | null;
