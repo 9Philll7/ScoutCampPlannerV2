@@ -464,6 +464,8 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
             .Where(value => value.IngredientRevisionId == revisionId)
             .ExecuteDeleteAsync(cancellationToken);
 
+        DetachTrackedRevisionDetails(revisionId);
+
         database.AddRange(content.Allergens.Select(value => new IngredientRevisionAllergenRecord
         {
             IngredientRevisionId = revisionId,
@@ -549,8 +551,92 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
             });
         }
 
+        Guid[] variantIds = variants.Select(value => value.Id).ToArray();
+        if (variantIds.Length > 0)
+        {
+            await database.Set<IngredientVariantAllergenOverrideRecord>()
+                .Where(value => variantIds.Contains(value.VariantRevisionId))
+                .ExecuteDeleteAsync(cancellationToken);
+            await database.Set<IngredientVariantIntoleranceOverrideRecord>()
+                .Where(value => variantIds.Contains(value.VariantRevisionId))
+                .ExecuteDeleteAsync(cancellationToken);
+            await database.Set<IngredientVariantOriginOverrideRecord>()
+                .Where(value => variantIds.Contains(value.VariantRevisionId))
+                .ExecuteDeleteAsync(cancellationToken);
+            await database.Set<IngredientVariantUnitConversionOverrideRecord>()
+                .Where(value => variantIds.Contains(value.VariantRevisionId))
+                .ExecuteDeleteAsync(cancellationToken);
+
+            DetachTrackedOverrides(variantIds);
+
+            database.AddRange(variants.SelectMany(variant => variant.AllergenOverrides.Select(value =>
+                new IngredientVariantAllergenOverrideRecord
+                {
+                    VariantRevisionId = variant.Id,
+                    AllergenId = value.PropertyId,
+                    State = (int)value.State,
+                    Source = (int)value.Source,
+                })));
+            database.AddRange(variants.SelectMany(variant => variant.IntoleranceOverrides.Select(value =>
+                new IngredientVariantIntoleranceOverrideRecord
+                {
+                    VariantRevisionId = variant.Id,
+                    IntoleranceId = value.PropertyId,
+                    State = (int)value.State,
+                    Source = (int)value.Source,
+                })));
+            database.AddRange(variants.SelectMany(variant => variant.OriginOverrides.Select(value =>
+                new IngredientVariantOriginOverrideRecord
+                {
+                    VariantRevisionId = variant.Id,
+                    OriginPropertyId = value.PropertyId,
+                    State = (int)value.State,
+                    Source = (int)value.Source,
+                })));
+            database.AddRange(variants.SelectMany(variant => variant.UnitConversionOverrides.Select(value =>
+                new IngredientVariantUnitConversionOverrideRecord
+                {
+                    VariantRevisionId = variant.Id,
+                    SourceUnitId = value.SourceUnitId,
+                    FactorToBaseUnit = value.FactorToBaseUnit,
+                    Precision = (int)value.Precision,
+                })));
+        }
+
         database.RemoveRange(existing.Values);
         return true;
+    }
+
+    private void DetachTrackedOverrides(IReadOnlyCollection<Guid> variantIds)
+    {
+        foreach (var entry in database.ChangeTracker.Entries<IngredientVariantAllergenOverrideRecord>()
+                     .Where(value => variantIds.Contains(value.Entity.VariantRevisionId)))
+            entry.State = EntityState.Detached;
+        foreach (var entry in database.ChangeTracker.Entries<IngredientVariantIntoleranceOverrideRecord>()
+                     .Where(value => variantIds.Contains(value.Entity.VariantRevisionId)))
+            entry.State = EntityState.Detached;
+        foreach (var entry in database.ChangeTracker.Entries<IngredientVariantOriginOverrideRecord>()
+                     .Where(value => variantIds.Contains(value.Entity.VariantRevisionId)))
+            entry.State = EntityState.Detached;
+        foreach (var entry in database.ChangeTracker.Entries<IngredientVariantUnitConversionOverrideRecord>()
+                     .Where(value => variantIds.Contains(value.Entity.VariantRevisionId)))
+            entry.State = EntityState.Detached;
+    }
+
+    private void DetachTrackedRevisionDetails(Guid revisionId)
+    {
+        foreach (var entry in database.ChangeTracker.Entries<IngredientRevisionAllergenRecord>()
+                     .Where(value => value.Entity.IngredientRevisionId == revisionId))
+            entry.State = EntityState.Detached;
+        foreach (var entry in database.ChangeTracker.Entries<IngredientRevisionIntoleranceRecord>()
+                     .Where(value => value.Entity.IngredientRevisionId == revisionId))
+            entry.State = EntityState.Detached;
+        foreach (var entry in database.ChangeTracker.Entries<IngredientRevisionOriginRecord>()
+                     .Where(value => value.Entity.IngredientRevisionId == revisionId))
+            entry.State = EntityState.Detached;
+        foreach (var entry in database.ChangeTracker.Entries<IngredientRevisionUnitConversionRecord>()
+                     .Where(value => value.Entity.IngredientRevisionId == revisionId))
+            entry.State = EntityState.Detached;
     }
 
     public async Task<IngredientRevisionMutationResult> PublishAsync(
@@ -667,8 +753,23 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
 
     private async Task<bool> ReferencesExistAsync(
         IngredientRevisionDraftContent content,
-        CancellationToken cancellationToken) =>
-        await database.Set<IngredientCategoryRecord>().AsNoTracking()
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<IngredientVariantDraftContent> variants = content.Variants ?? [];
+        IngredientRevisionUnitConversion[] allConversions = content.UnitConversions
+            .Concat(variants.SelectMany(value => value.UnitConversionOverrides))
+            .ToArray();
+        IngredientPropertyValue[] allAllergens = content.Allergens
+            .Concat(variants.SelectMany(value => value.AllergenOverrides))
+            .ToArray();
+        IngredientPropertyValue[] allIntolerances = content.Intolerances
+            .Concat(variants.SelectMany(value => value.IntoleranceOverrides))
+            .ToArray();
+        IngredientPropertyValue[] allOrigins = content.Origins
+            .Concat(variants.SelectMany(value => value.OriginOverrides))
+            .ToArray();
+
+        return await database.Set<IngredientCategoryRecord>().AsNoTracking()
             .AnyAsync(value => value.Id == content.CategoryId, cancellationToken) &&
         await database.MeasurementUnits.AsNoTracking()
             .AnyAsync(value => value.Id == content.BaseUnitId &&
@@ -678,19 +779,20 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
                     (value.Symbol == "ml" || value.Symbol == "l")) ||
                  (value.Dimension == MeasurementDimension.Count && value.Symbol == "Stk.")),
                 cancellationToken) &&
-        await AllReferencesExistAsync(content.UnitConversions.Select(value => value.SourceUnitId),
+        await AllReferencesExistAsync(allConversions.Select(value => value.SourceUnitId),
             database.MeasurementUnits.AsNoTracking().Select(value => value.Id),
             cancellationToken) &&
-        await AllConversionUnitsAllowedAsync(content.BaseUnitId, content.UnitConversions, cancellationToken) &&
-        await AllReferencesExistAsync(content.Allergens.Select(value => value.PropertyId),
+        await AllConversionUnitsAllowedAsync(content.BaseUnitId, allConversions, cancellationToken) &&
+        await AllReferencesExistAsync(allAllergens.Select(value => value.PropertyId),
             database.Set<IngredientAllergenDefinitionRecord>().Where(value => value.Status == 0).Select(value => value.Id),
             cancellationToken) &&
-        await AllReferencesExistAsync(content.Intolerances.Select(value => value.PropertyId),
+        await AllReferencesExistAsync(allIntolerances.Select(value => value.PropertyId),
             database.Set<IngredientIntoleranceDefinitionRecord>().Where(value => value.Status == 0).Select(value => value.Id),
             cancellationToken) &&
-        await AllReferencesExistAsync(content.Origins.Select(value => value.PropertyId),
+        await AllReferencesExistAsync(allOrigins.Select(value => value.PropertyId),
             database.Set<IngredientOriginPropertyRecord>().Where(value => value.Status == 0).Select(value => value.Id),
             cancellationToken);
+    }
 
     private static async Task<bool> AllReferencesExistAsync(
         IEnumerable<Guid> requestedIds,

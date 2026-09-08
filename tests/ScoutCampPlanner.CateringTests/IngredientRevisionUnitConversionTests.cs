@@ -102,6 +102,29 @@ public sealed class IngredientRevisionUnitConversionTests
         Assert.Single(Assert.Single(copy.Variants).UnitConversionOverrides);
     }
 
+    [Fact]
+    public void Draft_content_rejects_variant_override_without_base_conversion()
+    {
+        Guid sourceUnitId = Guid.NewGuid();
+        var variant = new IngredientVariantDraftContent(
+            Guid.NewGuid(),
+            "whole_grain",
+            "Vollkorn",
+            true,
+            0,
+            unitConversionOverrides: [new IngredientRevisionUnitConversion(
+                sourceUnitId, 12m, IngredientConversionPrecision.Estimated)]);
+
+        Assert.Throws<ArgumentException>(() => IngredientRevisionDraftContent.Create(
+            "Mehl",
+            Guid.NewGuid(),
+            BaseUnitId,
+            IngredientPropertyReviewState.Unreviewed,
+            IngredientPropertyReviewState.Unreviewed,
+            IngredientPropertyReviewState.Unreviewed,
+            variants: [variant]));
+    }
+
     private static IngredientRevision Draft()
     {
         var ingredient = IngredientIdentity.CreateCentral(Guid.NewGuid());

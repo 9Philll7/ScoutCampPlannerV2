@@ -337,12 +337,6 @@ ihrer Dimension; Kilogramm und Liter besitzen die oben genannten allgemeinen
 Faktoren. Für Stück- und Küchenmaße gibt es ohne konkrete Zutat keinen
 allgemeingültigen Masse- oder Volumenfaktor.
 
-Der initiale Einheitenkatalog enthält `g`, `kg`, `ml`, `l`, `Stk.`, `TL`,
-`EL`, `Prise` und `Bund`. Gramm und Milliliter sind die Referenzeinheiten
-ihrer Dimension; Kilogramm und Liter besitzen die oben genannten allgemeinen
-Faktoren. Für Stück- und Küchenmaße gibt es ohne konkrete Zutat keinen
-allgemeingültigen Masse- oder Volumenfaktor.
-
 ### 7.2 Zutatenspezifische Umrechnungen
 
 Zutatenspezifische Umrechnungen werden revisionsgebunden gespeichert.
@@ -359,18 +353,15 @@ Genauigkeit:
 - `average`
 - `estimated`
 
-Varianten können solche Umrechnungen gezielt überschreiben oder ergänzen.
+Varianten können eine bereits auf der Basisrevision vorhandene Umrechnung
+gezielt überschreiben. Sie dürfen keine zusätzliche Umrechnung einführen, die
+für die Basisrevision nicht existiert.
 
 Im Zutateneditor stehen für zutatenspezifische weitere Einheiten `TL`, `EL`,
 `Prise` und `Bund` sowie Basiseinheiten einer anderen Dimension zur Verfügung.
 Bei einer Masse-Basiseinheit sind beispielsweise Volumen und Stück zulässig,
 nicht jedoch eine zusätzliche Umrechnung zwischen Gramm und Kilogramm. Der
 gespeicherte Faktor bedeutet:
-`1 alternative Einheit = Faktor × Basiseinheit`. Die Basiseinheit selbst wird
-nicht nochmals als Umrechnung gespeichert. Veröffentlichte Umrechnungen werden
-wie alle anderen Revisionsdaten nur über einen neuen Entwurf geändert.
-
-Im Zutateneditor bedeutet der gespeicherte Faktor immer:
 `1 alternative Einheit = Faktor × Basiseinheit`. Die Basiseinheit selbst wird
 nicht nochmals als Umrechnung gespeichert. Veröffentlichte Umrechnungen werden
 wie alle anderen Revisionsdaten nur über einen neuen Entwurf geändert.
@@ -605,6 +596,21 @@ Varianten können gezielt überschreiben:
 Effektiver Wert:
 
 `Basiswert der Zutatenrevision + Varianten-Override`
+
+Im Zutateneditor erbt eine Variante zunächst alle Werte der Basisrevision.
+Nur eine bewusst abweichende Auswahl wird als Override gespeichert. Wird die
+Auswahl auf „Wie Basis“ zurückgesetzt, wird der entsprechende Override wieder
+entfernt.
+
+Für Allergene gelten auch in Varianten die Regeln der Haupt- und Untergruppen.
+Für die primäre Herkunft bleibt genau eine Auswahl wirksam. Eine abweichende
+Einheitenumrechnung kann nur für eine auf der Basisrevision vorhandene weitere
+Einheit gepflegt werden; Basiseinheit und Umrechnungseinheit bleiben dabei
+unverändert.
+
+Das Ändern eines Eigenschafts-Overrides setzt die zugehörige Prüfgruppe des
+Entwurfs wieder auf `Unreviewed`. Varianten-Overrides werden gemeinsam mit dem
+gesamten Entwurf explizit gespeichert; es gibt kein Auto-Save.
 
 ### 12.4 Verwendung in Rezepten
 

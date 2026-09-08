@@ -60,7 +60,11 @@ public sealed class IngredientRevisionWorkflowServiceTests
                     12m,
                     IngredientConversionPrecision.Average)],
                 Variants: [new IngredientVariantDraftItem(
-                    variantId, " SMOKED ", "  Geräuchert ", true, 0)]),
+                    variantId, " SMOKED ", "  Geräuchert ", true, 0,
+                    AllergenOverrides: [new IngredientRevisionPropertyItem(
+                        allergenId,
+                        IngredientPropertyState.DoesNotContain,
+                        IngredientPropertySource.ManuallyVerified)])]),
             Guid.NewGuid(),
             TestContext.Current.CancellationToken);
 
@@ -76,6 +80,8 @@ public sealed class IngredientRevisionWorkflowServiceTests
         Assert.Equal(variantId, variant.Id);
         Assert.Equal("smoked", variant.VariantKey);
         Assert.Equal("Geräuchert", variant.Name);
+        Assert.Equal(IngredientPropertyState.DoesNotContain,
+            Assert.Single(variant.AllergenOverrides).State);
         Assert.Equal(4, store.ExpectedRowVersion);
     }
 

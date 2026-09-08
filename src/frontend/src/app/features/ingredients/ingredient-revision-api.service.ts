@@ -149,7 +149,17 @@ export class IngredientRevisionApiService {
     intolerances: IngredientRevisionPropertyItem[];
     origins: IngredientRevisionPropertyItem[];
     unitConversions: IngredientRevisionUnitConversionItem[];
-    variants: { id: string; variantKey: string; name: string; isActive: boolean; sortOrder: number }[];
+    variants: {
+      id: string;
+      variantKey: string;
+      name: string;
+      isActive: boolean;
+      sortOrder: number;
+      allergenOverrides: IngredientRevisionPropertyItem[];
+      intoleranceOverrides: IngredientRevisionPropertyItem[];
+      originOverrides: IngredientRevisionPropertyItem[];
+      unitConversionOverrides: IngredientRevisionUnitConversionItem[];
+    }[];
   }) {
     return this.http.put<IngredientRevisionMutationResponse>(
       `${this.baseUrl}/api/ingredient-revisions/${revisionId}`, request, this.options);

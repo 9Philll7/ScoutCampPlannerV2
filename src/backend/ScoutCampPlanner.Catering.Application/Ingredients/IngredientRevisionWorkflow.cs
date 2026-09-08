@@ -38,7 +38,11 @@ public sealed record IngredientVariantDraftItem(
     string VariantKey,
     string Name,
     bool IsActive,
-    int SortOrder);
+    int SortOrder,
+    IReadOnlyList<IngredientRevisionPropertyItem>? AllergenOverrides = null,
+    IReadOnlyList<IngredientRevisionPropertyItem>? IntoleranceOverrides = null,
+    IReadOnlyList<IngredientRevisionPropertyItem>? OriginOverrides = null,
+    IReadOnlyList<IngredientRevisionUnitConversionItem>? UnitConversionOverrides = null);
 
 public sealed record IngredientVariantRevisionItem(
     Guid Id,
@@ -401,5 +405,9 @@ public sealed class IngredientRevisionWorkflowService(
             value.VariantKey,
             value.Name,
             value.IsActive,
-            value.SortOrder));
+            value.SortOrder,
+            ToPropertyValues(value.AllergenOverrides),
+            ToPropertyValues(value.IntoleranceOverrides),
+            ToPropertyValues(value.OriginOverrides),
+            ToUnitConversions(value.UnitConversionOverrides)));
 }

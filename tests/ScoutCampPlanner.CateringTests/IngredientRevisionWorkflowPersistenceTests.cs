@@ -220,6 +220,13 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
         Seed seed = await fixture.SeedDraftAsync(reviewed: false);
         var store = new IngredientRevisionWorkflowStore(fixture.Database);
         Guid variantId = Guid.NewGuid();
+        Guid milkId = Guid.Parse("21111111-1111-1111-1111-000000000007");
+        Guid lactoseId = Guid.Parse("31111111-1111-1111-1111-000000000001");
+        Guid spoonId = Guid.NewGuid();
+        fixture.Database.Add(new MeasurementUnit(
+            spoonId, "Test-Esslöffel", "EL", MeasurementDimension.Count, 1m));
+        await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+        fixture.Database.ChangeTracker.Clear();
         IngredientRevisionDraftContent initial = IngredientRevisionDraftContent.Create(
             "Linsen",
             seed.CategoryId,
@@ -227,7 +234,14 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
             IngredientPropertyReviewState.Unreviewed,
             IngredientPropertyReviewState.Unreviewed,
             IngredientPropertyReviewState.Unreviewed,
-            variants: [new IngredientVariantDraftContent(variantId, "red_lentils", "Rote Linsen", true, 0)]);
+            unitConversions: [new IngredientRevisionUnitConversion(
+                spoonId, 15m, IngredientConversionPrecision.Average)],
+            variants: [new IngredientVariantDraftContent(
+                variantId, "red_lentils", "Rote Linsen", true, 0,
+                allergenOverrides: [new IngredientPropertyValue(
+                    milkId, IngredientPropertyState.Contains, IngredientPropertySource.ManuallyVerified)],
+                unitConversionOverrides: [new IngredientRevisionUnitConversion(
+                    spoonId, 12m, IngredientConversionPrecision.Estimated)])]);
 
         IngredientRevisionMutationResult created = await store.SaveDraftAsync(
             seed.RevisionId, initial, 1, seed.ActorId, DateTimeOffset.UtcNow,
@@ -239,7 +253,16 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
             IngredientPropertyReviewState.Unreviewed,
             IngredientPropertyReviewState.Unreviewed,
             IngredientPropertyReviewState.Unreviewed,
-            variants: [new IngredientVariantDraftContent(variantId, "red_lentils", "Rote Linsen, geschält", false, 0)]);
+            unitConversions: [new IngredientRevisionUnitConversion(
+                spoonId, 15m, IngredientConversionPrecision.Average)],
+            variants: [new IngredientVariantDraftContent(
+                variantId, "red_lentils", "Rote Linsen, geschält", false, 0,
+                allergenOverrides: [new IngredientPropertyValue(
+                    milkId, IngredientPropertyState.DoesNotContain, IngredientPropertySource.ManuallyVerified)],
+                intoleranceOverrides: [new IngredientPropertyValue(
+                    lactoseId, IngredientPropertyState.DoesNotContain, IngredientPropertySource.ManuallyVerified)],
+                unitConversionOverrides: [new IngredientRevisionUnitConversion(
+                    spoonId, 10.5m, IngredientConversionPrecision.Estimated)])]);
         IngredientRevisionMutationResult updated = await store.SaveDraftAsync(
             seed.RevisionId, renamed, 2, seed.ActorId, DateTimeOffset.UtcNow,
             TestContext.Current.CancellationToken);
@@ -250,6 +273,8 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
             IngredientPropertyReviewState.Unreviewed,
             IngredientPropertyReviewState.Unreviewed,
             IngredientPropertyReviewState.Unreviewed,
+            unitConversions: [new IngredientRevisionUnitConversion(
+                spoonId, 15m, IngredientConversionPrecision.Average)],
             variants: [new IngredientVariantDraftContent(variantId, "changed_key", "Rote Linsen, geschält", false, 0)]);
         IngredientRevisionMutationResult rejected = await store.SaveDraftAsync(
             seed.RevisionId, changedKey, 3, seed.ActorId, DateTimeOffset.UtcNow,
@@ -264,6 +289,17 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
         Assert.Equal("red_lentils", stored.VariantKey);
         Assert.Equal("Rote Linsen, geschält", stored.Name);
         Assert.Equal(1, stored.Status);
+        Assert.Equal((int)IngredientPropertyState.DoesNotContain,
+            (await fixture.Database.Set<IngredientVariantAllergenOverrideRecord>().AsNoTracking()
+                .SingleAsync(TestContext.Current.CancellationToken)).State);
+        Assert.Equal(lactoseId,
+            (await fixture.Database.Set<IngredientVariantIntoleranceOverrideRecord>().AsNoTracking()
+                .SingleAsync(TestContext.Current.CancellationToken)).IntoleranceId);
+        IngredientVariantUnitConversionOverrideRecord storedConversion = await fixture.Database
+            .Set<IngredientVariantUnitConversionOverrideRecord>().AsNoTracking()
+            .SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(spoonId, storedConversion.SourceUnitId);
+        Assert.Equal(10.5m, storedConversion.FactorToBaseUnit);
         Assert.Equal(3, (await fixture.Database.Set<IngredientRevisionRecord>().AsNoTracking()
             .SingleAsync(TestContext.Current.CancellationToken)).RowVersion);
     }

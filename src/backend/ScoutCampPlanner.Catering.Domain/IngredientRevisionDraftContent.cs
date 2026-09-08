@@ -83,6 +83,15 @@ public sealed record IngredientRevisionDraftContent
         if (normalizedVariants is not null &&
             normalizedVariants.Select(value => value.VariantKey).Distinct().Count() != normalizedVariants.Length)
             throw new ArgumentException("Variant keys must be unique.", nameof(variants));
+        if (normalizedVariants is not null && normalizedVariants.Any(value =>
+            value.UnitConversionOverrides.Any(conversion => conversion.SourceUnitId == baseUnitId)))
+            throw new ArgumentException("The base unit must not have a variant conversion override.", nameof(variants));
+        HashSet<Guid> baseConversionUnitIds = normalizedConversions.Select(value => value.SourceUnitId).ToHashSet();
+        if (normalizedVariants is not null && normalizedVariants.Any(value =>
+            value.UnitConversionOverrides.Any(conversion => !baseConversionUnitIds.Contains(conversion.SourceUnitId))))
+            throw new ArgumentException(
+                "A variant can only override an existing ingredient conversion.",
+                nameof(variants));
 
         return new IngredientRevisionDraftContent(
             display,
@@ -117,7 +126,11 @@ public sealed record IngredientVariantDraftContent
         string variantKey,
         string name,
         bool isActive,
-        int sortOrder)
+        int sortOrder,
+        IEnumerable<IngredientPropertyValue>? allergenOverrides = null,
+        IEnumerable<IngredientPropertyValue>? intoleranceOverrides = null,
+        IEnumerable<IngredientPropertyValue>? originOverrides = null,
+        IEnumerable<IngredientRevisionUnitConversion>? unitConversionOverrides = null)
     {
         Id = id == Guid.Empty ? throw new ArgumentException("Variant ID is required.", nameof(id)) : id;
         VariantKey = IngredientVariantRevision.NormalizeKey(variantKey);
@@ -126,6 +139,13 @@ public sealed record IngredientVariantDraftContent
             throw new ArgumentOutOfRangeException(nameof(sortOrder));
         IsActive = isActive;
         SortOrder = sortOrder;
+        AllergenOverrides = NormalizeProperties(allergenOverrides, nameof(allergenOverrides));
+        IntoleranceOverrides = NormalizeProperties(intoleranceOverrides, nameof(intoleranceOverrides));
+        OriginOverrides = NormalizeProperties(originOverrides, nameof(originOverrides));
+        UnitConversionOverrides = unitConversionOverrides?.OrderBy(value => value.SourceUnitId).ToArray() ?? [];
+        if (UnitConversionOverrides.Select(value => value.SourceUnitId).Distinct().Count() !=
+            UnitConversionOverrides.Count)
+            throw new ArgumentException("Conversion source unit IDs must be unique.", nameof(unitConversionOverrides));
     }
 
     public Guid Id { get; }
@@ -134,4 +154,18 @@ public sealed record IngredientVariantDraftContent
     public string NormalizedName { get; }
     public bool IsActive { get; }
     public int SortOrder { get; }
+    public IReadOnlyList<IngredientPropertyValue> AllergenOverrides { get; }
+    public IReadOnlyList<IngredientPropertyValue> IntoleranceOverrides { get; }
+    public IReadOnlyList<IngredientPropertyValue> OriginOverrides { get; }
+    public IReadOnlyList<IngredientRevisionUnitConversion> UnitConversionOverrides { get; }
+
+    private static IReadOnlyList<IngredientPropertyValue> NormalizeProperties(
+        IEnumerable<IngredientPropertyValue>? values,
+        string parameterName)
+    {
+        IngredientPropertyValue[] result = values?.OrderBy(value => value.PropertyId).ToArray() ?? [];
+        if (result.Select(value => value.PropertyId).Distinct().Count() != result.Length)
+            throw new ArgumentException("Property IDs must be unique.", parameterName);
+        return result;
+    }
 }

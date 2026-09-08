@@ -330,12 +330,14 @@ Erst nach Domain und Migration:
   erzeugt und können nach dem Speichern nicht mehr verändert werden – umgesetzt
 - eine manuelle Variantenreihenfolge ist fachlich nicht erforderlich; die
   Anlagereihenfolge bleibt lediglich als technische Sortierung erhalten
-- noch offen: Eigenschafts- und Einheiten-Overrides von Varianten im Editor
+- Eigenschafts-Overrides von Varianten mit expliziter Vererbung über
+  „Wie Basis“ und den vereinfachten Allergen-, Unverträglichkeits- und
+  Herkunftsregeln – umgesetzt
+- Einheiten-Overrides von Varianten für bereits auf der Basisrevision
+  vorhandene Umrechnungen – umgesetzt
 - Fork erst beim tatsächlichen lokalen Speichern
 - Anzeige verfügbarer zentraler Updates
 - Konfliktauflösung für Drei-Wege-Merge
-- Auswahl der Eigenschaftszustände und Quellen
-- Varianten-Overrides
 
 Kein Auto-Save einführen.
 
@@ -369,9 +371,9 @@ Offline darf keine fehlende Stammdatenreferenz aus der Cloud nachladen müssen.
 - Bestehende Rezepte referenzieren noch keine Zutatenrevision und keinen `variant_key`.
 - `Guid.NewGuid()` wird derzeit beim Kopieren von Varianten in einen neuen Draft verwendet. Vor Persistenzintegration prüfen, ob IDs durch den Application Layer bereitgestellt werden sollen, damit Erzeugung und Tests vollständig deterministisch bleiben.
 - Der vollständige Drei-Wege-Merge und `merged_central_revision_id` sind noch nicht implementiert.
-- Allgemeine Einheiten und revisionsgebundene Zutatenumrechnungen sind in das
-  neue Revisionsmodell überführt; Varianten-Overrides sind persistiert, aber
-  noch nicht im Editor bearbeitbar.
+- Allgemeine Einheiten, revisionsgebundene Zutatenumrechnungen sowie
+  Eigenschafts- und Einheiten-Overrides von Varianten sind in das neue
+  Revisionsmodell und den Editor überführt.
 
 ## Prüfungen nach jedem Inkrement
 

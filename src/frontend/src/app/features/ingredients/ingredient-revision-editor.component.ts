@@ -193,23 +193,142 @@ import {
               }
             </div>
             @for (variant of revision.variants; track variant.id; let index = $index) {
-              <div class="variant-row" [class.inactive]="!variant.isActive">
-                <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Bezeichnung</mat-label>
-                  <input matInput [ngModel]="variant.name" (ngModelChange)="setVariantName(revision, variant, $event)"
-                    [name]="'variantName' + index" maxlength="200" required
-                    [disabled]="revision.state === publishedState || disabled()">
-                </mat-form-field>
-                <mat-checkbox [(ngModel)]="variant.isActive" [name]="'variantActive' + index"
-                  [disabled]="revision.state === publishedState || disabled()">Aktiv</mat-checkbox>
-                @if (revision.state === draftState && !disabled()) {
-                  <div class="variant-actions">
-                    @if (variant.isNew) {
-                      <button matIconButton type="button" aria-label="Neue Variante verwerfen"
-                        (click)="removeNewVariant(revision, index)"><scp-action-icon name="remove"/></button>
-                    }
+              <article class="variant-row" [class.inactive]="!variant.isActive">
+                <div class="variant-header">
+                  <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Bezeichnung</mat-label>
+                    <input matInput [ngModel]="variant.name" (ngModelChange)="setVariantName(revision, variant, $event)"
+                      [name]="'variantName' + index" maxlength="200" required
+                      [disabled]="revision.state === publishedState || disabled()">
+                  </mat-form-field>
+                  <mat-checkbox [(ngModel)]="variant.isActive" [name]="'variantActive' + index"
+                    [disabled]="revision.state === publishedState || disabled()">Aktiv</mat-checkbox>
+                  @if (revision.state === draftState && !disabled()) {
+                    <div class="variant-actions">
+                      @if (variant.isNew) {
+                        <button matIconButton type="button" aria-label="Neue Variante verwerfen"
+                          (click)="removeNewVariant(revision, index)"><scp-action-icon name="remove"/></button>
+                      }
+                    </div>
+                  }
+                </div>
+                <details class="variant-overrides">
+                  <summary>Abweichungen zur Basiszutat <small>{{ variantOverrideCount(variant) }} festgelegt</small></summary>
+                  <p class="property-info">Ohne abweichende Auswahl gilt automatisch der Wert der Basiszutat.</p>
+                  <div class="variant-override-groups">
+                    <section>
+                      <h5>Allergene</h5>
+                      <div class="variant-override-grid">
+                        @for (property of variantVisibleAllergens(revision, variant); track property.id) {
+                          <div class="property-row">
+                            <span [class.variant-child-property]="!!property.parentAllergenId">{{ property.isEuMajorAllergen ? allergenLetter(property.code) + ' · ' : '' }}{{ property.name }}</span>
+                            <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Abweichung</mat-label>
+                              <mat-select [value]="propertyState(variant.allergenOverrides, property.id)"
+                                (selectionChange)="setVariantPropertyState(revision, variant, 'allergens', property.id, $event.value)"
+                                [disabled]="revision.state === publishedState || disabled()">
+                                <mat-option [value]="null">Wie Basis ({{ propertyStateLabel(propertyState(revision.allergens, property.id)) }})</mat-option>
+                                @for (state of propertyStates; track state.value) {
+                                  <mat-option [value]="state.value">{{ state.label }}</mat-option>
+                                }
+                              </mat-select>
+                            </mat-form-field>
+                          </div>
+                        }
+                      </div>
+                    </section>
+                    <section>
+                      <h5>Unverträglichkeiten</h5>
+                      <div class="variant-override-grid">
+                        @for (property of visibleIntolerances(); track property.id) {
+                          <div class="property-row">
+                            <span>{{ property.name }}</span>
+                            <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Abweichung</mat-label>
+                              <mat-select [value]="propertyState(variant.intoleranceOverrides, property.id)"
+                                (selectionChange)="setVariantPropertyState(revision, variant, 'intolerances', property.id, $event.value)"
+                                [disabled]="revision.state === publishedState || disabled()">
+                                <mat-option [value]="null">Wie Basis ({{ propertyStateLabel(propertyState(revision.intolerances, property.id)) }})</mat-option>
+                                @for (state of propertyStates; track state.value) {
+                                  <mat-option [value]="state.value">{{ state.label }}</mat-option>
+                                }
+                              </mat-select>
+                            </mat-form-field>
+                          </div>
+                        }
+                      </div>
+                    </section>
+                    <section>
+                      <h5>Herkunft</h5>
+                      <div class="variant-primary-origin">
+                        <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Hauptherkunft</mat-label>
+                          <mat-select [value]="variantPrimaryOriginOverrideId(variant)"
+                            (selectionChange)="setVariantPrimaryOrigin(revision, variant, $event.value)"
+                            [disabled]="revision.state === publishedState || disabled()">
+                            <mat-option [value]="null">Wie Basis ({{ primaryOriginLabel(revision) }})</mat-option>
+                            @for (property of primaryOrigins(); track property.id) {
+                              <mat-option [value]="property.id">{{ property.name }}</mat-option>
+                            }
+                          </mat-select>
+                        </mat-form-field>
+                      </div>
+                      <div class="variant-override-grid">
+                        @for (property of additionalOrigins(); track property.id) {
+                          <div class="property-row">
+                            <span>{{ property.name }}</span>
+                            <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Abweichung</mat-label>
+                              <mat-select [value]="propertyState(variant.originOverrides, property.id)"
+                                (selectionChange)="setVariantPropertyState(revision, variant, 'origins', property.id, $event.value)"
+                                [disabled]="revision.state === publishedState || disabled()">
+                                <mat-option [value]="null">Wie Basis ({{ propertyStateLabel(propertyState(revision.origins, property.id)) }})</mat-option>
+                                @for (state of propertyStates; track state.value) {
+                                  <mat-option [value]="state.value">{{ state.label }}</mat-option>
+                                }
+                              </mat-select>
+                            </mat-form-field>
+                          </div>
+                        }
+                      </div>
+                    </section>
+                    <section>
+                      <h5>Weitere Einheiten</h5>
+                      <div class="variant-conversion-list">
+                        @for (baseConversion of revision.unitConversions; track baseConversion.sourceUnitId) {
+                          <div class="variant-conversion-row">
+                            <mat-checkbox [checked]="hasVariantConversionOverride(variant, baseConversion.sourceUnitId)"
+                              (change)="setVariantConversionOverride(variant, baseConversion, $event.checked)"
+                              [disabled]="revision.state === publishedState || disabled()">
+                              1 {{ unitSymbol(baseConversion.sourceUnitId) }} abweichend berechnen
+                            </mat-checkbox>
+                            @if (variantConversionOverride(variant, baseConversion.sourceUnitId); as conversion) {
+                              <span class="conversion-formula">=</span>
+                              <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Menge</mat-label>
+                                <input matInput type="text" inputmode="decimal" [ngModel]="conversion.factorInput"
+                                  (ngModelChange)="setConversionFactor(conversion, $event)"
+                                  (blur)="normalizeConversionFactorInput(conversion)"
+                                  [name]="'variantConversionFactor' + index + baseConversion.sourceUnitId"
+                                  [disabled]="revision.state === publishedState || disabled()" required>
+                              </mat-form-field>
+                              <span class="conversion-formula">{{ unitSymbol(revision.baseUnitId) }}</span>
+                              <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Genauigkeit</mat-label>
+                                <mat-select [(ngModel)]="conversion.precision"
+                                  [name]="'variantConversionPrecision' + index + baseConversion.sourceUnitId"
+                                  [disabled]="revision.state === publishedState || disabled()">
+                                  @for (precision of conversionPrecisions; track precision.value) {
+                                    <mat-option [value]="precision.value">{{ precision.label }}</mat-option>
+                                  }
+                                </mat-select>
+                              </mat-form-field>
+                            } @else {
+                              <span class="variant-inherited-value">Wie Basis: {{ baseConversion.factorInput }} {{ unitSymbol(revision.baseUnitId) }}</span>
+                            }
+                          </div>
+                        }
+                        @if (!revision.unitConversions.length) {
+                          <p class="unit-conversion-empty">Lege weitere Einheiten zuerst bei der Basiszutat an. Die Variante kann anschließend deren Faktor oder Genauigkeit überschreiben.</p>
+                        }
+                      </div>
+                    </section>
                   </div>
-                }
-              </div>
+                </details>
+              </article>
             } @empty {
               <p class="unit-conversion-empty">Für diese Zutat sind noch keine Varianten angelegt.</p>
             }
@@ -405,10 +524,26 @@ import {
     .unit-conversion-row { display: grid; grid-template-columns: minmax(10rem, 1.2fr) auto minmax(7rem, .7fr) auto minmax(10rem, 1fr) auto;
       align-items: center; gap: .55rem; padding: .65rem; border: 1px solid #e0e7de; border-radius: .6rem; background: #f8faf7; }
     .conversion-formula { white-space: nowrap; color: #536056; font-weight: 600; }
-    .variant-row { display: grid; grid-template-columns: minmax(12rem, 1fr) auto auto; align-items: center; gap: .7rem;
-      padding: .65rem; border: 1px solid #e0e7de; border-radius: .6rem; background: #f8faf7; }
+    .variant-row { display: grid; gap: .65rem; padding: .65rem; border: 1px solid #e0e7de;
+      border-radius: .6rem; background: #f8faf7; }
     .variant-row.inactive { background: #f3f3f1; color: #69706a; }
+    .variant-header { display: grid; grid-template-columns: minmax(12rem, 1fr) auto auto; align-items: center; gap: .7rem; }
     .variant-actions { display: flex; align-items: center; }
+    .variant-overrides { border-top: 1px solid #dde5db; }
+    .variant-overrides > summary { display: flex; justify-content: space-between; gap: .75rem; padding: .65rem .2rem .1rem;
+      color: #425247; font-weight: 650; cursor: pointer; }
+    .variant-overrides > summary small { color: #68736a; font-weight: 500; }
+    .variant-override-groups { display: grid; gap: .65rem; padding-top: .7rem; }
+    .variant-override-groups section { overflow: hidden; border: 1px solid #e0e7de; border-radius: .55rem; background: #fff; }
+    .variant-override-groups h5 { margin: 0; padding: .6rem .75rem; background: #f0f5ef; font-size: .9rem; }
+    .variant-override-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem .8rem; padding: .7rem; }
+    .variant-child-property { padding-left: 1.35rem; color: #5f6b61; }
+    .variant-primary-origin { padding: .7rem .7rem 0; }
+    .variant-primary-origin mat-form-field { width: min(100%, 28rem); }
+    .variant-conversion-list { display: grid; gap: .55rem; padding: .7rem; }
+    .variant-conversion-row { display: grid; grid-template-columns: minmax(14rem, 1fr) auto minmax(7rem, .7fr) auto minmax(10rem, 1fr);
+      align-items: center; gap: .55rem; }
+    .variant-inherited-value { color: #68736a; font-size: .84rem; }
     .property-group { overflow: hidden; border: 1px solid #d7e1d5; border-radius: .65rem; background: #fff; }
     .property-group summary { display: flex; justify-content: space-between; gap: .75rem; padding: .8rem .9rem;
       background: #eef4ed; color: #334737; font-weight: 700; cursor: pointer; }
@@ -443,8 +578,10 @@ import {
     @media (max-width: 680px) { .unit-conversion-heading { align-items: flex-start; flex-direction: column; }
       .unit-conversion-row { grid-template-columns: 1fr auto; }
       .unit-conversion-row mat-form-field { grid-column: 1 / -1; }
-      .variant-row { grid-template-columns: 1fr auto; }
-      .variant-row mat-form-field { grid-column: 1 / -1; } }
+      .variant-header, .variant-override-grid { grid-template-columns: 1fr auto; }
+      .variant-header mat-form-field, .variant-override-grid .property-row { grid-column: 1 / -1; }
+      .variant-conversion-row { grid-template-columns: 1fr auto; }
+      .variant-conversion-row mat-checkbox, .variant-conversion-row .variant-inherited-value { grid-column: 1 / -1; } }
     @media (max-width: 480px) { .property-row { grid-template-columns: 1fr; } }
   `
 })
@@ -529,6 +666,7 @@ export class IngredientRevisionEditorComponent {
     return (this.referenceData()?.intolerances ?? [])
       .filter(value => value.code !== 'GLUTEN' && !this.commonIntoleranceCodes.includes(value.code));
   }
+  visibleIntolerances() { return [...this.commonIntolerances(), ...this.advancedIntolerances()]; }
   intoleranceLabel(code: string, name: string) {
     return code === 'LACTOSE' ? `${name} (nicht Milchallergie)` : name;
   }
@@ -566,6 +704,116 @@ export class IngredientRevisionEditorComponent {
     return values.find(value => value.propertyId === propertyId)?.state ?? null;
   }
 
+  private effectiveVariantPropertyState(
+    baseValues: IngredientRevisionPropertyItem[],
+    overrides: IngredientRevisionPropertyItem[],
+    propertyId: string)
+  {
+    return this.propertyState(overrides, propertyId) ?? this.propertyState(baseValues, propertyId);
+  }
+
+  variantVisibleAllergens(revision: IngredientRevisionDetails, variant: IngredientVariantRevisionItem) {
+    return this.mainAllergens().flatMap(parent => {
+      const children = this.allergenChildren(parent.id);
+      const parentState = this.effectiveVariantPropertyState(
+        revision.allergens, variant.allergenOverrides, parent.id);
+      const visibleChildren = parentState === IngredientPropertyState.Contains ||
+        children.some(child => this.propertyState(variant.allergenOverrides, child.id) !== null)
+        ? children : [];
+      return [parent, ...visibleChildren];
+    });
+  }
+
+  variantOverrideCount(variant: IngredientVariantRevisionItem) {
+    return variant.allergenOverrides.length + variant.intoleranceOverrides.length +
+      variant.originOverrides.length + variant.unitConversionOverrides.length;
+  }
+
+  setVariantPropertyState(
+    revision: IngredientRevisionDetails,
+    variant: IngredientVariantRevisionItem,
+    group: 'allergens' | 'intolerances' | 'origins',
+    propertyId: string,
+    state: IngredientPropertyState | null)
+  {
+    const values = group === 'allergens' ? variant.allergenOverrides :
+      group === 'intolerances' ? variant.intoleranceOverrides : variant.originOverrides;
+    this.setPropertyValue(values, propertyId, state, IngredientPropertySource.ManuallyVerified);
+    if (group === 'allergens') {
+      const children = this.allergenChildren(propertyId);
+      if (children.length && state === null) {
+        for (const child of children) {
+          const inherited = variant.allergenOverrides.find(value => value.propertyId === child.id);
+          if (inherited?.source === IngredientPropertySource.Derived)
+            this.setPropertyValue(values, child.id, null, IngredientPropertySource.Derived);
+        }
+      } else if (children.length && state !== IngredientPropertyState.Contains) {
+        for (const child of children)
+          this.setPropertyValue(values, child.id, state, IngredientPropertySource.Derived);
+      } else if (children.length) {
+        for (const child of children) {
+          const existing = variant.allergenOverrides.find(value => value.propertyId === child.id);
+          if (!existing || existing.source === IngredientPropertySource.Derived)
+            this.setPropertyValue(values, child.id,
+              IngredientPropertyState.Unknown, IngredientPropertySource.Derived);
+        }
+      }
+      revision.allergenReviewState = IngredientPropertyReviewState.Unreviewed;
+    }
+    else if (group === 'intolerances') revision.intoleranceReviewState = IngredientPropertyReviewState.Unreviewed;
+    else revision.originReviewState = IngredientPropertyReviewState.Unreviewed;
+  }
+
+  variantPrimaryOriginOverrideId(variant: IngredientVariantRevisionItem) {
+    const primaryIds = new Set(this.primaryOrigins().map(value => value.id));
+    return variant.originOverrides.find(value => primaryIds.has(value.propertyId) &&
+      value.state === IngredientPropertyState.Contains)?.propertyId ?? null;
+  }
+
+  setVariantPrimaryOrigin(
+    revision: IngredientRevisionDetails,
+    variant: IngredientVariantRevisionItem,
+    propertyId: string | null)
+  {
+    for (const property of this.primaryOrigins()) {
+      if (propertyId === null)
+        this.setPropertyValue(variant.originOverrides, property.id, null, IngredientPropertySource.Derived);
+      else
+        this.setPropertyValue(variant.originOverrides, property.id,
+          property.id === propertyId ? IngredientPropertyState.Contains : IngredientPropertyState.DoesNotContain,
+          property.id === propertyId ? IngredientPropertySource.ManuallyVerified : IngredientPropertySource.Derived);
+    }
+    revision.originReviewState = IngredientPropertyReviewState.Unreviewed;
+  }
+
+  variantConversionOverride(variant: IngredientVariantRevisionItem, sourceUnitId: string) {
+    return variant.unitConversionOverrides.find(value => value.sourceUnitId === sourceUnitId) ?? null;
+  }
+
+  hasVariantConversionOverride(variant: IngredientVariantRevisionItem, sourceUnitId: string) {
+    return this.variantConversionOverride(variant, sourceUnitId) !== null;
+  }
+
+  setVariantConversionOverride(
+    variant: IngredientVariantRevisionItem,
+    baseConversion: IngredientRevisionUnitConversionItem,
+    enabled: boolean)
+  {
+    const index = variant.unitConversionOverrides.findIndex(
+      value => value.sourceUnitId === baseConversion.sourceUnitId);
+    if (!enabled) {
+      if (index >= 0) variant.unitConversionOverrides.splice(index, 1);
+      return;
+    }
+    if (index >= 0) return;
+    variant.unitConversionOverrides.push({
+      sourceUnitId: baseConversion.sourceUnitId,
+      factorToBaseUnit: baseConversion.factorToBaseUnit,
+      precision: baseConversion.precision,
+      factorInput: baseConversion.factorInput ?? String(baseConversion.factorToBaseUnit).replace('.', ',')
+    });
+  }
+
   unitSymbol(unitId: string) {
     return this.referenceData()?.units.find(value => value.id === unitId)?.symbol ?? '?';
   }
@@ -582,6 +830,7 @@ export class IngredientRevisionEditorComponent {
     revision.baseUnitId = baseUnitId;
     revision.unitConversions = revision.unitConversions
       .filter(value => this.isAllowedConversionUnit(baseUnitId, value.sourceUnitId));
+    this.removeOrphanedVariantConversions(revision);
   }
 
   addUnitConversion(revision: IngredientRevisionDetails) {
@@ -597,6 +846,7 @@ export class IngredientRevisionEditorComponent {
 
   removeUnitConversion(revision: IngredientRevisionDetails, index: number) {
     revision.unitConversions.splice(index, 1);
+    this.removeOrphanedVariantConversions(revision);
   }
 
   setConversionFactor(conversion: IngredientRevisionUnitConversionItem, input: string) {
@@ -619,7 +869,11 @@ export class IngredientRevisionEditorComponent {
   variantsValid(revision: IngredientRevisionDetails) {
     const names = revision.variants.map(value => value.name.trim().toLocaleUpperCase('de'));
     const keys = revision.variants.map(value => value.variantKey);
+    const baseConversionIds = new Set(revision.unitConversions.map(value => value.sourceUnitId));
     return revision.variants.every(value => !!value.name.trim() && !!value.variantKey) &&
+      revision.variants.every(value => value.unitConversionOverrides.every(conversion =>
+        baseConversionIds.has(conversion.sourceUnitId) && Number.isFinite(conversion.factorToBaseUnit) &&
+        conversion.factorToBaseUnit > 0)) &&
       new Set(names).size === names.length && new Set(keys).size === keys.length;
   }
 
@@ -660,6 +914,13 @@ export class IngredientRevisionEditorComponent {
     if (!baseUnit || !sourceUnit || baseUnit.id === sourceUnit.id) return false;
     const kitchenMeasureSymbols = new Set(['TL', 'EL', 'Prise', 'Bund']);
     return kitchenMeasureSymbols.has(sourceUnit.symbol) || sourceUnit.dimension !== baseUnit.dimension;
+  }
+
+  private removeOrphanedVariantConversions(revision: IngredientRevisionDetails) {
+    const available = new Set(revision.unitConversions.map(value => value.sourceUnitId));
+    for (const variant of revision.variants)
+      variant.unitConversionOverrides = variant.unitConversionOverrides
+        .filter(value => available.has(value.sourceUnitId));
   }
 
   setPropertyState(
@@ -768,7 +1029,15 @@ export class IngredientRevisionEditorComponent {
         variantKey: value.variantKey,
         name: value.name,
         isActive: value.isActive,
-        sortOrder: value.sortOrder
+        sortOrder: value.sortOrder,
+        allergenOverrides: value.allergenOverrides,
+        intoleranceOverrides: value.intoleranceOverrides,
+        originOverrides: value.originOverrides,
+        unitConversionOverrides: value.unitConversionOverrides.map(conversion => ({
+          sourceUnitId: conversion.sourceUnitId,
+          factorToBaseUnit: conversion.factorToBaseUnit,
+          precision: conversion.precision
+        }))
       })) }).subscribe({
       next: result => { revision.rowVersion = result.rowVersion; this.selectedSnapshot = this.snapshot(revision);
         revision.variants.forEach(value => value.isNew = false);
@@ -841,7 +1110,11 @@ export class IngredientRevisionEditorComponent {
       origins: this.sortedProperties(value.origins),
       unitConversions: this.sortedUnitConversions(value.unitConversions),
       variants: value.variants.map(variant => ({ id: variant.id, variantKey: variant.variantKey,
-        name: variant.name.trim(), isActive: variant.isActive, sortOrder: variant.sortOrder })) });
+        name: variant.name.trim(), isActive: variant.isActive, sortOrder: variant.sortOrder,
+        allergenOverrides: this.sortedProperties(variant.allergenOverrides),
+        intoleranceOverrides: this.sortedProperties(variant.intoleranceOverrides),
+        originOverrides: this.sortedProperties(variant.originOverrides),
+        unitConversionOverrides: this.sortedUnitConversions(variant.unitConversionOverrides) })) });
   }
 
   private sortedProperties(values: IngredientRevisionPropertyItem[]) {
@@ -860,6 +1133,9 @@ export class IngredientRevisionEditorComponent {
   private initializeConversionFactorInputs(revision: IngredientRevisionDetails) {
     for (const conversion of revision.unitConversions)
       conversion.factorInput = String(conversion.factorToBaseUnit).replace('.', ',');
+    for (const variant of revision.variants)
+      for (const conversion of variant.unitConversionOverrides)
+        conversion.factorInput = String(conversion.factorToBaseUnit).replace('.', ',');
   }
 
   private uniqueVariantKey(
