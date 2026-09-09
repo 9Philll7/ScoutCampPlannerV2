@@ -13,6 +13,7 @@ Verbindliche Quellen:
 - `docs/decisions/adr-018-ingredient-and-conflict-catalog-scopes.md`
 - `docs/decisions/adr-020-ingredient-management-permissions-and-search.md`
 - `docs/decisions/adr-021-revisioned-base-ingredients.md`
+- `docs/decisions/adr-022-central-ingredient-contributions.md`
 
 Die Repository-Dokumentation hat Vorrang vor dieser Übergabe und vor früheren Chatverläufen.
 
@@ -20,20 +21,25 @@ Die Repository-Dokumentation hat Vorrang vor dieser Übergabe und vor früheren 
 
 ### Aktuelles Integrationsinkrement, noch zu committen
 
-- Tenant-Administratoren können organisationsweite Zutaten revisionsfähig
-  anlegen, bearbeiten und veröffentlichen.
-- Die Tenant-Liste liefert die Berechtigung `canManageIngredients`; der Editor
-  wird nur für berechtigte Konten angezeigt.
-- Veröffentlichte Organisationszutaten stehen über den bestehenden
-  Lagerkatalog automatisch in allen Lagern des Mandanten bereit.
-- Plattform-Administratoren erhalten den eigenen Bereich `Zutatenstamm`.
-- Zentrale Zutaten können dort revisionsfähig angelegt, bearbeitet und
-  veröffentlicht werden.
-- Der Zugriff wird über `ingredients.central.manage` serverseitig geschützt;
-  die Oberfläche zeigt den Bereich nur bei vorhandener Berechtigung.
-- Veröffentlichte zentrale Zutaten werden im Lagerkatalog angezeigt.
-- Eine Lageranpassung wird als Vorschau geöffnet und erst nach einer
-  tatsächlichen Änderung als lokaler Fork gespeichert.
+- Veröffentlichte Mandanten- und Lagerrevisionen können direkt zur zentralen
+  Prüfung eingereicht werden.
+- Eine Revision kann nur einmal eingereicht werden; der lokale veröffentlichte
+  Stand bleibt unverändert.
+- Plattform-Administratoren sehen offene Einreichungen, können sie ablehnen,
+  als neue zentrale Zutat annehmen oder einer vorhandenen zentralen Identität
+  zuordnen.
+- Annahme erzeugt immer einen zentralen Draft und setzt Allergene,
+  Unverträglichkeiten und Herkunft auf `Unreviewed` zurück.
+- Vor lokaler Veröffentlichung werden zentrale Treffer mit gleichem
+  normalisiertem Namen angeboten.
+- Eine lokale Zutat kann kontrolliert durch einen zentralen Treffer abgelöst
+  werden. Die lokale Identität wird archiviert; historische Rezeptrevisionen
+  bleiben unverändert.
+- Bei Veröffentlichung eines angenommenen zentralen Entwurfs wird die
+  unveränderte lokale Ausgangsidentität automatisch abgelöst. Neuere lokale
+  Revisionen oder Entwürfe verhindern diese automatische Archivierung.
+- SQLite- und PostgreSQL-Migrationen sowie Persistenztests sind enthalten.
+- Noch offen bleibt der Transport revisionsfähiger Zutaten im Lagerpaket.
 
 ### Bereits committet
 

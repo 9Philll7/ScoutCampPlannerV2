@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, ElementRef, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -13,6 +14,8 @@ import { ActionIconComponent } from '../../shared/action-icon.component';
 import {
   IngredientEditorReferenceData,
   IngredientAllergenReference,
+  CentralIngredientCandidate,
+  IngredientCentralContribution,
   IngredientConversionPrecision,
   IngredientPropertyReviewState,
   IngredientPropertySource,
@@ -29,7 +32,7 @@ import {
 @Component({
   selector: 'scp-ingredient-revision-editor',
   standalone: true,
-  imports: [FormsModule, MatButtonModule, MatCardModule, MatCheckboxModule, MatFormFieldModule,
+  imports: [DatePipe, FormsModule, MatButtonModule, MatCardModule, MatCheckboxModule, MatFormFieldModule,
     MatInputModule, MatProgressSpinnerModule, MatSelectModule, ActionIconComponent],
   template: `
     <div class="revision-editor-heading">
@@ -40,6 +43,36 @@ import {
     </div>
     @if (error()) { <p class="revision-message revision-error" role="alert">{{ error() }}</p> }
     @if (notice()) { <p class="revision-message revision-notice" role="status">{{ notice() }}</p> }
+    @if (scope() === 'central' && contributions().length) {
+      <section class="contribution-review">
+        <div><h4>Offene Einreichungen</h4><p>Die Annahme erzeugt einen ungeprüften zentralen Entwurf.</p></div>
+        @for (contribution of contributions(); track contribution.id) {
+          <article class="contribution-card">
+            <div>
+              <strong>{{ contribution.name }}</strong>
+              <small>{{ contribution.sourceScopeType === 1 ? 'Organisation' : 'Lager' }} ·
+                eingereicht {{ contribution.submittedAtUtc | date:'dd.MM.yyyy HH:mm' }}</small>
+            </div>
+            <mat-form-field appearance="outline" subscriptSizing="dynamic">
+              <mat-label>Zentrales Ziel</mat-label>
+              <mat-select [value]="contributionTarget(contribution)"
+                (selectionChange)="setContributionTarget(contribution.id, $event.value)">
+                <mat-option [value]="''">Neue zentrale Zutat</mat-option>
+                @for (target of publishedCentralRevisions(); track target.ingredientId) {
+                  <mat-option [value]="target.ingredientId">{{ target.name }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+            <div class="contribution-actions">
+              <button matButton type="button" (click)="rejectContribution(contribution.id)"
+                [disabled]="submitting()">Ablehnen</button>
+              <button matButton="filled" type="button" (click)="acceptContribution(contribution)"
+                [disabled]="submitting()">Als Entwurf übernehmen</button>
+            </div>
+          </article>
+        }
+      </section>
+    }
     @if (loading()) {
       <div class="revision-loading"><mat-spinner diameter="28"/><span>Zutatenentwürfe werden geladen …</span></div>
     } @else {
@@ -476,6 +509,26 @@ import {
               </details>
             </details>
           </div>
+          @if (centralCandidates().length) {
+            <section class="central-candidates">
+              <div><h4>Passende zentrale Zutat vorhanden</h4>
+                <p>Du kannst die lokale Zutat durch einen zentralen Eintrag ablösen.</p></div>
+              @for (candidate of centralCandidates(); track candidate.revisionId) {
+                <div class="central-candidate-row">
+                  <span><strong>{{ candidate.name }}</strong><small>{{ categoryName(candidate.categoryId) }} · {{ unitSymbol(candidate.baseUnitId) }}</small></span>
+                  <button matButton type="button" (click)="replaceWithCentral(candidate)"
+                    [disabled]="submitting()">Zentrale Zutat verwenden</button>
+                </div>
+              }
+              <div class="revision-actions">
+                <button matButton type="button" (click)="centralCandidates.set([])">Zurück</button>
+                @if (revision.state === draftState) {
+                  <button matButton="filled" type="button" (click)="publishAnyway()"
+                    [disabled]="submitting()">Trotzdem lokal veröffentlichen</button>
+                }
+              </div>
+            </section>
+          }
           @if (revision.state === draftState) {
             <p class="revision-hint">„Geprüft“ bedeutet: Auch fehlende Einträge wurden bewusst kontrolliert.</p>
             <div class="revision-actions">
@@ -495,6 +548,12 @@ import {
             <div class="revision-actions">
               <button matButton="filled" type="button" (click)="createNextDraft()" [disabled]="submitting()">
                 <scp-action-icon name="edit"/>Neue Bearbeitung beginnen</button>
+              @if (scope() !== 'central') {
+                <button matButton type="button" (click)="findCentralAlternatives()" [disabled]="submitting()">
+                  Zentrale Alternative prüfen</button>
+                <button matButton type="button" (click)="submitToCentral()" [disabled]="submitting()">
+                  Zur zentralen Prüfung einreichen</button>
+              }
             </div>
           }
         </form>
@@ -576,8 +635,21 @@ import {
     .revision-actions { display: flex; justify-content: flex-end; gap: .4rem; }
     .revision-state { padding: .25rem .55rem; border-radius: 999px; background: #f1e6d5; color: #674a1d; font-size: .78rem; font-weight: 700; }
     .revision-state.published { background: #dcebdd; color: #214b28; }
+    .contribution-review, .central-candidates { display: grid; gap: .7rem; padding: .9rem;
+      border: 1px solid #c9d9c7; border-radius: .75rem; background: #f6faf5; }
+    .contribution-review > div > p, .central-candidates > div > p { color: #667168; font-size: .85rem; }
+    .contribution-card { display: grid; grid-template-columns: minmax(12rem, 1fr) minmax(14rem, 1fr) auto;
+      align-items: center; gap: .75rem; padding: .75rem; border: 1px solid #dce5da; border-radius: .65rem; background: #fff; }
+    .contribution-card > div:first-child { display: grid; gap: .2rem; }
+    .contribution-card small { color: #667168; }
+    .contribution-actions { display: flex; gap: .35rem; }
+    .central-candidates { grid-column: 1 / -1; border-color: #d8b46a; background: #fff9ed; }
+    .central-candidate-row { display: flex; align-items: center; justify-content: space-between;
+      gap: .75rem; padding: .65rem; border: 1px solid #ead7ad; border-radius: .55rem; background: #fff; }
+    .central-candidate-row > span { display: grid; gap: .15rem; }
+    .central-candidate-row small { color: #667168; }
     .revision-empty { padding: 1rem; border: 1px dashed #b8c4b7; border-radius: .7rem; color: #5b665c; }
-    @media (max-width: 800px) { .revision-form, .property-grid, .allergen-grid { grid-template-columns: 1fr; }
+    @media (max-width: 800px) { .revision-form, .property-grid, .allergen-grid, .contribution-card { grid-template-columns: 1fr; }
       .revision-form > * { grid-column: 1 !important; } }
     @media (max-width: 680px) { .unit-conversion-heading { align-items: flex-start; flex-direction: column; }
       .unit-conversion-row { grid-template-columns: 1fr auto; }
@@ -604,6 +676,9 @@ export class IngredientRevisionEditorComponent {
   readonly error = signal('');
   readonly notice = signal('');
   readonly pendingForkSourceRevisionId = signal<string | null>(null);
+  readonly centralCandidates = signal<CentralIngredientCandidate[]>([]);
+  readonly contributions = signal<IngredientCentralContribution[]>([]);
+  readonly contributionTargets = signal<Record<string, string>>({});
   readonly draftState = IngredientRevisionState.Draft;
   readonly publishedState = IngredientRevisionState.Published;
   readonly containsState = IngredientPropertyState.Contains;
@@ -845,6 +920,10 @@ export class IngredientRevisionEditorComponent {
 
   unitSymbol(unitId: string) {
     return this.referenceData()?.units.find(value => value.id === unitId)?.symbol ?? '?';
+  }
+
+  categoryName(categoryId: string) {
+    return this.referenceData()?.categories.find(value => value.id === categoryId)?.name ?? 'Unbekannte Kategorie';
   }
 
   availableConversionUnits(revision: IngredientRevisionDetails, currentSourceUnitId?: string) {
@@ -1130,14 +1209,122 @@ export class IngredientRevisionEditorComponent {
     const revision = this.selected();
     if (!revision || this.isDirty(revision) || !this.allReviewed(revision) ||
         !this.unitConversionsValid(revision) || !this.variantsValid(revision)) return;
+    if (this.scope() !== 'central') {
+      this.submitting.set(true); this.error.set(''); this.notice.set('');
+      this.api.findCentralCandidates(revision.id).subscribe({
+        next: candidates => {
+          this.submitting.set(false);
+          if (candidates.length) this.centralCandidates.set(candidates);
+          else this.publishAnyway();
+        },
+        error: () => { this.submitting.set(false);
+          this.error.set('Passende zentrale Zutaten konnten nicht geprüft werden.'); }
+      });
+      return;
+    }
+    this.publishAnyway();
+  }
+
+  findCentralAlternatives() {
+    const revision = this.selected();
+    if (!revision || revision.state !== this.publishedState || this.scope() === 'central' || this.submitting()) return;
+    this.submitting.set(true); this.error.set(''); this.notice.set('');
+    this.api.findCentralCandidates(revision.id).subscribe({
+      next: candidates => {
+        this.submitting.set(false); this.centralCandidates.set(candidates);
+        if (!candidates.length) this.notice.set('Es wurde keine passende zentrale Zutat gefunden.');
+      },
+      error: () => { this.submitting.set(false);
+        this.error.set('Passende zentrale Zutaten konnten nicht geprüft werden.'); }
+    });
+  }
+
+  publishAnyway() {
+    const revision = this.selected();
+    if (!revision || this.isDirty(revision) || !this.allReviewed(revision) ||
+        !this.unitConversionsValid(revision) || !this.variantsValid(revision)) return;
     this.submitting.set(true); this.error.set(''); this.notice.set('');
     this.api.publish(revision.id, revision.rowVersion).subscribe({
       next: result => { this.submitting.set(false); revision.rowVersion = result.rowVersion;
         revision.state = this.publishedState; this.selectedSnapshot = this.snapshot(revision);
+        this.centralCandidates.set([]);
         this.selected.set({ ...revision }); this.notice.set('Die Zutat wurde veröffentlicht.');
         this.published.emit();
         this.refreshList(revision.id, false); },
       error: error => this.handleMutationError(error)
+    });
+  }
+
+  replaceWithCentral(candidate: CentralIngredientCandidate) {
+    const revision = this.selected();
+    if (!revision || this.scope() === 'central' || this.submitting()) return;
+    this.submitting.set(true); this.error.set(''); this.notice.set('');
+    this.api.replaceWithCentral(revision.id, candidate.revisionId).subscribe({
+      next: () => {
+        this.submitting.set(false); this.centralCandidates.set([]); this.selected.set(null);
+        this.notice.set(`Die lokale Zutat wurde durch „${candidate.name}“ abgelöst.`);
+        this.refreshList(); this.published.emit();
+      },
+      error: () => { this.submitting.set(false);
+        this.error.set('Die lokale Zutat konnte nicht durch die zentrale Zutat abgelöst werden.'); }
+    });
+  }
+
+  submitToCentral() {
+    const revision = this.selected();
+    if (!revision || revision.state !== this.publishedState || this.scope() === 'central' || this.submitting()) return;
+    this.submitting.set(true); this.error.set(''); this.notice.set('');
+    this.api.submitToCentral(revision.id).subscribe({
+      next: () => { this.submitting.set(false);
+        this.notice.set('Die veröffentlichte Revision wurde zur zentralen Prüfung eingereicht.'); },
+      error: (error: HttpErrorResponse) => {
+        this.submitting.set(false);
+        if (error.status === 409 && error.error?.code === 'ingredient_revision_already_submitted')
+          this.notice.set('Diese veröffentlichte Revision wurde bereits eingereicht.');
+        else this.error.set('Die Zutat konnte nicht zur zentralen Prüfung eingereicht werden.');
+      }
+    });
+  }
+
+  publishedCentralRevisions() {
+    return this.revisions().filter(value => value.state === this.publishedState);
+  }
+
+  contributionTarget(contribution: IngredientCentralContribution) {
+    return this.contributionTargets()[contribution.id] ?? contribution.suggestedCentralIngredientId ?? '';
+  }
+
+  setContributionTarget(contributionId: string, target: string) {
+    this.contributionTargets.update(values => ({ ...values, [contributionId]: target }));
+  }
+
+  acceptContribution(contribution: IngredientCentralContribution) {
+    if (this.submitting()) return;
+    const target = this.contributionTarget(contribution) || null;
+    this.submitting.set(true); this.error.set(''); this.notice.set('');
+    this.api.acceptCentralContribution(contribution.id, target).subscribe({
+      next: result => {
+        this.submitting.set(false);
+        this.notice.set('Die Einreichung wurde als ungeprüfter zentraler Entwurf übernommen.');
+        this.loadContributions();
+        this.refreshList(result.centralRevisionId);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.submitting.set(false);
+        this.error.set(error.status === 409 && error.error?.code === 'central_ingredient_draft_exists'
+          ? 'Für die gewählte zentrale Zutat besteht bereits ein Entwurf.'
+          : 'Die Einreichung konnte nicht übernommen werden.');
+      }
+    });
+  }
+
+  rejectContribution(contributionId: string) {
+    if (this.submitting()) return;
+    this.submitting.set(true); this.error.set(''); this.notice.set('');
+    this.api.rejectCentralContribution(contributionId).subscribe({
+      next: () => { this.submitting.set(false); this.notice.set('Die Einreichung wurde abgelehnt.');
+        this.loadContributions(); },
+      error: () => { this.submitting.set(false); this.error.set('Die Einreichung konnte nicht abgelehnt werden.'); }
     });
   }
 
@@ -1164,8 +1351,20 @@ export class IngredientRevisionEditorComponent {
     this.selectedSnapshot = ''; this.error.set('');
     const revisions = this.listRevisions();
     forkJoin({ referenceData: this.api.getReferenceData(), revisions }).subscribe({
-      next: result => { this.referenceData.set(result.referenceData); this.revisions.set(result.revisions); this.loading.set(false); },
+      next: result => { this.referenceData.set(result.referenceData); this.revisions.set(result.revisions); this.loading.set(false);
+        if (this.scope() === 'central') this.loadContributions(); },
       error: () => { this.loading.set(false); this.error.set('Die Zutatenverwaltung konnte nicht geladen werden.'); }
+    });
+  }
+
+  private loadContributions() {
+    this.api.listCentralContributions().subscribe({
+      next: values => {
+        this.contributions.set(values);
+        this.contributionTargets.set(Object.fromEntries(values.map(value =>
+          [value.id, value.suggestedCentralIngredientId ?? ''])));
+      },
+      error: () => this.error.set('Die offenen Zutaten-Einreichungen konnten nicht geladen werden.')
     });
   }
 

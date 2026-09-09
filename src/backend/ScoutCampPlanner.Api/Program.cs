@@ -126,6 +126,8 @@ builder.Services.AddScoped<IIngredientManagementAuthorization>(services =>
 builder.Services.AddScoped<IngredientManagementService>();
 builder.Services.AddScoped<IIngredientRevisionWorkflowStore, IngredientRevisionWorkflowStore>();
 builder.Services.AddScoped<IngredientRevisionWorkflowService>();
+builder.Services.AddScoped<IIngredientCentralContributionStore, IngredientCentralContributionStore>();
+builder.Services.AddScoped<IngredientCentralContributionService>();
 builder.Services.AddScoped<IIngredientEditorReferenceDataStore, IngredientEditorReferenceDataStore>();
 builder.Services.AddSingleton<IPasswordPolicy, PasswordPolicy>();
 builder.Services.AddSingleton<IPasswordVerifier>(
@@ -814,6 +816,60 @@ app.MapPost("/api/ingredient-revisions/{revisionId:guid}/publish", async (
         cancellationToken);
     return ToIngredientRevisionMutationResult(result);
 }).RequireAuthorization();
+app.MapGet("/api/ingredient-revisions/{revisionId:guid}/central-candidates", async (
+    Guid revisionId,
+    ClaimsPrincipal principal,
+    IngredientCentralContributionService contributions,
+    CancellationToken cancellationToken) =>
+{
+    var result = await contributions.FindCandidatesAsync(revisionId,
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken);
+    return result.IsAuthorized ? Results.Ok(result.Candidates) : Results.Forbid();
+}).RequireAuthorization();
+app.MapPost("/api/ingredient-revisions/{revisionId:guid}/central-contributions", async (
+    Guid revisionId,
+    ClaimsPrincipal principal,
+    IngredientCentralContributionService contributions,
+    CancellationToken cancellationToken) =>
+    ToIngredientContributionResult(await contributions.SubmitAsync(revisionId,
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken)))
+    .RequireAuthorization();
+app.MapPost("/api/ingredient-revisions/{revisionId:guid}/replace-with-central", async (
+    Guid revisionId,
+    ReplaceIngredientWithCentralRequest request,
+    ClaimsPrincipal principal,
+    IngredientCentralContributionService contributions,
+    CancellationToken cancellationToken) =>
+    ToIngredientContributionResult(await contributions.ReplaceAsync(revisionId, request.CentralRevisionId,
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken)))
+    .RequireAuthorization();
+app.MapGet("/api/ingredient-central-contributions", async (
+    ClaimsPrincipal principal,
+    IngredientCentralContributionService contributions,
+    CancellationToken cancellationToken) =>
+{
+    var result = await contributions.ListPendingAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken);
+    return result.IsAuthorized ? Results.Ok(result.Contributions) : Results.Forbid();
+}).RequireAuthorization();
+app.MapPost("/api/ingredient-central-contributions/{contributionId:guid}/accept", async (
+    Guid contributionId,
+    AcceptIngredientContributionRequest request,
+    ClaimsPrincipal principal,
+    IngredientCentralContributionService contributions,
+    CancellationToken cancellationToken) =>
+    ToIngredientContributionResult(await contributions.AcceptAsync(contributionId,
+        request.TargetCentralIngredientId,
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken)))
+    .RequireAuthorization();
+app.MapPost("/api/ingredient-central-contributions/{contributionId:guid}/reject", async (
+    Guid contributionId,
+    ClaimsPrincipal principal,
+    IngredientCentralContributionService contributions,
+    CancellationToken cancellationToken) =>
+    ToIngredientContributionResult(await contributions.RejectAsync(contributionId,
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken)))
+    .RequireAuthorization();
 app.MapPost("/api/camps/{campId:guid}/offline-package", async (
     Guid campId, ClaimsPrincipal principal, CampManagementService management,
     CampPackageService packages, CancellationToken cancellationToken) =>
@@ -919,6 +975,38 @@ static IResult ToIngredientRevisionCreationResult(IngredientRevisionMutationResu
         _ => Results.ValidationProblem(new Dictionary<string, string[]>
         {
             ["ingredientRevision"] = ["Name, Kategorie oder Basiseinheit sind ungültig."],
+        }),
+    };
+
+static IResult ToIngredientContributionResult(IngredientContributionMutationResult result) =>
+    result.Status switch
+    {
+        IngredientContributionMutationStatus.Created => Results.Created(
+            $"/api/ingredient-central-contributions/{result.ContributionId}", result),
+        IngredientContributionMutationStatus.Accepted or
+        IngredientContributionMutationStatus.Rejected or
+        IngredientContributionMutationStatus.Replaced => Results.Ok(result),
+        IngredientContributionMutationStatus.Forbidden => Results.Forbid(),
+        IngredientContributionMutationStatus.NotFound => Results.NotFound(),
+        IngredientContributionMutationStatus.AlreadySubmitted => Results.Conflict(new
+        {
+            code = "ingredient_revision_already_submitted",
+        }),
+        IngredientContributionMutationStatus.AlreadyReviewed => Results.Conflict(new
+        {
+            code = "ingredient_contribution_already_reviewed",
+        }),
+        IngredientContributionMutationStatus.DraftAlreadyExists => Results.Conflict(new
+        {
+            code = "central_ingredient_draft_exists",
+        }),
+        IngredientContributionMutationStatus.NotPublished => Results.Conflict(new
+        {
+            code = "ingredient_revision_not_published",
+        }),
+        _ => Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["ingredientContribution"] = ["Die Zutatenweitergabe ist ungültig."],
         }),
     };
 

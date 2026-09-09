@@ -781,3 +781,19 @@ Sie können von konkretem Produkt, Herstellungsprozess oder späteren Domänen a
 19. Ein kompatibles Ergebnis setzt ausreichend geprüfte Eigenschaftsgruppen voraus.
 20. Rezeptpositionen referenzieren eine veröffentlichte Zutatenrevision und optional einen `variant_key`.
 21. Archivierung betrifft die Zutatenidentität und verändert keine veröffentlichte Revision.
+22. Eine zentrale Einreichung verweist auf genau eine veröffentlichte lokale Revision.
+23. Annahme erzeugt einen ungeprüften zentralen Entwurf und niemals eine Veröffentlichung.
+24. Ablösung archiviert die lokale Identität und verändert keine historischen Rezeptrevisionen.
+25. Die Veröffentlichung eines aus einer Einreichung entstandenen zentralen Entwurfs löst die unveränderte lokale Ausgangsidentität automatisch ab; neuere lokale Arbeitsstände werden nicht automatisch archiviert.
+
+---
+
+## 15. Weitergabe an den zentralen Zutatenstamm
+
+Veröffentlichte Zutaten eines Mandanten oder Lagers können direkt zur zentralen Prüfung eingereicht werden. Die Einreichung referenziert immer eine konkrete, unveränderliche veröffentlichte Revision. Sie verändert die lokale Zutat nicht.
+
+Eine angenommene Einreichung erzeugt einen ungeprüften zentralen Entwurf. Erst dessen ausdrückliche Prüfung und Veröffentlichung macht die Änderung allgemein verfügbar. Die prüfende Person kann einen Vorschlag einer bereits bestehenden zentralen Zutat zuordnen.
+
+Bei der zentralen Veröffentlichung wird die eingereichte lokale Identität automatisch archiviert und aus den aktiven Mandanten- oder Lagerlisten entfernt, sofern die eingereichte Revision noch aktuell ist und kein neuer lokaler Entwurf existiert. Damit bleibt die lokale Zutat während der Prüfung verfügbar, ohne nach erfolgreicher zentraler Freigabe als Dublette bestehen zu bleiben.
+
+Existiert vor der lokalen Veröffentlichung bereits eine passende zentrale Zutat, kann die lokale Zutat kontrolliert durch diese abgelöst werden. Dabei wird die lokale Identität archiviert. Historische Rezeptrevisionen behalten ihre bisherigen Referenzen; Entwürfe werden nicht automatisch verändert. Details regelt [ADR-022](../decisions/adr-022-central-ingredient-contributions.md).

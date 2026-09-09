@@ -883,6 +883,55 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         });
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientCentralContributionRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ResultingCentralIngredientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ResultingCentralRevisionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("ReviewedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ReviewedBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("SubmittedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SubmittedBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SubmittedLocalRevisionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("SuggestedCentralIngredientId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ResultingCentralIngredientId");
+
+                    b.HasIndex("ResultingCentralRevisionId");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("SubmittedLocalRevisionId")
+                        .IsUnique();
+
+                    b.HasIndex("SuggestedCentralIngredientId");
+
+                    b.ToTable("IngredientCentralContributions", (string)null);
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientIdentityRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -890,6 +939,15 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .HasColumnType("TEXT");
 
                     b.Property<Guid?>("CurrentPublishedRevisionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("ReplacedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ReplacedBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ReplacedByCentralIngredientId")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid?>("ScopeId")
@@ -910,6 +968,8 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.HasKey("Id");
 
                     b.HasIndex("CurrentPublishedRevisionId");
+
+                    b.HasIndex("ReplacedByCentralIngredientId");
 
                     b.HasIndex("SourceRevisionId");
 
@@ -2341,11 +2401,40 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientCentralContributionRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientIdentityRecord", null)
+                        .WithMany()
+                        .HasForeignKey("ResultingCentralIngredientId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("ResultingCentralRevisionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("SubmittedLocalRevisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientIdentityRecord", null)
+                        .WithMany()
+                        .HasForeignKey("SuggestedCentralIngredientId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientIdentityRecord", b =>
                 {
                     b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionRecord", null)
                         .WithMany()
                         .HasForeignKey("CurrentPublishedRevisionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientIdentityRecord", null)
+                        .WithMany()
+                        .HasForeignKey("ReplacedByCentralIngredientId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientIdentityRecord", null)

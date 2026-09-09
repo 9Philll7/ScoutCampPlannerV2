@@ -8,7 +8,24 @@ internal sealed class IngredientIdentityRecord
     public Guid? SourceIngredientId { get; set; }
     public Guid? SourceRevisionId { get; set; }
     public Guid? CurrentPublishedRevisionId { get; set; }
+    public Guid? ReplacedByCentralIngredientId { get; set; }
+    public DateTimeOffset? ReplacedAtUtc { get; set; }
+    public Guid? ReplacedBy { get; set; }
     public int Status { get; set; }
+}
+
+internal sealed class IngredientCentralContributionRecord
+{
+    public Guid Id { get; set; }
+    public Guid SubmittedLocalRevisionId { get; set; }
+    public Guid? SuggestedCentralIngredientId { get; set; }
+    public int Status { get; set; }
+    public DateTimeOffset SubmittedAtUtc { get; set; }
+    public Guid SubmittedBy { get; set; }
+    public DateTimeOffset? ReviewedAtUtc { get; set; }
+    public Guid? ReviewedBy { get; set; }
+    public Guid? ResultingCentralIngredientId { get; set; }
+    public Guid? ResultingCentralRevisionId { get; set; }
 }
 
 internal sealed class IngredientRevisionRecord
@@ -147,4 +164,3 @@ internal sealed class IngredientVariantUnitConversionOverrideRecord
     public decimal FactorToBaseUnit { get; set; }
     public int Precision { get; set; }
 }
-

@@ -868,8 +868,52 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
             return new(IngredientRevisionMutationStatus.Invalid, expectedRowVersion);
         }
 
+        await ReplaceUnchangedContributionSourceAsync(
+            revisionId, revision.IngredientId, actorUserId, publishedAtUtc, cancellationToken);
+
         await transaction.CommitAsync(cancellationToken);
         return new(IngredientRevisionMutationStatus.Published, expectedRowVersion + 1);
+    }
+
+    private async Task ReplaceUnchangedContributionSourceAsync(
+        Guid centralRevisionId,
+        Guid centralIngredientId,
+        Guid actorUserId,
+        DateTimeOffset replacedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        var source = await (
+            from contribution in database.Set<IngredientCentralContributionRecord>().AsNoTracking()
+            join revision in database.Set<IngredientRevisionRecord>().AsNoTracking()
+                on contribution.SubmittedLocalRevisionId equals revision.Id
+            join identity in database.Set<IngredientIdentityRecord>().AsNoTracking()
+                on revision.IngredientId equals identity.Id
+            where contribution.Status == (int)IngredientCentralContributionStatus.Accepted &&
+                  contribution.ResultingCentralRevisionId == centralRevisionId &&
+                  contribution.ResultingCentralIngredientId == centralIngredientId &&
+                  identity.Status == (int)IngredientIdentityStatus.Active &&
+                  identity.CurrentPublishedRevisionId == contribution.SubmittedLocalRevisionId
+            select new
+            {
+                IdentityId = identity.Id,
+                contribution.SubmittedLocalRevisionId,
+            }).SingleOrDefaultAsync(cancellationToken);
+
+        if (source is null) return;
+
+        await database.Set<IngredientIdentityRecord>()
+            .Where(identity => identity.Id == source.IdentityId &&
+                identity.Status == (int)IngredientIdentityStatus.Active &&
+                identity.CurrentPublishedRevisionId == source.SubmittedLocalRevisionId &&
+                !database.Set<IngredientRevisionRecord>().Any(revision =>
+                    revision.IngredientId == identity.Id &&
+                    revision.State == (int)IngredientRevisionState.Draft))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(identity => identity.Status, (int)IngredientIdentityStatus.Archived)
+                .SetProperty(identity => identity.ReplacedByCentralIngredientId, centralIngredientId)
+                .SetProperty(identity => identity.ReplacedAtUtc, replacedAtUtc)
+                .SetProperty(identity => identity.ReplacedBy, actorUserId),
+                cancellationToken);
     }
 
     private async Task ValidatePublicationAsync(

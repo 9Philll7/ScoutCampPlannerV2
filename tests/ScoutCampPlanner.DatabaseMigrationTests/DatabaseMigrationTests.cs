@@ -47,7 +47,7 @@ public sealed class DatabaseMigrationTests
 
         Assert.Equal(7, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_platform"));
         Assert.Equal(8, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_camp"));
-        Assert.Equal(15, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_catering"));
+        Assert.Equal(16, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_catering"));
         Assert.Equal(9, await ScalarAsync<long>(connection,
             "SELECT COUNT(*) FROM MeasurementUnits WHERE NormalizedName IN ('GRAMM', 'KILOGRAMM', 'MILLILITER', 'LITER', 'STÜCK', 'TEELÖFFEL', 'ESSLÖFFEL', 'PRISE', 'BUND')"));
         Assert.Equal(18, await ScalarAsync<long>(connection,
@@ -65,6 +65,7 @@ public sealed class DatabaseMigrationTests
         Assert.Equal(2, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('CampMealTypes', 'CampMeals')"));
         Assert.Equal(10, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('MeasurementUnits', 'BaseIngredients', 'IngredientVariants', 'IngredientUnitConversions', 'Allergens', 'Intolerances', 'DietaryRequirements', 'BaseIngredientAllergens', 'BaseIngredientIntolerances', 'BaseIngredientDietaryRequirements')"));
         Assert.Equal(19, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('Recipes', 'RecipeDraftTags', 'RecipeGroups', 'RecipeIngredientPositions', 'RecipeIngredientReplacements', 'RecipeIngredientReplacementAllergens', 'RecipeIngredientReplacementIntolerances', 'RecipeIngredientReplacementDietaryRequirements', 'RecipeSubrecipePositions', 'RecipeSubrecipeReplacements', 'RecipeSubrecipeReplacementAllergens', 'RecipeSubrecipeReplacementIntolerances', 'RecipeSubrecipeReplacementDietaryRequirements', 'RecipeRevisions', 'RecipeRevisionWarnings', 'TenantRecipeEntries', 'CampRecipeEntries', 'CampRecipeNotes', 'CentralRecipeChangeSubmissions')"));
+        Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'IngredientCentralContributions'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_UserAccounts_NormalizedEmail'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_TenantMemberships_UserId_TenantId'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_TenantRoleAssignments_MembershipId'"));
@@ -103,7 +104,7 @@ public sealed class DatabaseMigrationTests
 
         Assert.Equal(7, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM platform.\"__EFMigrationsHistory\""));
         Assert.Equal(8, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM camp.\"__EFMigrationsHistory\""));
-        Assert.Equal(15, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM catering.\"__EFMigrationsHistory\""));
+        Assert.Equal(16, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM catering.\"__EFMigrationsHistory\""));
         Assert.Equal(9, await ScalarAsync<long>(connection,
             "SELECT COUNT(*) FROM catering.\"MeasurementUnits\" WHERE \"NormalizedName\" IN ('GRAMM', 'KILOGRAMM', 'MILLILITER', 'LITER', 'STÜCK', 'TEELÖFFEL', 'ESSLÖFFEL', 'PRISE', 'BUND')"));
         Assert.Equal(18, await ScalarAsync<long>(connection,
@@ -121,6 +122,7 @@ public sealed class DatabaseMigrationTests
         Assert.Equal(2, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'catering' AND table_name IN ('CampMealTypes', 'CampMeals')"));
         Assert.Equal(10, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'catering' AND table_name IN ('MeasurementUnits', 'BaseIngredients', 'IngredientVariants', 'IngredientUnitConversions', 'Allergens', 'Intolerances', 'DietaryRequirements', 'BaseIngredientAllergens', 'BaseIngredientIntolerances', 'BaseIngredientDietaryRequirements')"));
         Assert.Equal(19, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'catering' AND table_name IN ('Recipes', 'RecipeDraftTags', 'RecipeGroups', 'RecipeIngredientPositions', 'RecipeIngredientReplacements', 'RecipeIngredientReplacementAllergens', 'RecipeIngredientReplacementIntolerances', 'RecipeIngredientReplacementDietaryRequirements', 'RecipeSubrecipePositions', 'RecipeSubrecipeReplacements', 'RecipeSubrecipeReplacementAllergens', 'RecipeSubrecipeReplacementIntolerances', 'RecipeSubrecipeReplacementDietaryRequirements', 'RecipeRevisions', 'RecipeRevisionWarnings', 'TenantRecipeEntries', 'CampRecipeEntries', 'CampRecipeNotes', 'CentralRecipeChangeSubmissions')"));
+        Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'catering' AND table_name = 'IngredientCentralContributions'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'platform' AND indexname = 'IX_UserAccounts_NormalizedEmail'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'platform' AND indexname = 'IX_TenantMemberships_UserId_TenantId'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'platform' AND indexname = 'IX_TenantRoleAssignments_MembershipId'"));

@@ -9,6 +9,7 @@ internal static class RevisionedIngredientPersistenceConfiguration
     {
         ConfigureMasterData(modelBuilder);
         ConfigureIdentityAndRevision(modelBuilder);
+        ConfigureContributions(modelBuilder);
         ConfigureRevisionProperties(modelBuilder);
         ConfigureVariants(modelBuilder);
     }
@@ -72,6 +73,8 @@ internal static class RevisionedIngredientPersistenceConfiguration
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<IngredientRevisionRecord>().WithMany().HasForeignKey(value => value.CurrentPublishedRevisionId)
                 .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<IngredientIdentityRecord>().WithMany().HasForeignKey(value => value.ReplacedByCentralIngredientId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<IngredientRevisionRecord>(entity =>
         {
@@ -93,6 +96,25 @@ internal static class RevisionedIngredientPersistenceConfiguration
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<MeasurementUnit>().WithMany().HasForeignKey(value => value.BaseUnitId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureContributions(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<IngredientCentralContributionRecord>(entity =>
+        {
+            entity.ToTable("IngredientCentralContributions");
+            entity.HasKey(value => value.Id);
+            entity.HasIndex(value => value.SubmittedLocalRevisionId).IsUnique();
+            entity.HasIndex(value => value.Status);
+            entity.HasOne<IngredientRevisionRecord>().WithMany()
+                .HasForeignKey(value => value.SubmittedLocalRevisionId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<IngredientIdentityRecord>().WithMany()
+                .HasForeignKey(value => value.SuggestedCentralIngredientId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<IngredientIdentityRecord>().WithMany()
+                .HasForeignKey(value => value.ResultingCentralIngredientId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<IngredientRevisionRecord>().WithMany()
+                .HasForeignKey(value => value.ResultingCentralRevisionId).OnDelete(DeleteBehavior.Restrict);
         });
     }
 

@@ -90,6 +90,8 @@ export interface IngredientRevisionSummary {
 export interface IngredientRevisionDetails {
   id: string;
   ingredientId: string;
+  scopeType: number;
+  scopeId: string | null;
   name: string;
   categoryId: string;
   baseUnitId: string;
@@ -103,6 +105,35 @@ export interface IngredientRevisionDetails {
   origins: IngredientRevisionPropertyItem[];
   unitConversions: IngredientRevisionUnitConversionItem[];
   variants: IngredientVariantRevisionItem[];
+}
+
+export interface CentralIngredientCandidate {
+  ingredientId: string;
+  revisionId: string;
+  name: string;
+  categoryId: string;
+  baseUnitId: string;
+}
+
+export interface IngredientCentralContribution {
+  id: string;
+  submittedRevisionId: string;
+  localIngredientId: string;
+  sourceScopeType: number;
+  sourceScopeId: string;
+  name: string;
+  categoryId: string;
+  baseUnitId: string;
+  suggestedCentralIngredientId: string | null;
+  suggestedCentralIngredientName: string | null;
+  submittedAtUtc: string;
+  submittedBy: string;
+}
+
+export interface IngredientContributionMutationResponse {
+  contributionId?: string;
+  centralIngredientId?: string;
+  centralRevisionId?: string;
 }
 
 export interface IngredientRevisionMutationResponse {
@@ -227,5 +258,37 @@ export class IngredientRevisionApiService {
   createDraftFromPublished(revisionId: string) {
     return this.http.post<IngredientRevisionMutationResponse>(
       `${this.baseUrl}/api/ingredient-revisions/${revisionId}/draft`, {}, this.options);
+  }
+
+  findCentralCandidates(revisionId: string) {
+    return this.http.get<CentralIngredientCandidate[]>(
+      `${this.baseUrl}/api/ingredient-revisions/${revisionId}/central-candidates`, this.options);
+  }
+
+  submitToCentral(revisionId: string) {
+    return this.http.post<IngredientContributionMutationResponse>(
+      `${this.baseUrl}/api/ingredient-revisions/${revisionId}/central-contributions`, {}, this.options);
+  }
+
+  replaceWithCentral(revisionId: string, centralRevisionId: string) {
+    return this.http.post<IngredientContributionMutationResponse>(
+      `${this.baseUrl}/api/ingredient-revisions/${revisionId}/replace-with-central`,
+      { centralRevisionId }, this.options);
+  }
+
+  listCentralContributions() {
+    return this.http.get<IngredientCentralContribution[]>(
+      `${this.baseUrl}/api/ingredient-central-contributions`, this.options);
+  }
+
+  acceptCentralContribution(contributionId: string, targetCentralIngredientId: string | null) {
+    return this.http.post<IngredientContributionMutationResponse>(
+      `${this.baseUrl}/api/ingredient-central-contributions/${contributionId}/accept`,
+      { targetCentralIngredientId }, this.options);
+  }
+
+  rejectCentralContribution(contributionId: string) {
+    return this.http.post<IngredientContributionMutationResponse>(
+      `${this.baseUrl}/api/ingredient-central-contributions/${contributionId}/reject`, {}, this.options);
   }
 }
