@@ -188,6 +188,17 @@ type CampSection = 'general' | 'structure' | 'catering';
                 </form>
               </mat-card-content>
             </mat-card>
+            @if (tenant.canManageIngredients) {
+              <mat-card class="content-card">
+                <mat-card-header>
+                  <mat-card-title>Organisationsweite Basiszutaten</mat-card-title>
+                  <mat-card-subtitle>Veröffentlichte Zutaten stehen anschließend in allen Lagern von {{ tenant.name }} zur Verfügung.</mat-card-subtitle>
+                </mat-card-header>
+                <mat-card-content>
+                  <scp-ingredient-revision-editor scope="tenant" [tenantId]="tenant.id"/>
+                </mat-card-content>
+              </mat-card>
+            }
           }
           } @else if (applicationSection() === 'centralIngredients') {
             <mat-card class="content-card">

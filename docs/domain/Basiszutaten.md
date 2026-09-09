@@ -98,6 +98,12 @@ Ein Mandant oder Lager kann eine eigene lokale Basiszutat anlegen, die keinen ze
 
 Diese lokale Zutat folgt denselben Revisions- und Veröffentlichungsregeln wie ein Fork.
 
+Mandantenweite Eigenanlagen werden in der Organisationsansicht verwaltet. Die
+Verwaltung ist nur mit `ingredients.manage` im betreffenden Mandanten möglich.
+Nach der Veröffentlichung ist die Zutat ohne zusätzliche Kopie in allen Lagern
+dieses Mandanten verfügbar. Eine abweichende Lagerfassung bleibt weiterhin eine
+eigene Lagerzutat.
+
 ---
 
 ## 3. Identität und Revisionsmodell

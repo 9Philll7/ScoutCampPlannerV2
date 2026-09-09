@@ -132,6 +132,23 @@ public sealed class IngredientRevisionWorkflowServiceTests
     }
 
     [Fact]
+    public async Task Tenant_administrator_can_list_only_own_tenant_revisions()
+    {
+        Guid tenantId = Guid.NewGuid();
+        var store = new FakeStore(null);
+        var authorization = new FakeAuthorization { TenantAllowed = true };
+        var service = new IngredientRevisionWorkflowService(store, authorization, TimeProvider.System);
+
+        IngredientRevisionListResult result = await service.ListTenantAsync(
+            tenantId, Guid.NewGuid(), TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsAuthorized);
+        Assert.Equal(tenantId, authorization.RequestedTenantId);
+        Assert.Equal(IngredientScopeType.Tenant, store.ListedScope!.ScopeType);
+        Assert.Equal(tenantId, store.ListedScope.ScopeId);
+    }
+
+    [Fact]
     public async Task Authorized_actor_can_create_follow_up_draft_from_published_revision()
     {
         Guid publishedRevisionId = Guid.NewGuid();

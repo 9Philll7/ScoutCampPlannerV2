@@ -590,8 +590,9 @@ import {
   `
 })
 export class IngredientRevisionEditorComponent {
-  readonly scope = input<'camp' | 'central'>('camp');
+  readonly scope = input<'camp' | 'tenant' | 'central'>('camp');
   readonly campId = input('');
+  readonly tenantId = input('');
   readonly disabled = input(false);
   readonly published = output<void>();
   readonly revisions = signal<IngredientRevisionSummary[]>([]);
@@ -642,16 +643,25 @@ export class IngredientRevisionEditorComponent {
     effect(() => {
       const scope = this.scope();
       const campId = this.campId();
-      if (scope === 'central' || campId) this.load();
+      const tenantId = this.tenantId();
+      if (scope === 'central' || (scope === 'tenant' && !!tenantId) || (scope === 'camp' && !!campId)) this.load();
     });
   }
 
-  managementTitle() { return this.scope() === 'central' ? 'Zentrale Zutaten verwalten' : 'Lagerzutaten verwalten'; }
-  createButtonLabel() { return this.scope() === 'central' ? 'Neue zentrale Zutat' : 'Neue Lagerzutat'; }
+  managementTitle() {
+    return this.scope() === 'central' ? 'Zentrale Zutaten verwalten'
+      : this.scope() === 'tenant' ? 'Organisationszutaten verwalten' : 'Lagerzutaten verwalten';
+  }
+  createButtonLabel() {
+    return this.scope() === 'central' ? 'Neue zentrale Zutat'
+      : this.scope() === 'tenant' ? 'Neue Organisationszutat' : 'Neue Lagerzutat';
+  }
   emptyListLabel() {
     return this.scope() === 'central'
       ? 'Noch keine revisionsfähigen zentralen Zutaten vorhanden.'
-      : 'Noch keine revisionsfähigen Lagerzutaten vorhanden.';
+      : this.scope() === 'tenant'
+        ? 'Noch keine revisionsfähigen Organisationszutaten vorhanden.'
+        : 'Noch keine revisionsfähigen Lagerzutaten vorhanden.';
   }
 
   canCreate() { return !!this.createName.trim() && !!this.createCategoryId && !!this.createBaseUnitId; }
@@ -1015,7 +1025,9 @@ export class IngredientRevisionEditorComponent {
       baseUnitId: this.createBaseUnitId };
     const creation = this.scope() === 'central'
       ? this.api.createCentral(request)
-      : this.api.createCamp(this.campId(), request);
+      : this.scope() === 'tenant'
+        ? this.api.createTenant(this.tenantId(), request)
+        : this.api.createCamp(this.campId(), request);
     creation.subscribe({
       next: result => { this.submitting.set(false); this.createOpen.set(false); this.notice.set('Der Zutatenentwurf wurde angelegt.');
         this.refreshList(result.revisionId); },
@@ -1150,7 +1162,7 @@ export class IngredientRevisionEditorComponent {
   private load() {
     this.loading.set(true); this.selected.set(null); this.pendingForkSourceRevisionId.set(null);
     this.selectedSnapshot = ''; this.error.set('');
-    const revisions = this.scope() === 'central' ? this.api.listCentral() : this.api.listCamp(this.campId());
+    const revisions = this.listRevisions();
     forkJoin({ referenceData: this.api.getReferenceData(), revisions }).subscribe({
       next: result => { this.referenceData.set(result.referenceData); this.revisions.set(result.revisions); this.loading.set(false); },
       error: () => { this.loading.set(false); this.error.set('Die Zutatenverwaltung konnte nicht geladen werden.'); }
@@ -1158,10 +1170,16 @@ export class IngredientRevisionEditorComponent {
   }
 
   private refreshList(openRevisionId?: string, openAfter = true) {
-    const revisions = this.scope() === 'central' ? this.api.listCentral() : this.api.listCamp(this.campId());
+    const revisions = this.listRevisions();
     revisions.subscribe({ next: values => { this.revisions.set(values);
       if (openRevisionId && openAfter) this.open(openRevisionId); },
       error: () => this.error.set('Die Zutatenliste konnte nicht aktualisiert werden.') });
+  }
+
+  private listRevisions() {
+    return this.scope() === 'central' ? this.api.listCentral()
+      : this.scope() === 'tenant' ? this.api.listTenant(this.tenantId())
+        : this.api.listCamp(this.campId());
   }
 
   private handleMutationError(error: HttpErrorResponse) {

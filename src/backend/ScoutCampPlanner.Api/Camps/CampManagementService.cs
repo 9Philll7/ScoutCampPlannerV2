@@ -11,7 +11,7 @@ using ScoutCampPlanner.Platform.Infrastructure.Auditing;
 
 namespace ScoutCampPlanner.Api.Camps;
 
-public sealed record TenantOption(Guid Id, string Name);
+public sealed record TenantOption(Guid Id, string Name, bool CanManageIngredients);
 public sealed record CampAdministratorOption(Guid MembershipId, Guid UserId, string Email);
 public sealed record CampSummary(
     Guid Id, Guid TenantId, string Name, DateOnly? StartDate, DateOnly? EndDate,
@@ -83,14 +83,28 @@ public sealed class CampManagementService(
     private static readonly string[] SuggestedStageNames = ["Biber", "WiWö", "GuSp", "CaEx", "RaRo", "Mitarbeiter"];
 
     public async Task<IReadOnlyList<TenantOption>> ListTenantsAsync(
-        Guid userId, CancellationToken cancellationToken = default) =>
-        await platform.TenantMemberships
+        Guid userId, CancellationToken cancellationToken = default)
+    {
+        var memberships = await platform.TenantMemberships
             .Where(membership => membership.UserId == userId && membership.State == TenantMembershipState.Active)
             .Join(platform.Tenants, membership => membership.TenantId, tenant => tenant.Id,
-                (_, tenant) => tenant)
-            .OrderBy(tenant => tenant.Name)
-            .Select(tenant => new TenantOption(tenant.Id, tenant.Name))
+                (membership, tenant) => new { MembershipId = membership.Id, Tenant = tenant })
+            .OrderBy(value => value.Tenant.Name)
             .ToListAsync(cancellationToken);
+        Guid[] membershipIds = memberships.Select(value => value.MembershipId).ToArray();
+        var roles = await platform.TenantRoleAssignments
+            .Where(value => membershipIds.Contains(value.MembershipId))
+            .ToListAsync(cancellationToken);
+        return memberships.Select(value => new TenantOption(
+            value.Tenant.Id,
+            value.Tenant.Name,
+            AuthorizationCatalogue.ResolvePermissions(
+                    AuthorizationScope.Tenant,
+                    roles.Where(role => role.MembershipId == value.MembershipId)
+                        .Select(role => role.RoleIdentifier))
+                .Contains(Permissions.Ingredients.Manage)))
+            .ToArray();
+    }
 
     public async Task<IReadOnlyList<CampAdministratorOption>> ListAdministratorCandidatesAsync(
         Guid actorUserId, Guid tenantId, CancellationToken cancellationToken = default)

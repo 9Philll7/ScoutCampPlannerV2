@@ -13,7 +13,7 @@ export interface CampSummary {
   canExport: boolean;
 }
 
-export interface TenantOption { id: string; name: string; }
+export interface TenantOption { id: string; name: string; canManageIngredients: boolean; }
 export interface CampAdministratorOption { membershipId: string; userId: string; email: string; }
 export interface StructureNodeSummary { id: string; campId: string; parentId: string | null; name: string; }
 export interface StructureConfiguration { mode: 'Free' | 'Fixed'; levelNames: string[]; }

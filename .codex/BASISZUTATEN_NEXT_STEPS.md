@@ -20,6 +20,12 @@ Die Repository-Dokumentation hat Vorrang vor dieser Übergabe und vor früheren 
 
 ### Aktuelles Integrationsinkrement, noch zu committen
 
+- Tenant-Administratoren können organisationsweite Zutaten revisionsfähig
+  anlegen, bearbeiten und veröffentlichen.
+- Die Tenant-Liste liefert die Berechtigung `canManageIngredients`; der Editor
+  wird nur für berechtigte Konten angezeigt.
+- Veröffentlichte Organisationszutaten stehen über den bestehenden
+  Lagerkatalog automatisch in allen Lagern des Mandanten bereit.
 - Plattform-Administratoren erhalten den eigenen Bereich `Zutatenstamm`.
 - Zentrale Zutaten können dort revisionsfähig angelegt, bearbeitet und
   veröffentlicht werden.

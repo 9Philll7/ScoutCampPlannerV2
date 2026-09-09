@@ -297,6 +297,19 @@ public sealed class IngredientRevisionWorkflowService(
         return new(true, await store.ListAsync(scope, cancellationToken));
     }
 
+    public async Task<IngredientRevisionListResult> ListTenantAsync(
+        Guid tenantId,
+        Guid actorUserId,
+        CancellationToken cancellationToken = default)
+    {
+        Required(tenantId, nameof(tenantId));
+        Required(actorUserId, nameof(actorUserId));
+        var scope = new IngredientRevisionScope(IngredientScopeType.Tenant, tenantId);
+        if (!await IsAuthorizedAsync(actorUserId, scope, cancellationToken))
+            return new(false, []);
+        return new(true, await store.ListAsync(scope, cancellationToken));
+    }
+
     public async Task<IngredientRevisionMutationResult> SaveDraftAsync(
         Guid revisionId,
         SaveIngredientRevisionDraftRequest request,

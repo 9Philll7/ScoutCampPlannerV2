@@ -132,6 +132,11 @@ export class IngredientRevisionApiService {
       `${this.baseUrl}/api/ingredients/central/revisions`, this.options);
   }
 
+  listTenant(tenantId: string) {
+    return this.http.get<IngredientRevisionSummary[]>(
+      `${this.baseUrl}/api/tenants/${tenantId}/ingredient-revisions`, this.options);
+  }
+
   getCampForkPreview(campId: string, sourceRevisionId: string) {
     return this.http.get<IngredientRevisionDetails>(
       `${this.baseUrl}/api/camps/${campId}/ingredient-revisions/${sourceRevisionId}/fork-preview`, this.options);
@@ -145,6 +150,11 @@ export class IngredientRevisionApiService {
   createCentral(request: { name: string; categoryId: string; baseUnitId: string }) {
     return this.http.post<IngredientRevisionMutationResponse>(
       `${this.baseUrl}/api/ingredients/central/revisions`, request, this.options);
+  }
+
+  createTenant(tenantId: string, request: { name: string; categoryId: string; baseUnitId: string }) {
+    return this.http.post<IngredientRevisionMutationResponse>(
+      `${this.baseUrl}/api/tenants/${tenantId}/ingredient-revisions`, request, this.options);
   }
 
   get(revisionId: string) {

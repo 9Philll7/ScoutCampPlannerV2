@@ -656,6 +656,18 @@ app.MapPost("/api/tenants/{tenantId:guid}/ingredient-revisions", async (
         Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!),
         cancellationToken)))
     .RequireAuthorization();
+app.MapGet("/api/tenants/{tenantId:guid}/ingredient-revisions", async (
+    Guid tenantId,
+    ClaimsPrincipal principal,
+    IngredientRevisionWorkflowService revisions,
+    CancellationToken cancellationToken) =>
+{
+    IngredientRevisionListResult result = await revisions.ListTenantAsync(
+        tenantId,
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!),
+        cancellationToken);
+    return result.IsAuthorized ? Results.Ok(result.Revisions) : Results.Forbid();
+}).RequireAuthorization();
 app.MapPost("/api/camps/{campId:guid}/ingredient-revisions", async (
     Guid campId,
     CreateIngredientRevisionDraftRequest request,
