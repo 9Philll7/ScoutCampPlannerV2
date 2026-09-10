@@ -11,7 +11,13 @@ import { MatSelectModule } from '@angular/material/select';
 import { IngredientCatalogEntry } from '../camp/camp-api.service';
 import { ActionIconComponent } from '../../shared/action-icon.component';
 import { RecipeCatalogEntry, RecipeEditorApiService, RecipeEditorContent,
-  RecipeEditorDraft, RecipeEditorIngredientPosition } from './recipe-editor-api.service';
+  RecipeEditorDraft, RecipeEditorGroup, RecipeEditorIngredientPosition } from './recipe-editor-api.service';
+
+interface IngredientSection {
+  id: string | null;
+  group: RecipeEditorGroup | null;
+  positions: RecipeEditorIngredientPosition[];
+}
 
 @Component({
   selector: 'scp-recipe-editor',
@@ -57,35 +63,98 @@ import { RecipeCatalogEntry, RecipeEditorApiService, RecipeEditorContent,
         </section>
 
         <section class="recipe-section">
-          <div class="section-title"><div><h4>Zutaten</h4><p>Mengen gelten für die angegebenen Standardportionen.</p></div></div>
-          <div class="position-list">
-            @for (position of draft.content.ingredientPositions; track position.id; let index = $index) {
-              <article class="position-card">
-                <div class="position-name"><strong>{{ ingredient(position)?.name ?? 'Unbekannte Zutat' }}</strong>
-                  <small>{{ scopeLabel(ingredient(position)?.scope) }}</small></div>
-                <mat-form-field appearance="outline"><mat-label>Menge</mat-label>
-                  <input matInput type="number" min="0.000001" step="any" [name]="'quantity-' + position.id"
-                    [(ngModel)]="position.quantity" [disabled]="disabled()">
-                </mat-form-field>
-                <mat-form-field appearance="outline"><mat-label>Einheit</mat-label>
-                  <mat-select [name]="'unit-' + position.id" [(ngModel)]="position.unitId" [disabled]="disabled()">
-                    @for (unit of ingredient(position)?.units ?? []; track unit.unitId) {
-                      <mat-option [value]="unit.unitId">{{ unit.name }} ({{ unit.symbol }})</mat-option>
-                    }
-                  </mat-select>
-                </mat-form-field>
-                <button matIconButton type="button" aria-label="Zutat entfernen" (click)="removePosition(index)"
-                  [disabled]="disabled()"><scp-action-icon name="remove"/></button>
+          <div class="section-title">
+            <div><h4>Zutaten</h4><p>Mengen gelten für die angegebenen Standardportionen.</p></div>
+            @if (!disabled()) {
+              <button matButton type="button" (click)="addGroup()"><scp-action-icon name="add"/>Gruppe</button>
+            }
+          </div>
+          <div class="group-list">
+            @for (section of ingredientSections(); track section.id ?? 'ungrouped') {
+              <article class="ingredient-group" [class.ungrouped]="!section.group">
+                <div class="group-heading">
+                  @if (section.group; as group) {
+                    <mat-form-field appearance="outline" subscriptSizing="dynamic" class="group-name">
+                      <mat-label>Gruppenname</mat-label>
+                      <input matInput [name]="'group-' + group.id" [(ngModel)]="group.name"
+                        maxlength="200" [disabled]="disabled()">
+                    </mat-form-field>
+                    <div class="icon-actions">
+                      <button matIconButton type="button" aria-label="Gruppe nach oben verschieben"
+                        title="Gruppe nach oben verschieben" (click)="moveGroup(group, -1)"
+                        [disabled]="disabled() || !canMoveGroup(group, -1)"><scp-action-icon name="up"/></button>
+                      <button matIconButton type="button" aria-label="Gruppe nach unten verschieben"
+                        title="Gruppe nach unten verschieben" (click)="moveGroup(group, 1)"
+                        [disabled]="disabled() || !canMoveGroup(group, 1)"><scp-action-icon name="down"/></button>
+                      <button matIconButton type="button" aria-label="Gruppe löschen"
+                        [title]="groupIsEmpty(group.id) ? 'Gruppe löschen' : 'Positionen zuerst aus der Gruppe verschieben'"
+                        (click)="removeGroup(group)" [disabled]="disabled() || !groupIsEmpty(group.id)">
+                        <scp-action-icon name="remove"/></button>
+                    </div>
+                  } @else {
+                    <div><strong>Ohne Gruppe</strong><small>Zutaten, die keiner Rezeptgruppe zugeordnet sind.</small></div>
+                  }
+                </div>
+
+                <div class="position-list">
+                  @for (position of section.positions; track position.id; let first = $first; let last = $last) {
+                    <div class="position-card">
+                      <div class="position-name"><strong>{{ ingredient(position)?.name ?? 'Unbekannte Zutat' }}</strong>
+                        <small>{{ scopeLabel(ingredient(position)?.scope) }}</small></div>
+                      <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Gruppe</mat-label>
+                        <mat-select [name]="'position-group-' + position.id" [ngModel]="position.groupId"
+                          (ngModelChange)="movePositionToGroup(position, $event)" [disabled]="disabled()">
+                          <mat-option [value]="null">Ohne Gruppe</mat-option>
+                          @for (group of orderedGroups(); track group.id) {
+                            <mat-option [value]="group.id">{{ group.name || 'Unbenannte Gruppe' }}</mat-option>
+                          }
+                        </mat-select>
+                      </mat-form-field>
+                      <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Menge</mat-label>
+                        <input matInput type="number" min="0.000001" step="any" [name]="'quantity-' + position.id"
+                          [(ngModel)]="position.quantity" [disabled]="disabled()">
+                      </mat-form-field>
+                      <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Einheit</mat-label>
+                        <mat-select [name]="'unit-' + position.id" [(ngModel)]="position.unitId" [disabled]="disabled()">
+                          @for (unit of ingredient(position)?.units ?? []; track unit.unitId) {
+                            <mat-option [value]="unit.unitId">{{ unit.name }} ({{ unit.symbol }})</mat-option>
+                          }
+                        </mat-select>
+                      </mat-form-field>
+                      <div class="icon-actions">
+                        <button matIconButton type="button" aria-label="Zutat nach oben verschieben"
+                          title="Zutat nach oben verschieben" (click)="movePosition(position, -1)"
+                          [disabled]="disabled() || first"><scp-action-icon name="up"/></button>
+                        <button matIconButton type="button" aria-label="Zutat nach unten verschieben"
+                          title="Zutat nach unten verschieben" (click)="movePosition(position, 1)"
+                          [disabled]="disabled() || last"><scp-action-icon name="down"/></button>
+                        <button matIconButton type="button" aria-label="Zutat entfernen" title="Zutat entfernen"
+                          (click)="removePosition(position.id)" [disabled]="disabled()"><scp-action-icon name="remove"/></button>
+                      </div>
+                    </div>
+                  } @empty { <p class="empty">Noch keine Zutaten in dieser Gruppe.</p> }
+                </div>
               </article>
-            } @empty { <p class="empty">Dem Rezept wurden noch keine Zutaten hinzugefügt.</p> }
+            }
           </div>
 
           @if (!disabled()) {
             <div class="ingredient-picker">
-              <mat-form-field appearance="outline"><mat-label>Zutat suchen</mat-label>
-                <input matInput name="recipeIngredientSearch" [ngModel]="ingredientSearch()"
-                  (ngModelChange)="ingredientSearch.set($event)" autocomplete="off">
-              </mat-form-field>
+              <div class="picker-fields">
+                <mat-form-field appearance="outline"><mat-label>Zutat suchen</mat-label>
+                  <input matInput name="recipeIngredientSearch" [ngModel]="ingredientSearch()"
+                    (ngModelChange)="ingredientSearch.set($event)" autocomplete="off">
+                </mat-form-field>
+                <mat-form-field appearance="outline"><mat-label>In Gruppe einfügen</mat-label>
+                  <mat-select name="newIngredientGroup" [ngModel]="targetGroupId()"
+                    (ngModelChange)="targetGroupId.set($event)">
+                    <mat-option [value]="null">Ohne Gruppe</mat-option>
+                    @for (group of orderedGroups(); track group.id) {
+                      <mat-option [value]="group.id">{{ group.name || 'Unbenannte Gruppe' }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+              </div>
               @if (ingredientSearch().trim()) {
                 <div class="candidate-list">
                   @for (candidate of ingredientCandidates(); track candidate.revisionId) {
@@ -130,13 +199,19 @@ import { RecipeCatalogEntry, RecipeEditorApiService, RecipeEditorContent,
     .recipe-section { display: grid; gap: 1rem; padding: 1rem; border: 1px solid #d9e2dc; border-radius: .8rem; background: #fff; }
     .section-title p, .empty, small { color: #657269; font-size: .84rem; }
     .field-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(10rem, 1fr); gap: .8rem; }
-    .full { width: 100%; } .position-list, .ingredient-picker { display: grid; gap: .65rem; }
-    .position-card { display: grid; grid-template-columns: minmax(12rem, 2fr) minmax(8rem, 1fr) minmax(10rem, 1fr) auto; gap: .7rem; align-items: center; padding: .7rem; border-radius: .65rem; background: #f5f8f6; }
-    .position-name { display: grid; gap: .15rem; }
+    .full { width: 100%; } .group-list, .position-list, .ingredient-picker { display: grid; gap: .65rem; }
+    .ingredient-group { display: grid; gap: .7rem; padding: .8rem; border: 1px solid #dce5df; border-radius: .7rem; background: #fbfcfb; }
+    .ingredient-group.ungrouped { border-style: dashed; }
+    .group-heading, .icon-actions { display: flex; align-items: center; justify-content: space-between; gap: .35rem; }
+    .group-heading > div:first-child { display: grid; gap: .15rem; }
+    .group-name { width: min(24rem, 100%); }
+    .position-card { display: grid; grid-template-columns: minmax(10rem, 1.5fr) minmax(9rem, 1fr) minmax(7rem, .7fr) minmax(9rem, 1fr) auto; gap: .7rem; align-items: center; padding: .7rem; border-radius: .65rem; background: #f1f6f3; }
+    .position-name { display: grid; gap: .15rem; } .picker-fields { display: grid; grid-template-columns: 2fr 1fr; gap: .7rem; }
     .candidate-list { display: flex; flex-wrap: wrap; gap: .5rem; }
     .candidate-list button span { display: grid; text-align: left; }
     .recipe-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: .8rem; }
-    @media (max-width: 720px) { .field-grid, .position-card { grid-template-columns: 1fr; } }
+    @media (max-width: 900px) { .position-card { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 720px) { .field-grid, .picker-fields, .position-card { grid-template-columns: 1fr; } }
   `
 })
 export class RecipeEditorComponent {
@@ -147,6 +222,7 @@ export class RecipeEditorComponent {
   readonly ingredients = signal<IngredientCatalogEntry[]>([]);
   readonly selected = signal<RecipeEditorDraft | null>(null);
   readonly ingredientSearch = signal('');
+  readonly targetGroupId = signal<string | null>(null);
   readonly loading = signal(false);
   readonly saving = signal(false);
   readonly error = signal('');
@@ -155,7 +231,8 @@ export class RecipeEditorComponent {
 
   readonly ingredientCandidates = computed(() => {
     const search = this.ingredientSearch().trim().toLocaleLowerCase('de');
-    const used = new Set(this.selected()?.content.ingredientPositions.map(value => value.ingredientRevisionId));
+    const used = new Set(this.selected()?.content.ingredientPositions
+      .filter(value => value.groupId === this.targetGroupId()).map(value => value.ingredientRevisionId));
     const matches = this.ingredients().filter(value => value.revisionId && !used.has(value.revisionId) &&
       value.name.toLocaleLowerCase('de').includes(search));
     const camp = matches.filter(value => value.scope === 'Camp');
@@ -196,30 +273,116 @@ export class RecipeEditorComponent {
     }, error: () => { this.loading.set(false); this.error.set('Das Rezept konnte nicht geladen werden.'); } });
   }
 
-  closeEditor() { this.selected.set(null); this.ingredientSearch.set(''); this.notice.set(''); this.load(); }
+  closeEditor() {
+    this.selected.set(null); this.ingredientSearch.set(''); this.targetGroupId.set(null); this.notice.set(''); this.load();
+  }
 
   ingredient(position: RecipeEditorIngredientPosition) {
     return this.ingredients().find(value => value.revisionId === position.ingredientRevisionId);
   }
 
+  orderedGroups() {
+    return [...(this.selected()?.content.groups ?? [])].sort((first, second) => first.sortOrder - second.sortOrder);
+  }
+
+  ingredientSections(): IngredientSection[] {
+    const draft = this.selected();
+    if (!draft) return [];
+    return [
+      { id: null, group: null, positions: this.positionsForGroup(null) },
+      ...this.orderedGroups().map(group => ({ id: group.id, group, positions: this.positionsForGroup(group.id) })),
+    ];
+  }
+
+  addGroup() {
+    const draft = this.selected(); if (!draft) return;
+    const group: RecipeEditorGroup = {
+      id: crypto.randomUUID(), name: this.nextGroupName(), sortOrder: draft.content.groups.length,
+    };
+    draft.content.groups.push(group);
+    this.targetGroupId.set(group.id);
+    this.markContentChanged();
+  }
+
+  removeGroup(group: RecipeEditorGroup) {
+    const draft = this.selected();
+    if (!draft || !this.groupIsEmpty(group.id)) return;
+    draft.content.groups = draft.content.groups.filter(value => value.id !== group.id);
+    this.normalizeGroups();
+    if (this.targetGroupId() === group.id) this.targetGroupId.set(null);
+    this.markContentChanged();
+  }
+
+  groupIsEmpty(groupId: string) {
+    const content = this.selected()?.content;
+    return !!content && !content.ingredientPositions.some(value => value.groupId === groupId) &&
+      !content.subrecipePositions.some(value => value.groupId === groupId);
+  }
+
+  canMoveGroup(group: RecipeEditorGroup, direction: -1 | 1) {
+    const groups = this.orderedGroups();
+    const index = groups.findIndex(value => value.id === group.id);
+    return index >= 0 && index + direction >= 0 && index + direction < groups.length;
+  }
+
+  moveGroup(group: RecipeEditorGroup, direction: -1 | 1) {
+    const groups = this.orderedGroups();
+    const index = groups.findIndex(value => value.id === group.id);
+    const targetIndex = index + direction;
+    if (index < 0 || targetIndex < 0 || targetIndex >= groups.length) return;
+    [groups[index], groups[targetIndex]] = [groups[targetIndex], groups[index]];
+    groups.forEach((value, sortOrder) => value.sortOrder = sortOrder);
+    this.markContentChanged();
+  }
+
   addIngredient(ingredient: IngredientCatalogEntry) {
     const draft = this.selected();
     if (!draft || !ingredient.revisionId || !ingredient.units.length) return;
-    draft.content.ingredientPositions.push({ id: crypto.randomUUID(), groupId: null,
+    const groupId = this.targetGroupId();
+    const sortOrder = this.positionsForGroup(groupId).length;
+    draft.content.ingredientPositions.push({ id: crypto.randomUUID(), groupId,
       ingredientRevisionId: ingredient.revisionId, quantity: 1, unitId: ingredient.units[0].unitId,
-      sortOrder: draft.content.ingredientPositions.length, scalingMode: 0, ageGroupScaling: 0,
+      sortOrder, scalingMode: 0, ageGroupScaling: 0,
       stepSize: null, quantityPerStep: null, replacements: [] });
-    this.selected.set({ ...draft, content: { ...draft.content,
-      ingredientPositions: [...draft.content.ingredientPositions] } });
+    this.markContentChanged();
     this.ingredientSearch.set('');
   }
 
-  removePosition(index: number) {
+  removePosition(positionId: string) {
     const draft = this.selected(); if (!draft) return;
-    draft.content.ingredientPositions.splice(index, 1);
-    draft.content.ingredientPositions.forEach((value, sortOrder) => value.sortOrder = sortOrder);
-    this.selected.set({ ...draft, content: { ...draft.content,
-      ingredientPositions: [...draft.content.ingredientPositions] } });
+    const position = draft.content.ingredientPositions.find(value => value.id === positionId);
+    if (!position) return;
+    draft.content.ingredientPositions = draft.content.ingredientPositions.filter(value => value.id !== positionId);
+    this.normalizePositions(position.groupId);
+    this.markContentChanged();
+  }
+
+  movePosition(position: RecipeEditorIngredientPosition, direction: -1 | 1) {
+    const positions = this.positionsForGroup(position.groupId);
+    const index = positions.findIndex(value => value.id === position.id);
+    const targetIndex = index + direction;
+    if (index < 0 || targetIndex < 0 || targetIndex >= positions.length) return;
+    [positions[index], positions[targetIndex]] = [positions[targetIndex], positions[index]];
+    positions.forEach((value, sortOrder) => value.sortOrder = sortOrder);
+    this.markContentChanged();
+  }
+
+  movePositionToGroup(position: RecipeEditorIngredientPosition, groupId: string | null) {
+    if (position.groupId === groupId) return;
+    const draft = this.selected(); if (!draft) return;
+    const duplicate = draft.content.ingredientPositions.some(value => value.id !== position.id &&
+      value.groupId === groupId && value.ingredientRevisionId === position.ingredientRevisionId);
+    if (duplicate) {
+      this.error.set('Diese Zutat ist in der gewählten Gruppe bereits vorhanden.');
+      return;
+    }
+    const previousGroupId = position.groupId;
+    position.groupId = groupId;
+    position.sortOrder = this.positionsForGroup(groupId).filter(value => value.id !== position.id).length;
+    this.normalizePositions(previousGroupId);
+    this.normalizePositions(groupId);
+    this.error.set('');
+    this.markContentChanged();
   }
 
   changed() { return !!this.selected() && JSON.stringify(this.selected()!.content) !== this.snapshot; }
@@ -242,7 +405,23 @@ export class RecipeEditorComponent {
   statusLabel(status: number) { return status === 0 ? 'Entwurf' : status === 1 ? 'Aktiv' : 'Archiviert'; }
 
   private setDraft(draft: RecipeEditorDraft) {
-    this.selected.set(draft); this.snapshot = JSON.stringify(draft.content);
+    this.selected.set(draft); this.targetGroupId.set(null); this.snapshot = JSON.stringify(draft.content);
+  }
+  private positionsForGroup(groupId: string | null) {
+    return [...(this.selected()?.content.ingredientPositions ?? [])]
+      .filter(value => value.groupId === groupId)
+      .sort((first, second) => first.sortOrder - second.sortOrder);
+  }
+  private normalizePositions(groupId: string | null) {
+    this.positionsForGroup(groupId).forEach((value, sortOrder) => value.sortOrder = sortOrder);
+  }
+  private normalizeGroups() {
+    this.orderedGroups().forEach((value, sortOrder) => value.sortOrder = sortOrder);
+  }
+  private markContentChanged() {
+    const draft = this.selected(); if (!draft) return;
+    this.selected.set({ ...draft, content: { ...draft.content,
+      groups: [...draft.content.groups], ingredientPositions: [...draft.content.ingredientPositions] } });
   }
   private nextDraftName() {
     const baseName = 'Neues Rezept';
@@ -251,6 +430,13 @@ export class RecipeEditorComponent {
     let suffix = 2;
     while (existingNames.has(`${baseName} ${suffix}`.toLocaleLowerCase('de'))) suffix++;
     return `${baseName} ${suffix}`;
+  }
+  private nextGroupName() {
+    const existingNames = new Set((this.selected()?.content.groups ?? [])
+      .map(group => (group.name ?? '').trim().toLocaleLowerCase('de')));
+    let suffix = 1;
+    while (existingNames.has(`Gruppe ${suffix}`.toLocaleLowerCase('de'))) suffix++;
+    return `Gruppe ${suffix}`;
   }
   private loadCatalogOnly() { this.api.list(this.campId()).subscribe({ next: values => this.recipes.set(values) }); }
 }
