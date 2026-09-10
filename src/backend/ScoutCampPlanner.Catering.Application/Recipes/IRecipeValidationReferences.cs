@@ -10,15 +10,15 @@ public sealed record RecipeRevisionDescriptor(
     Guid? ReferenceUnitId,
     IReadOnlySet<ConflictReference> Conflicts);
 
-public sealed record IngredientDescriptor(Guid IngredientId, IngredientScopeType ScopeType, Guid? ScopeId);
+public sealed record IngredientDescriptor(Guid IngredientRevisionId, IngredientScopeType ScopeType, Guid? ScopeId);
 
 public sealed record RecipeValidationContext(Guid? TenantId = null);
 
 public interface IRecipeValidationReferences
 {
-    IngredientDescriptor? FindIngredient(Guid ingredientId);
-    bool IsUnitAvailableForIngredient(Guid ingredientId, Guid unitId);
-    IReadOnlySet<ConflictReference> GetIngredientConflicts(Guid ingredientId);
+    IngredientDescriptor? FindIngredient(Guid ingredientRevisionId);
+    bool IsUnitAvailableForIngredient(Guid ingredientRevisionId, Guid unitId);
+    IReadOnlySet<ConflictReference> GetIngredientConflicts(Guid ingredientRevisionId);
     bool UnitExists(Guid unitId);
     bool AreUnitsCompatible(Guid sourceUnitId, Guid targetUnitId);
     RecipeRevisionDescriptor? FindRevision(Guid revisionId);

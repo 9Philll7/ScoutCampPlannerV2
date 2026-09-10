@@ -12,7 +12,7 @@ public sealed record MeasurementUnitSnapshot(
     decimal BaseUnitFactor);
 
 public sealed record IngredientSnapshotSource(
-    Guid IngredientId,
+    [property: JsonPropertyName("ingredientId")] Guid IngredientRevisionId,
     string Name,
     IReadOnlyList<ConflictReference> Conflicts);
 
@@ -149,26 +149,26 @@ public sealed class RecipeSnapshotBuilder(IRecipeSnapshotReferences references)
 
     private IngredientPositionSnapshot BuildIngredientPosition(RecipeIngredientPosition position)
     {
-        Guid ingredientId = position.BaseIngredientId ?? throw new InvalidOperationException("Ingredient is required.");
+        Guid ingredientRevisionId = position.IngredientRevisionId ?? throw new InvalidOperationException("Ingredient is required.");
         Guid unitId = position.UnitId ?? throw new InvalidOperationException("Ingredient unit is required.");
         return new IngredientPositionSnapshot(
-            position.Id, position.GroupId, position.SortOrder, references.GetIngredient(ingredientId),
+            position.Id, position.GroupId, position.SortOrder, references.GetIngredient(ingredientRevisionId),
             position.Quantity ?? throw new InvalidOperationException("Ingredient quantity is required."),
-            references.GetIngredientUnit(ingredientId, unitId), position.ScalingMode, position.AgeGroupScaling,
+            references.GetIngredientUnit(ingredientRevisionId, unitId), position.ScalingMode, position.AgeGroupScaling,
             position.StepwiseScaling,
             position.ReplacementRules.OrderBy(value => value.Id).Select(BuildIngredientReplacement).ToArray());
     }
 
     private IngredientReplacementSnapshot BuildIngredientReplacement(IngredientReplacementRule replacement)
     {
-        Guid ingredientId = replacement.ReplacementBaseIngredientId ??
+        Guid ingredientRevisionId = replacement.ReplacementIngredientRevisionId ??
                             throw new InvalidOperationException("Replacement ingredient is required.");
         Guid unitId = replacement.ReplacementUnitId ??
                       throw new InvalidOperationException("Replacement unit is required.");
         return new IngredientReplacementSnapshot(
-            replacement.Id, references.GetIngredient(ingredientId),
+            replacement.Id, references.GetIngredient(ingredientRevisionId),
             replacement.ReplacementQuantity ?? throw new InvalidOperationException("Replacement quantity is required."),
-            references.GetIngredientUnit(ingredientId, unitId),
+            references.GetIngredientUnit(ingredientRevisionId, unitId),
             replacement.Conflicts.OrderBy(value => value.Type).ThenBy(value => value.Id).ToArray());
     }
 

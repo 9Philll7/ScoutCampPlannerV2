@@ -36,7 +36,7 @@ public sealed class RecipeIngredientPosition
         Guid id,
         Guid recipeId,
         Guid? groupId,
-        Guid? baseIngredientId,
+        Guid? ingredientRevisionId,
         decimal? quantity,
         Guid? unitId,
         int sortOrder,
@@ -47,7 +47,7 @@ public sealed class RecipeIngredientPosition
         Id = Required(id, nameof(id));
         RecipeId = Required(recipeId, nameof(recipeId));
         GroupId = groupId;
-        BaseIngredientId = baseIngredientId;
+        IngredientRevisionId = ingredientRevisionId;
         Quantity = quantity;
         UnitId = unitId;
         SortOrder = sortOrder;
@@ -59,7 +59,7 @@ public sealed class RecipeIngredientPosition
     public Guid Id { get; }
     public Guid RecipeId { get; }
     public Guid? GroupId { get; private set; }
-    public Guid? BaseIngredientId { get; private set; }
+    public Guid? IngredientRevisionId { get; private set; }
     public decimal? Quantity { get; private set; }
     public Guid? UnitId { get; private set; }
     public int SortOrder { get; private set; }
@@ -89,14 +89,14 @@ public sealed class IngredientReplacementRule
     public IngredientReplacementRule(
         Guid id,
         Guid ingredientPositionId,
-        Guid? replacementBaseIngredientId,
+        Guid? replacementIngredientRevisionId,
         decimal? replacementQuantity,
         Guid? replacementUnitId,
         IEnumerable<ConflictReference>? conflicts = null)
     {
         Id = Required(id, nameof(id));
         IngredientPositionId = Required(ingredientPositionId, nameof(ingredientPositionId));
-        ReplacementBaseIngredientId = replacementBaseIngredientId;
+        ReplacementIngredientRevisionId = replacementIngredientRevisionId;
         ReplacementQuantity = replacementQuantity;
         ReplacementUnitId = replacementUnitId;
         this.conflicts = conflicts?.ToHashSet() ?? [];
@@ -104,7 +104,7 @@ public sealed class IngredientReplacementRule
 
     public Guid Id { get; }
     public Guid IngredientPositionId { get; }
-    public Guid? ReplacementBaseIngredientId { get; private set; }
+    public Guid? ReplacementIngredientRevisionId { get; private set; }
     public decimal? ReplacementQuantity { get; private set; }
     public Guid? ReplacementUnitId { get; private set; }
     public IReadOnlySet<ConflictReference> Conflicts => new HashSet<ConflictReference>(conflicts);

@@ -108,6 +108,10 @@ builder.Services.AddScoped<ICampRecipeNoteAuthorization>(services =>
     services.GetRequiredService<PlatformRecipeAuthorization>());
 builder.Services.AddScoped<IRecipeCatalogAuthorization>(services =>
     services.GetRequiredService<PlatformRecipeAuthorization>());
+builder.Services.AddScoped<IRecipeEditorAuthorization>(services =>
+    services.GetRequiredService<PlatformRecipeAuthorization>());
+builder.Services.AddScoped<RecipeEditorService>();
+builder.Services.AddScoped<IRecipeEditorStore, RecipeEditorStore>();
 builder.Services.AddScoped<RecipeLifecycleService>();
 builder.Services.AddScoped<IRecipeLibraryStore, RecipeLibraryStore>();
 builder.Services.AddScoped<RecipeLibraryService>();
@@ -614,6 +618,25 @@ app.MapGet("/api/camps/{campId:guid}/recipes", async (
         campId, Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken);
     return result.IsAuthorized ? Results.Ok(result.Entries) : Results.Forbid();
 }).RequireAuthorization();
+app.MapGet("/api/camps/{campId:guid}/recipes/{recipeId:guid}/draft", async (
+    Guid campId, Guid recipeId, ClaimsPrincipal principal, RecipeEditorService recipes,
+    CancellationToken cancellationToken) =>
+    ToRecipeEditorResult(await recipes.FindCampAsync(
+        campId, recipeId, Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken)))
+    .RequireAuthorization();
+app.MapPost("/api/camps/{campId:guid}/recipes/drafts", async (
+    Guid campId, RecipeEditorContent request, ClaimsPrincipal principal, RecipeEditorService recipes,
+    CancellationToken cancellationToken) =>
+    ToRecipeEditorResult(await recipes.CreateCampAsync(
+        campId, request, Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken)))
+    .RequireAuthorization();
+app.MapPut("/api/camps/{campId:guid}/recipes/{recipeId:guid}/draft", async (
+    Guid campId, Guid recipeId, SaveRecipeEditorRequest request, ClaimsPrincipal principal,
+    RecipeEditorService recipes, CancellationToken cancellationToken) =>
+    ToRecipeEditorResult(await recipes.SaveCampAsync(
+        campId, recipeId, request.ExpectedVersion, request.Content,
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken)))
+    .RequireAuthorization();
 app.MapGet("/api/ingredients/central", async (
     ClaimsPrincipal principal, IngredientCatalogService ingredients, CancellationToken cancellationToken) =>
 {
@@ -1010,6 +1033,19 @@ static IResult ToIngredientContributionResult(IngredientContributionMutationResu
         }),
     };
 
+static IResult ToRecipeEditorResult(RecipeEditorResult result) => result.Status switch
+{
+    RecipeEditorStatus.Found or RecipeEditorStatus.Created or RecipeEditorStatus.Saved => Results.Ok(result.Draft),
+    RecipeEditorStatus.Forbidden => Results.Forbid(),
+    RecipeEditorStatus.NotFound => Results.NotFound(),
+    RecipeEditorStatus.VersionConflict => Results.Conflict(new
+    {
+        code = "recipe_draft_version_conflict",
+        currentDraft = result.Draft,
+    }),
+    _ => Results.BadRequest(),
+};
+
 static void Configure(DbContextOptionsBuilder options, DbConnection connection, string provider, string module)
 {
     if (provider.Equals("PostgreSql", StringComparison.OrdinalIgnoreCase))
@@ -1029,3 +1065,5 @@ static void Configure(DbContextOptionsBuilder options, DbConnection connection, 
         });
     }
 }
+
+public sealed record SaveRecipeEditorRequest(long ExpectedVersion, RecipeEditorContent Content);

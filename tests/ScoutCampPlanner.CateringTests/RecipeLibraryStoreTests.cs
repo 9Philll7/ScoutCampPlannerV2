@@ -4,6 +4,7 @@ using System.Data.Common;
 using ScoutCampPlanner.Catering.Application.Recipes;
 using ScoutCampPlanner.Catering.Domain;
 using ScoutCampPlanner.Catering.Infrastructure;
+using ScoutCampPlanner.Catering.Infrastructure.Ingredients;
 using ScoutCampPlanner.Catering.Infrastructure.Recipes;
 using Xunit;
 
@@ -374,6 +375,7 @@ public sealed class RecipeLibraryStoreTests
         public async Task<Guid> PublishAsync(RecipeScopeType scope, Guid? scopeId, string name)
         {
             Guid ingredientId = Guid.NewGuid();
+            Guid ingredientRevisionId = Guid.NewGuid();
             Guid unitId = Guid.NewGuid();
             IngredientScopeType ingredientScope = scope switch
             {
@@ -383,15 +385,43 @@ public sealed class RecipeLibraryStoreTests
                 _ => throw new ArgumentOutOfRangeException(nameof(scope)),
             };
             database.AddRange(
-                new BaseIngredient(ingredientId, ingredientScope, scopeId, $"Zutat {name}"),
-                new MeasurementUnit(unitId, $"Gramm {name}", $"g{name[0]}", MeasurementDimension.Mass, 1m),
-                new IngredientUnitConversion(ingredientId, unitId, 1m));
+                new IngredientIdentityRecord
+                {
+                    Id = ingredientId,
+                    ScopeType = (int)ingredientScope,
+                    ScopeId = scopeId,
+                    Status = (int)IngredientIdentityStatus.Active,
+                },
+                new IngredientRevisionRecord
+                {
+                    Id = ingredientRevisionId,
+                    IngredientId = ingredientId,
+                    RevisionNumber = 1,
+                    State = (int)IngredientRevisionState.Published,
+                    Name = $"Zutat {name}",
+                    NormalizedName = $"ZUTAT {name.ToUpperInvariant()}",
+                    CategoryId = Guid.Parse("51111111-1111-1111-1111-000000000002"),
+                    BaseUnitId = unitId,
+                    RowVersion = 1,
+                    CreatedAtUtc = Now,
+                    CreatedBy = UserId,
+                    UpdatedAtUtc = Now,
+                    UpdatedBy = UserId,
+                    PublishedAtUtc = Now,
+                    PublishedBy = UserId,
+                },
+                new MeasurementUnit(unitId, $"Gramm {name}", $"g{name[0]}", MeasurementDimension.Mass, 1m));
             await database.SaveChangesAsync(TestContext.Current.CancellationToken);
+            IngredientIdentityRecord identity = await database.Set<IngredientIdentityRecord>()
+                .SingleAsync(value => value.Id == ingredientId, TestContext.Current.CancellationToken);
+            identity.CurrentPublishedRevisionId = ingredientRevisionId;
+            await database.SaveChangesAsync(TestContext.Current.CancellationToken);
+            database.ChangeTracker.Clear();
             var draft = new RecipeDraft(Guid.NewGuid(), scope, scopeId, RecipeType.PortionBased, name);
             draft.SetDetails("Beschreibung", "Quelle", null);
             draft.ConfigurePortionReference(10m, true);
             draft.AddIngredientPosition(new RecipeIngredientPosition(
-                Guid.NewGuid(), draft.Id, null, ingredientId, 1_000m, unitId, 0));
+                Guid.NewGuid(), draft.Id, null, ingredientRevisionId, 1_000m, unitId, 0));
             await Drafts.CreateAsync(draft, UserId, Now, TestContext.Current.CancellationToken);
             RecipePublicationResult result = await publisher.PublishAsync(
                 draft.Id, 0, UserId, Now, acknowledgeWarnings: true,

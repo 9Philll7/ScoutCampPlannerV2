@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using ScoutCampPlanner.Catering.Infrastructure;
+using ScoutCampPlanner.Catering.Infrastructure.Ingredients;
 using ScoutCampPlanner.Catering.Infrastructure.Recipes;
 using ScoutCampPlanner.Catering.Domain;
 using Xunit;
@@ -74,18 +75,41 @@ public sealed class RecipePersistenceTests
     {
         await using var fixture = await DatabaseFixture.CreateAsync();
         RecipeRecord draft = CreateDraftRecord();
-        var ingredient = new BaseIngredient(Guid.NewGuid(), IngredientScopeType.Central, null, "Reis");
+        Guid ingredientId = Guid.NewGuid();
+        Guid ingredientRevisionId = Guid.NewGuid();
         var unit = new MeasurementUnit(Guid.NewGuid(), "Gramm", "g", MeasurementDimension.Mass, 1m);
-        fixture.Database.AddRange(draft, ingredient, unit);
+        fixture.Database.AddRange(draft, unit,
+            new IngredientIdentityRecord
+            {
+                Id = ingredientId,
+                ScopeType = (int)IngredientScopeType.Central,
+                Status = (int)IngredientIdentityStatus.Active,
+            },
+            new IngredientRevisionRecord
+            {
+                Id = ingredientRevisionId,
+                IngredientId = ingredientId,
+                RevisionNumber = 1,
+                State = (int)IngredientRevisionState.Published,
+                Name = "Reis",
+                NormalizedName = "REIS",
+                CategoryId = Guid.Parse("51111111-1111-1111-1111-000000000002"),
+                BaseUnitId = unit.Id,
+                RowVersion = 1,
+                CreatedBy = Guid.NewGuid(),
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedBy = Guid.NewGuid(),
+                UpdatedAtUtc = DateTimeOffset.UtcNow,
+            });
         fixture.Database.Set<RecipeIngredientPositionRecord>().AddRange(
             new RecipeIngredientPositionRecord
             {
-                Id = Guid.NewGuid(), RecipeId = draft.Id, BaseIngredientId = ingredient.Id,
+                Id = Guid.NewGuid(), RecipeId = draft.Id, IngredientRevisionId = ingredientRevisionId,
                 UnitId = unit.Id, Quantity = 1m, SortOrder = 0,
             },
             new RecipeIngredientPositionRecord
             {
-                Id = Guid.NewGuid(), RecipeId = draft.Id, BaseIngredientId = ingredient.Id,
+                Id = Guid.NewGuid(), RecipeId = draft.Id, IngredientRevisionId = ingredientRevisionId,
                 UnitId = unit.Id, Quantity = 2m, SortOrder = 1,
             });
 

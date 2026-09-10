@@ -391,7 +391,7 @@ public sealed class RecipeDraftStore(CateringDbContext database) : IRecipeDraftS
         foreach (RecipeIngredientPositionRecord value in positions)
         {
             var position = new RecipeIngredientPosition(
-                value.Id, value.RecipeId, value.GroupId, value.BaseIngredientId, value.Quantity, value.UnitId,
+                value.Id, value.RecipeId, value.GroupId, value.IngredientRevisionId, value.Quantity, value.UnitId,
                 value.SortOrder, (ScalingMode)value.ScalingMode, (AgeGroupScalingMode)value.AgeGroupScaling,
                 value.StepSize.HasValue || value.QuantityPerStep.HasValue
                     ? new StepwiseScaling(value.StepSize, value.QuantityPerStep)
@@ -399,7 +399,7 @@ public sealed class RecipeDraftStore(CateringDbContext database) : IRecipeDraftS
             foreach (RecipeIngredientReplacementRecord replacement in replacements
                          .Where(item => item.IngredientPositionId == value.Id))
                 position.AddReplacementRule(new IngredientReplacementRule(
-                    replacement.Id, replacement.IngredientPositionId, replacement.ReplacementBaseIngredientId,
+                    replacement.Id, replacement.IngredientPositionId, replacement.ReplacementIngredientRevisionId,
                     replacement.ReplacementQuantity, replacement.ReplacementUnitId,
                     conflicts.GetValueOrDefault(replacement.Id) ?? []));
             draft.AddIngredientPosition(position);
@@ -540,7 +540,7 @@ public sealed class RecipeDraftStore(CateringDbContext database) : IRecipeDraftS
         database.Add(new RecipeIngredientPositionRecord
         {
             Id = position.Id, RecipeId = position.RecipeId, GroupId = position.GroupId,
-            BaseIngredientId = position.BaseIngredientId, Quantity = position.Quantity, UnitId = position.UnitId,
+            IngredientRevisionId = position.IngredientRevisionId, Quantity = position.Quantity, UnitId = position.UnitId,
             SortOrder = position.SortOrder, ScalingMode = (int)position.ScalingMode,
             AgeGroupScaling = (int)position.AgeGroupScaling, StepSize = position.StepwiseScaling?.StepSize,
             QuantityPerStep = position.StepwiseScaling?.QuantityPerStep,
@@ -550,7 +550,7 @@ public sealed class RecipeDraftStore(CateringDbContext database) : IRecipeDraftS
             database.Add(new RecipeIngredientReplacementRecord
             {
                 Id = replacement.Id, IngredientPositionId = replacement.IngredientPositionId,
-                ReplacementBaseIngredientId = replacement.ReplacementBaseIngredientId,
+                ReplacementIngredientRevisionId = replacement.ReplacementIngredientRevisionId,
                 ReplacementQuantity = replacement.ReplacementQuantity, ReplacementUnitId = replacement.ReplacementUnitId,
             });
             foreach (ConflictReference conflict in replacement.Conflicts) AddIngredientConflict(replacement.Id, conflict);

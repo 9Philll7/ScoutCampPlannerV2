@@ -17,6 +17,7 @@ import { concatMap, forkJoin } from 'rxjs';
 import { AuthenticationApiService, AuthenticatedUser } from './features/authentication/authentication-api.service';
 import { CampAdministratorOption, CampApiService, CampMeal, CampMealType, CampPlanningSummary, CampStageFoodFactor, CampSummary, IngredientCatalogEntry, IngredientConflictType, IngredientScope, MeasurementDimension, ParticipantEstimate, StructureConfiguration, StructureNodeSummary, TenantOption, TenantStageFoodFactor, WeightedStageTotal } from './features/camp/camp-api.service';
 import { IngredientRevisionEditorComponent } from './features/ingredients/ingredient-revision-editor.component';
+import { RecipeEditorComponent } from './features/recipes/recipe-editor.component';
 import { SetupApiService } from './features/setup/setup-api.service';
 import { ActionIconComponent } from './shared/action-icon.component';
 
@@ -29,7 +30,7 @@ type CampSection = 'general' | 'structure' | 'catering';
   standalone: true,
   imports: [FormsModule, MatButtonModule, MatButtonToggleModule, MatCardModule, MatCheckboxModule, MatFormFieldModule, MatInputModule,
     MatProgressSpinnerModule, MatSelectModule, MatToolbarModule, MatTooltipModule, MatDatepickerModule,
-    ActionIconComponent, IngredientRevisionEditorComponent],
+    ActionIconComponent, IngredientRevisionEditorComponent, RecipeEditorComponent],
   providers: [provideNativeDateAdapter(), { provide: MAT_DATE_LOCALE, useValue: 'de-AT' }],
   template: `
     <mat-toolbar color="primary" class="app-toolbar">
@@ -633,6 +634,9 @@ type CampSection = 'general' | 'structure' | 'catering';
                           }
                         </tbody></table>
                       } @else { <p>Noch keine Verpflegungseinheiten vorhanden.</p> }
+                    </section>
+                    <section class="settings-section">
+                      <scp-recipe-editor [campId]="camp.id" [disabled]="!camp.canEdit || camp.isFrozen"/>
                     </section>
                     <section class="settings-section">
                       <div class="section-heading"><div><p class="eyebrow">Zutatenverwaltung</p><h3>Eigene Lagerzutaten</h3></div></div>

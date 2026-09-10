@@ -12,6 +12,7 @@ public sealed class PlatformRecipeAuthorization(PlatformDbContext database) :
     IRecipeChangeSubmissionAuthorization,
     ICampRecipeNoteAuthorization,
     IRecipeCatalogAuthorization,
+    IRecipeEditorAuthorization,
     IIngredientManagementAuthorization
 {
     public async Task<bool> CanPermanentlyDeleteCentralRecipesAsync(
@@ -95,6 +96,10 @@ public sealed class PlatformRecipeAuthorization(PlatformDbContext database) :
     public Task<bool> CanReadCampAsync(
         Guid actorUserId, Guid campId, CancellationToken cancellationToken = default) =>
         HasCampPermissionAsync(actorUserId, campId, Permissions.Recipes.Read, cancellationToken);
+
+    public Task<bool> CanEditCampAsync(
+        Guid actorUserId, Guid campId, CancellationToken cancellationToken = default) =>
+        HasCampPermissionAsync(actorUserId, campId, Permissions.Recipes.Edit, cancellationToken);
 
     public async Task<bool> CanManageCentralAsync(
         Guid actorUserId, CancellationToken cancellationToken = default)

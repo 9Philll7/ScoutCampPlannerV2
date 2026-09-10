@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ScoutCampPlanner.Catering.Domain;
+using ScoutCampPlanner.Catering.Infrastructure.Ingredients;
 
 namespace ScoutCampPlanner.Catering.Infrastructure.Recipes;
 
@@ -132,14 +133,14 @@ internal static class RecipePersistenceConfiguration
             entity.HasIndex(x => new { x.RecipeId, x.SortOrder }).IsUnique()
                 .HasDatabaseName("IX_RecipeIngredientPositions_Ungrouped_SortOrder")
                 .HasFilter("\"GroupId\" IS NULL");
-            entity.HasIndex(x => new { x.RecipeId, x.GroupId, x.BaseIngredientId }).IsUnique()
+            entity.HasIndex(x => new { x.RecipeId, x.GroupId, x.IngredientRevisionId }).IsUnique()
                 .HasFilter("\"GroupId\" IS NOT NULL");
-            entity.HasIndex(x => new { x.RecipeId, x.BaseIngredientId }).IsUnique()
-                .HasDatabaseName("IX_RecipeIngredientPositions_Ungrouped_BaseIngredientId")
+            entity.HasIndex(x => new { x.RecipeId, x.IngredientRevisionId }).IsUnique()
+                .HasDatabaseName("IX_RecipeIngredientPositions_Ungrouped_IngredientRevisionId")
                 .HasFilter("\"GroupId\" IS NULL");
             entity.HasOne<RecipeRecord>().WithMany().HasForeignKey(x => x.RecipeId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<RecipeGroupRecord>().WithMany().HasForeignKey(x => x.GroupId).OnDelete(DeleteBehavior.SetNull);
-            entity.HasOne<BaseIngredient>().WithMany().HasForeignKey(x => x.BaseIngredientId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<IngredientRevisionRecord>().WithMany().HasForeignKey(x => x.IngredientRevisionId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<MeasurementUnit>().WithMany().HasForeignKey(x => x.UnitId).OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<RecipeIngredientReplacementRecord>(entity =>
@@ -148,7 +149,7 @@ internal static class RecipePersistenceConfiguration
             entity.HasKey(x => x.Id);
             entity.Property(x => x.ReplacementQuantity).HasPrecision(18, 6);
             entity.HasOne<RecipeIngredientPositionRecord>().WithMany().HasForeignKey(x => x.IngredientPositionId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne<BaseIngredient>().WithMany().HasForeignKey(x => x.ReplacementBaseIngredientId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<IngredientRevisionRecord>().WithMany().HasForeignKey(x => x.ReplacementIngredientRevisionId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<MeasurementUnit>().WithMany().HasForeignKey(x => x.ReplacementUnitId).OnDelete(DeleteBehavior.Restrict);
         });
         ConfigureIngredientReplacementConflicts(modelBuilder);

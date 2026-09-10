@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ScoutCampPlanner.Catering.Application.Recipes;
 using ScoutCampPlanner.Catering.Domain;
+using ScoutCampPlanner.Catering.Infrastructure.Ingredients;
 
 namespace ScoutCampPlanner.Catering.Infrastructure.Recipes;
 
@@ -10,27 +11,44 @@ public sealed class EfRecipeReferences(CateringDbContext database) :
     IRecipeSnapshotSource,
     IRecipeRevisionSource
 {
-    public IngredientDescriptor? FindIngredient(Guid ingredientId) => database.BaseIngredients.AsNoTracking()
-        .Where(value => value.Id == ingredientId)
-        .Select(value => new IngredientDescriptor(value.Id, value.ScopeType, value.ScopeId))
+    public IngredientDescriptor? FindIngredient(Guid ingredientRevisionId) =>
+        (from revision in database.Set<IngredientRevisionRecord>().AsNoTracking()
+         join identity in database.Set<IngredientIdentityRecord>().AsNoTracking()
+             on revision.IngredientId equals identity.Id
+         where revision.Id == ingredientRevisionId &&
+               revision.State == (int)IngredientRevisionState.Published
+         select new IngredientDescriptor(
+             revision.Id, (IngredientScopeType)identity.ScopeType, identity.ScopeId))
         .SingleOrDefault();
 
-    public bool IsUnitAvailableForIngredient(Guid ingredientId, Guid unitId) =>
-        database.IngredientUnitConversions.AsNoTracking()
-            .Any(value => value.BaseIngredientId == ingredientId && value.UnitId == unitId);
+    public bool IsUnitAvailableForIngredient(Guid ingredientRevisionId, Guid unitId)
+    {
+        IngredientRevisionRecord? revision = database.Set<IngredientRevisionRecord>().AsNoTracking()
+            .SingleOrDefault(value => value.Id == ingredientRevisionId &&
+                                      value.State == (int)IngredientRevisionState.Published);
+        if (revision is null) return false;
+        if (revision.BaseUnitId == unitId) return true;
+        if (database.Set<IngredientRevisionUnitConversionRecord>().AsNoTracking()
+            .Any(value => value.IngredientRevisionId == ingredientRevisionId && value.SourceUnitId == unitId))
+            return true;
+        MeasurementUnit[] units = database.MeasurementUnits.AsNoTracking()
+            .Where(value => value.Id == revision.BaseUnitId || value.Id == unitId).ToArray();
+        return units.Length == 2 && IsAutomaticUnitPair(units[0], units[1]);
+    }
 
-    public IReadOnlySet<ConflictReference> GetIngredientConflicts(Guid ingredientId)
+    public IReadOnlySet<ConflictReference> GetIngredientConflicts(Guid ingredientRevisionId)
     {
         var result = new HashSet<ConflictReference>();
-        result.UnionWith(database.BaseIngredientAllergens.AsNoTracking()
-            .Where(value => value.BaseIngredientId == ingredientId)
+        result.UnionWith(database.Set<IngredientRevisionAllergenRecord>().AsNoTracking()
+            .Where(value => value.IngredientRevisionId == ingredientRevisionId &&
+                (value.State == (int)IngredientPropertyState.Contains ||
+                 value.State == (int)IngredientPropertyState.MayContain))
             .Select(value => new ConflictReference(ConflictType.Allergen, value.AllergenId)));
-        result.UnionWith(database.BaseIngredientIntolerances.AsNoTracking()
-            .Where(value => value.BaseIngredientId == ingredientId)
+        result.UnionWith(database.Set<IngredientRevisionIntoleranceRecord>().AsNoTracking()
+            .Where(value => value.IngredientRevisionId == ingredientRevisionId &&
+                (value.State == (int)IngredientPropertyState.Contains ||
+                 value.State == (int)IngredientPropertyState.MayContain))
             .Select(value => new ConflictReference(ConflictType.Intolerance, value.IntoleranceId)));
-        result.UnionWith(database.BaseIngredientDietaryRequirements.AsNoTracking()
-            .Where(value => value.BaseIngredientId == ingredientId)
-            .Select(value => new ConflictReference(ConflictType.DietaryRequirement, value.DietaryRequirementId)));
         return result;
     }
 
@@ -88,20 +106,35 @@ public sealed class EfRecipeReferences(CateringDbContext database) :
         return false;
     }
 
-    public IngredientSnapshotSource GetIngredient(Guid ingredientId)
+    public IngredientSnapshotSource GetIngredient(Guid ingredientRevisionId)
     {
-        BaseIngredient ingredient = database.BaseIngredients.AsNoTracking()
-            .Single(value => value.Id == ingredientId);
+        IngredientRevisionRecord ingredient = database.Set<IngredientRevisionRecord>().AsNoTracking()
+            .Single(value => value.Id == ingredientRevisionId &&
+                             value.State == (int)IngredientRevisionState.Published);
         return new IngredientSnapshotSource(
             ingredient.Id, ingredient.Name,
             GetIngredientConflicts(ingredient.Id).OrderBy(value => value.Type).ThenBy(value => value.Id).ToArray());
     }
 
-    public IngredientUnitSnapshot GetIngredientUnit(Guid ingredientId, Guid unitId)
+    public IngredientUnitSnapshot GetIngredientUnit(Guid ingredientRevisionId, Guid unitId)
     {
-        IngredientUnitConversion conversion = database.IngredientUnitConversions.AsNoTracking()
-            .Single(value => value.BaseIngredientId == ingredientId && value.UnitId == unitId);
-        return new IngredientUnitSnapshot(GetUnit(unitId), conversion.ReferenceQuantityPerUnit);
+        IngredientRevisionRecord revision = database.Set<IngredientRevisionRecord>().AsNoTracking()
+            .Single(value => value.Id == ingredientRevisionId &&
+                             value.State == (int)IngredientRevisionState.Published);
+        if (revision.BaseUnitId == unitId)
+            return new IngredientUnitSnapshot(GetUnit(unitId), 1m);
+        decimal? explicitFactor = database.Set<IngredientRevisionUnitConversionRecord>().AsNoTracking()
+            .Where(value => value.IngredientRevisionId == ingredientRevisionId && value.SourceUnitId == unitId)
+            .Select(value => (decimal?)value.FactorToBaseUnit).SingleOrDefault();
+        if (explicitFactor.HasValue)
+            return new IngredientUnitSnapshot(GetUnit(unitId), explicitFactor.Value);
+        MeasurementUnit baseUnit = database.MeasurementUnits.AsNoTracking()
+            .Single(value => value.Id == revision.BaseUnitId);
+        MeasurementUnit selectedUnit = database.MeasurementUnits.AsNoTracking().Single(value => value.Id == unitId);
+        if (!IsAutomaticUnitPair(baseUnit, selectedUnit))
+            throw new InvalidOperationException("The unit is not available for this ingredient revision.");
+        return new IngredientUnitSnapshot(
+            GetUnit(unitId), selectedUnit.BaseUnitFactor / baseUnit.BaseUnitFactor);
     }
 
     public MeasurementUnitSnapshot GetUnit(Guid unitId)
@@ -136,4 +169,9 @@ public sealed class EfRecipeReferences(CateringDbContext database) :
         if (!edges.TryGetValue(source, out HashSet<Guid>? targets)) edges[source] = targets = [];
         targets.Add(target);
     }
+
+    private static bool IsAutomaticUnitPair(MeasurementUnit first, MeasurementUnit second) =>
+        first.Dimension == second.Dimension &&
+        ((first.Symbol is "g" or "kg" && second.Symbol is "g" or "kg") ||
+         (first.Symbol is "ml" or "l" && second.Symbol is "ml" or "l"));
 }

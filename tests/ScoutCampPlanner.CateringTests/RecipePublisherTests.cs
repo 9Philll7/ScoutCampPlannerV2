@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ScoutCampPlanner.Catering.Application.Recipes;
 using ScoutCampPlanner.Catering.Domain;
 using ScoutCampPlanner.Catering.Infrastructure;
+using ScoutCampPlanner.Catering.Infrastructure.Ingredients;
 using ScoutCampPlanner.Catering.Infrastructure.Recipes;
 using Xunit;
 
@@ -14,20 +15,14 @@ public sealed class RecipePublisherTests
     public async Task Warning_requires_acknowledgement_and_published_snapshot_normalizes_standard_servings()
     {
         await using var fixture = await DatabaseFixture.CreateAsync();
-        Guid ingredientId = Guid.NewGuid();
-        Guid unitId = Guid.NewGuid();
-        fixture.Database.AddRange(
-            new BaseIngredient(ingredientId, IngredientScopeType.Tenant, fixture.TenantId, "Reis"),
-            new MeasurementUnit(unitId, "Gramm", "g", MeasurementDimension.Mass, 1m),
-            new IngredientUnitConversion(ingredientId, unitId, 1m));
-        await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+        (Guid ingredientRevisionId, Guid unitId) = await fixture.AddPublishedIngredientAsync("Reis");
         var draft = new RecipeDraft(
             Guid.NewGuid(), RecipeScopeType.Tenant, fixture.TenantId, RecipeType.PortionBased, "Reisgericht");
         draft.SetDetails("Beschreibung", null, null);
         draft.ConfigurePortionReference(
             20m, true, new AuthoringStageSnapshot(Guid.NewGuid(), "Biber", 0.5m));
         draft.AddIngredientPosition(new RecipeIngredientPosition(
-            Guid.NewGuid(), draft.Id, null, ingredientId, 2_000m, unitId, 0));
+            Guid.NewGuid(), draft.Id, null, ingredientRevisionId, 2_000m, unitId, 0));
         await fixture.Store.CreateAsync(
             draft, fixture.UserId, fixture.Now, TestContext.Current.CancellationToken);
 
@@ -107,19 +102,13 @@ public sealed class RecipePublisherTests
     public async Task Archived_published_recipe_reactivates_as_active_and_keeps_history()
     {
         await using var fixture = await DatabaseFixture.CreateAsync();
-        Guid ingredientId = Guid.NewGuid();
-        Guid unitId = Guid.NewGuid();
-        fixture.Database.AddRange(
-            new BaseIngredient(ingredientId, IngredientScopeType.Tenant, fixture.TenantId, "Reis"),
-            new MeasurementUnit(unitId, "Gramm", "g", MeasurementDimension.Mass, 1m),
-            new IngredientUnitConversion(ingredientId, unitId, 1m));
-        await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+        (Guid ingredientRevisionId, Guid unitId) = await fixture.AddPublishedIngredientAsync("Reis");
         var draft = new RecipeDraft(
             Guid.NewGuid(), RecipeScopeType.Tenant, fixture.TenantId, RecipeType.PortionBased, "Reisgericht");
         draft.SetDetails("Beschreibung", "Quelle", null);
         draft.ConfigurePortionReference(10m, true);
         draft.AddIngredientPosition(new RecipeIngredientPosition(
-            Guid.NewGuid(), draft.Id, null, ingredientId, 1_000m, unitId, 0));
+            Guid.NewGuid(), draft.Id, null, ingredientRevisionId, 1_000m, unitId, 0));
         await fixture.Store.CreateAsync(
             draft, fixture.UserId, fixture.Now, TestContext.Current.CancellationToken);
         RecipePublicationResult published = await fixture.Publisher.PublishAsync(
@@ -153,19 +142,13 @@ public sealed class RecipePublisherTests
     public async Task Reset_to_draft_is_blocked_when_revision_has_a_derived_recipe()
     {
         await using var fixture = await DatabaseFixture.CreateAsync();
-        Guid ingredientId = Guid.NewGuid();
-        Guid unitId = Guid.NewGuid();
-        fixture.Database.AddRange(
-            new BaseIngredient(ingredientId, IngredientScopeType.Tenant, fixture.TenantId, "Nudeln"),
-            new MeasurementUnit(unitId, "Gramm", "g", MeasurementDimension.Mass, 1m),
-            new IngredientUnitConversion(ingredientId, unitId, 1m));
-        await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+        (Guid ingredientRevisionId, Guid unitId) = await fixture.AddPublishedIngredientAsync("Nudeln");
         var source = new RecipeDraft(
             Guid.NewGuid(), RecipeScopeType.Tenant, fixture.TenantId, RecipeType.PortionBased, "Nudelgericht");
         source.SetDetails("Beschreibung", "Quelle", null);
         source.ConfigurePortionReference(10m, true);
         source.AddIngredientPosition(new RecipeIngredientPosition(
-            Guid.NewGuid(), source.Id, null, ingredientId, 1_000m, unitId, 0));
+            Guid.NewGuid(), source.Id, null, ingredientRevisionId, 1_000m, unitId, 0));
         await fixture.Store.CreateAsync(
             source, fixture.UserId, fixture.Now, TestContext.Current.CancellationToken);
         RecipePublicationResult published = await fixture.Publisher.PublishAsync(
@@ -212,6 +195,48 @@ public sealed class RecipePublisherTests
             var publisher = new RecipePublisher(
                 database, store, new RecipePublicationValidator(references), new RecipeSnapshotBuilder(references));
             return new DatabaseFixture(connection, database, store, publisher);
+        }
+
+        public async Task<(Guid RevisionId, Guid UnitId)> AddPublishedIngredientAsync(string name)
+        {
+            Guid ingredientId = Guid.NewGuid();
+            Guid revisionId = Guid.NewGuid();
+            Guid unitId = Guid.NewGuid();
+            Database.AddRange(
+                new MeasurementUnit(unitId, $"Gramm {ingredientId:N}", $"g-{ingredientId:N}"[..20],
+                    MeasurementDimension.Mass, 1m),
+                new IngredientIdentityRecord
+                {
+                    Id = ingredientId,
+                    ScopeType = (int)IngredientScopeType.Tenant,
+                    ScopeId = TenantId,
+                    Status = (int)IngredientIdentityStatus.Active,
+                },
+                new IngredientRevisionRecord
+                {
+                    Id = revisionId,
+                    IngredientId = ingredientId,
+                    RevisionNumber = 1,
+                    State = (int)IngredientRevisionState.Published,
+                    Name = name,
+                    NormalizedName = name.ToUpperInvariant(),
+                    CategoryId = Guid.Parse("51111111-1111-1111-1111-000000000002"),
+                    BaseUnitId = unitId,
+                    RowVersion = 1,
+                    CreatedAtUtc = Now,
+                    CreatedBy = UserId,
+                    UpdatedAtUtc = Now,
+                    UpdatedBy = UserId,
+                    PublishedAtUtc = Now,
+                    PublishedBy = UserId,
+                });
+            await Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+            IngredientIdentityRecord identity = await Database.Set<IngredientIdentityRecord>()
+                .SingleAsync(value => value.Id == ingredientId, TestContext.Current.CancellationToken);
+            identity.CurrentPublishedRevisionId = revisionId;
+            await Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+            Database.ChangeTracker.Clear();
+            return (revisionId, unitId);
         }
 
         public async ValueTask DisposeAsync()

@@ -365,14 +365,31 @@ Erst nach Domain und Migration:
 
 Kein Auto-Save einführen.
 
-### 9. Rezeptintegration separat durchführen
+### 9. Rezeptintegration schrittweise fortführen
 
-ADR-021 verlangt künftig:
+Umgesetzt:
 
-- Referenz auf eine konkrete veröffentlichte Zutatenrevision
-- optionaler `variant_key`
+- Rezeptpositionen referenzieren eine konkrete veröffentlichte
+  Zutatenrevision statt der alten `BaseIngredient`-Identität.
+- Bestehende Daten bleiben erhalten, weil die initial erzeugte Revision dieselbe
+  ID wie die bisher referenzierte Basiszutat besitzt.
+- SQLite und PostgreSQL besitzen provider-spezifische Migrationen für die
+  geänderten Fremdschlüssel.
+- Der erste Lager-Rezepteditor kann Entwürfe anlegen, öffnen und explizit
+  speichern sowie veröffentlichte Zutaten mit Menge und Einheit hinzufügen.
+- Die Zutatensuche priorisiert Lager, danach Mandant und zuletzt den zentralen
+  Katalog.
 
-Die funktionale Umstellung des Rezepteditors ist ein eigener Auftrag. Bis dahin bestehende Rezeptfunktionen nicht unkontrolliert brechen. Zentral veröffentlichte Rezepte dürfen weiterhin nur zentrale Zutatenrevisionen referenzieren.
+Noch offen:
+
+- Auswahl und Persistenz eines optionalen `variant_key`
+- Gruppen, Ersatzregeln und Unterrezepte in der Oberfläche
+- Publikationsworkflow und Validierungsanzeige im Rezepteditor
+- Aktualisierung eines Entwurfs auf eine neuere Zutatenrevision als bewusster
+  Benutzerschritt
+
+Zentral veröffentlichte Rezepte dürfen weiterhin nur zentrale
+Zutatenrevisionen referenzieren.
 
 ### 10. Offline-Pakete erweitern
 
@@ -392,7 +409,8 @@ Offline darf keine fehlende Stammdatenreferenz aus der Cloud nachladen müssen.
 - Alte Varianten hängen direkt an `BaseIngredient`; neue Varianten gehören zu einer Revision.
 - Alte Konfliktzuordnungen sind reine Ja/Nein-Beziehungen; das neue Modell benötigt Zustand und Quelle.
 - Direkte Zutatenzuordnungen zu `DietaryRequirement` sollen langfristig durch berechnete Eignung ersetzt werden.
-- Bestehende Rezepte referenzieren noch keine Zutatenrevision und keinen `variant_key`.
+- Rezeptpositionen referenzieren Zutatenrevisionen; die optionale Auswahl eines
+  `variant_key` ist noch nicht umgesetzt.
 - `Guid.NewGuid()` wird derzeit beim Kopieren von Varianten in einen neuen Draft verwendet. Vor Persistenzintegration prüfen, ob IDs durch den Application Layer bereitgestellt werden sollen, damit Erzeugung und Tests vollständig deterministisch bleiben.
 - Der vollständige Drei-Wege-Merge und `merged_central_revision_id` sind noch nicht implementiert.
 - Allgemeine Einheiten, revisionsgebundene Zutatenumrechnungen sowie

@@ -95,7 +95,7 @@ public sealed class RecipeCalculator(IRecipeSnapshotSource snapshots)
                     referenceQuantity, position.ScalingMode, position.StepwiseScaling,
                     positionRatio, positionDemand);
                 result.Add(new CalculatedIngredient(
-                    ingredient.IngredientId, ingredient.Name, quantity, unit.Unit,
+                    ingredient.IngredientRevisionId, ingredient.Name, quantity, unit.Unit,
                     ingredientConflicts,
                     path.ToArray(), position.Id, replacement?.Id));
             }

@@ -55,7 +55,7 @@ internal sealed class RecipeIngredientPositionRecord
     public Guid Id { get; set; }
     public Guid RecipeId { get; set; }
     public Guid? GroupId { get; set; }
-    public Guid? BaseIngredientId { get; set; }
+    public Guid? IngredientRevisionId { get; set; }
     public decimal? Quantity { get; set; }
     public Guid? UnitId { get; set; }
     public int SortOrder { get; set; }
@@ -69,7 +69,7 @@ internal sealed class RecipeIngredientReplacementRecord
 {
     public Guid Id { get; set; }
     public Guid IngredientPositionId { get; set; }
-    public Guid? ReplacementBaseIngredientId { get; set; }
+    public Guid? ReplacementIngredientRevisionId { get; set; }
     public decimal? ReplacementQuantity { get; set; }
     public Guid? ReplacementUnitId { get; set; }
 }

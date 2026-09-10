@@ -178,12 +178,12 @@ public static class RecipeDraftCopy
         Guid? groupId)
     {
         var target = new RecipeIngredientPosition(
-            Guid.NewGuid(), recipeId, groupId, source.Ingredient.IngredientId, source.Quantity,
+            Guid.NewGuid(), recipeId, groupId, source.Ingredient.IngredientRevisionId, source.Quantity,
             source.Unit.Unit.UnitId, source.SortOrder, source.ScalingMode, source.AgeGroupScaling,
             source.StepwiseScaling);
         foreach (IngredientReplacementSnapshot replacement in source.Replacements)
             target.AddReplacementRule(new IngredientReplacementRule(
-                Guid.NewGuid(), target.Id, replacement.Ingredient.IngredientId, replacement.Quantity,
+                Guid.NewGuid(), target.Id, replacement.Ingredient.IngredientRevisionId, replacement.Quantity,
                 replacement.Unit.Unit.UnitId, replacement.ApplicableConflicts));
         return target;
     }

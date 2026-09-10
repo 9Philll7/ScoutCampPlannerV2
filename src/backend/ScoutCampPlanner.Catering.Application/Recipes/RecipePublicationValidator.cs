@@ -71,8 +71,8 @@ public sealed class RecipePublicationValidator(IRecipeValidationReferences refer
         foreach (RecipeIngredientPosition position in draft.IngredientPositions)
         {
             var context = Context("positionId", position.Id);
-            IngredientDescriptor? ingredient = position.BaseIngredientId.HasValue
-                ? references.FindIngredient(position.BaseIngredientId.Value)
+            IngredientDescriptor? ingredient = position.IngredientRevisionId.HasValue
+                ? references.FindIngredient(position.IngredientRevisionId.Value)
                 : null;
             if (ingredient is null)
                 AddError(issues, RecipeValidationCodes.IngredientMissing, context);
@@ -80,8 +80,8 @@ public sealed class RecipePublicationValidator(IRecipeValidationReferences refer
                 AddError(issues, RecipeValidationCodes.IngredientScopeForbidden, context);
             if (position.Quantity is null or <= 0)
                 AddError(issues, RecipeValidationCodes.IngredientQuantityInvalid, context);
-            if (!position.UnitId.HasValue || !position.BaseIngredientId.HasValue ||
-                !references.IsUnitAvailableForIngredient(position.BaseIngredientId.Value, position.UnitId.Value))
+            if (!position.UnitId.HasValue || !position.IngredientRevisionId.HasValue ||
+                !references.IsUnitAvailableForIngredient(position.IngredientRevisionId.Value, position.UnitId.Value))
                 AddError(issues, RecipeValidationCodes.IngredientUnitInvalid, context);
             if (!Enum.IsDefined(position.ScalingMode))
                 AddError(issues, RecipeValidationCodes.ScalingModeInvalid, context);
@@ -96,8 +96,8 @@ public sealed class RecipePublicationValidator(IRecipeValidationReferences refer
         }
 
         foreach (var duplicate in draft.IngredientPositions
-                     .Where(value => value.BaseIngredientId.HasValue)
-                     .GroupBy(value => (value.GroupId, value.BaseIngredientId))
+                     .Where(value => value.IngredientRevisionId.HasValue)
+                     .GroupBy(value => (value.GroupId, value.IngredientRevisionId))
                      .Where(value => value.Count() > 1))
             foreach (RecipeIngredientPosition position in duplicate)
                 AddError(issues, RecipeValidationCodes.IngredientDuplicate, Context("positionId", position.Id));
@@ -112,8 +112,8 @@ public sealed class RecipePublicationValidator(IRecipeValidationReferences refer
         foreach (IngredientReplacementRule rule in position.ReplacementRules)
         {
             var context = Context("replacementId", rule.Id);
-            IngredientDescriptor? replacementIngredient = rule.ReplacementBaseIngredientId.HasValue
-                ? references.FindIngredient(rule.ReplacementBaseIngredientId.Value)
+            IngredientDescriptor? replacementIngredient = rule.ReplacementIngredientRevisionId.HasValue
+                ? references.FindIngredient(rule.ReplacementIngredientRevisionId.Value)
                 : null;
             if (replacementIngredient is null)
                 AddError(issues, RecipeValidationCodes.IngredientReplacementMissing, context);
@@ -121,29 +121,29 @@ public sealed class RecipePublicationValidator(IRecipeValidationReferences refer
                 AddError(issues, RecipeValidationCodes.IngredientScopeForbidden, context);
             if (rule.ReplacementQuantity is null or <= 0)
                 AddError(issues, RecipeValidationCodes.IngredientReplacementQuantityInvalid, context);
-            if (!rule.ReplacementUnitId.HasValue || !rule.ReplacementBaseIngredientId.HasValue ||
+            if (!rule.ReplacementUnitId.HasValue || !rule.ReplacementIngredientRevisionId.HasValue ||
                 !references.IsUnitAvailableForIngredient(
-                    rule.ReplacementBaseIngredientId.Value, rule.ReplacementUnitId.Value))
+                    rule.ReplacementIngredientRevisionId.Value, rule.ReplacementUnitId.Value))
                 AddError(issues, RecipeValidationCodes.IngredientReplacementUnitInvalid, context);
             if (rule.Conflicts.Count == 0)
                 AddError(issues, RecipeValidationCodes.ReplacementConflictsEmpty, context);
         }
 
         AddDuplicateConflictErrors(position.ReplacementRules.Select(value => (value.Id, value.Conflicts)), issues);
-        if (position.BaseIngredientId.HasValue)
+        if (position.IngredientRevisionId.HasValue)
         {
             IReadOnlySet<ConflictReference> originalConflicts =
-                references.GetIngredientConflicts(position.BaseIngredientId.Value);
+                references.GetIngredientConflicts(position.IngredientRevisionId.Value);
             AddUnresolvedConflictWarnings(
                 originalConflicts,
                 position.ReplacementRules.SelectMany(value => value.Conflicts),
                 Context("positionId", position.Id),
                 issues);
-            foreach (IngredientReplacementRule rule in position.ReplacementRules.Where(value => value.ReplacementBaseIngredientId.HasValue))
+            foreach (IngredientReplacementRule rule in position.ReplacementRules.Where(value => value.ReplacementIngredientRevisionId.HasValue))
                 AddReplacementConflictWarnings(
                     rule.Conflicts,
                     originalConflicts,
-                    references.GetIngredientConflicts(rule.ReplacementBaseIngredientId!.Value),
+                    references.GetIngredientConflicts(rule.ReplacementIngredientRevisionId!.Value),
                     Context("replacementId", rule.Id),
                     issues);
         }

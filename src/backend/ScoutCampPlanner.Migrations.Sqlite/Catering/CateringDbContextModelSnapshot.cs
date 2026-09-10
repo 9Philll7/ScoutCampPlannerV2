@@ -1770,10 +1770,10 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.Property<int>("AgeGroupScaling")
                         .HasColumnType("INTEGER");
 
-                    b.Property<Guid?>("BaseIngredientId")
+                    b.Property<Guid?>("GroupId")
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid?>("GroupId")
+                    b.Property<Guid?>("IngredientRevisionId")
                         .HasColumnType("TEXT");
 
                     b.Property<decimal?>("Quantity")
@@ -1802,15 +1802,15 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BaseIngredientId");
-
                     b.HasIndex("GroupId");
+
+                    b.HasIndex("IngredientRevisionId");
 
                     b.HasIndex("UnitId");
 
-                    b.HasIndex("RecipeId", "BaseIngredientId")
+                    b.HasIndex("RecipeId", "IngredientRevisionId")
                         .IsUnique()
-                        .HasDatabaseName("IX_RecipeIngredientPositions_Ungrouped_BaseIngredientId")
+                        .HasDatabaseName("IX_RecipeIngredientPositions_Ungrouped_IngredientRevisionId")
                         .HasFilter("\"GroupId\" IS NULL");
 
                     b.HasIndex("RecipeId", "SortOrder")
@@ -1818,7 +1818,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .HasDatabaseName("IX_RecipeIngredientPositions_Ungrouped_SortOrder")
                         .HasFilter("\"GroupId\" IS NULL");
 
-                    b.HasIndex("RecipeId", "GroupId", "BaseIngredientId")
+                    b.HasIndex("RecipeId", "GroupId", "IngredientRevisionId")
                         .IsUnique()
                         .HasFilter("\"GroupId\" IS NOT NULL");
 
@@ -1883,7 +1883,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.Property<Guid>("IngredientPositionId")
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid?>("ReplacementBaseIngredientId")
+                    b.Property<Guid?>("ReplacementIngredientRevisionId")
                         .HasColumnType("TEXT");
 
                     b.Property<decimal?>("ReplacementQuantity")
@@ -1897,7 +1897,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
 
                     b.HasIndex("IngredientPositionId");
 
-                    b.HasIndex("ReplacementBaseIngredientId");
+                    b.HasIndex("ReplacementIngredientRevisionId");
 
                     b.HasIndex("ReplacementUnitId");
 
@@ -2676,15 +2676,15 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeIngredientPositionRecord", b =>
                 {
-                    b.HasOne("ScoutCampPlanner.Catering.Domain.BaseIngredient", null)
-                        .WithMany()
-                        .HasForeignKey("BaseIngredientId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeGroupRecord", null)
                         .WithMany()
                         .HasForeignKey("GroupId")
                         .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("IngredientRevisionId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Recipes.RecipeRecord", null)
                         .WithMany()
@@ -2751,9 +2751,9 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("ScoutCampPlanner.Catering.Domain.BaseIngredient", null)
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionRecord", null)
                         .WithMany()
-                        .HasForeignKey("ReplacementBaseIngredientId")
+                        .HasForeignKey("ReplacementIngredientRevisionId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("ScoutCampPlanner.Catering.Domain.MeasurementUnit", null)
