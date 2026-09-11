@@ -19,7 +19,11 @@ Nicht implementieren:
 - Kocheinheiten
 - globale Ersatzbeziehungen
 
-Die für stabile bestehende Referenzen notwendige Datenmigration und der Contract für `ingredient_revision_id` plus optionalem `variant_key` sind dennoch als Integrationsgrenze zu berücksichtigen. Die funktionale Umstellung des Rezepteditors erfolgt in einem getrennten Auftrag.
+Die für stabile bestehende Referenzen notwendige Datenmigration und der Contract
+für `ingredient_revision_id` sind dennoch als Integrationsgrenze zu
+berücksichtigen. Varianten bleiben Teil der referenzierten Zutatenrevision; ihre
+Auswahl erfolgt gemäß ADR-023 später in der Verpflegungsplanung und nicht im
+Rezepteditor.
 
 ## Fachliche Kernanforderungen
 
@@ -149,7 +153,9 @@ Varianten dürfen gezielt Overrides speichern.
 
 Varianten dürfen Kategorie und Basiseinheit nicht überschreiben.
 
-Eine Rezeptposition referenziert eine konkrete veröffentlichte Zutatenrevision und optional einen `variant_key`. Ohne Variante gilt die Basisform.
+Eine Rezeptposition referenziert eine konkrete veröffentlichte Zutatenrevision,
+aber keinen `variant_key`. Varianten werden später in der Verpflegungsplanung
+aus der referenzierten Revision gewählt.
 
 ## Eigenschaften
 
@@ -300,7 +306,7 @@ Mindestens folgende Tests sind erforderlich:
 21. Tenant- und Camp-Scopes bleiben getrennt.
 22. Ein ungeprüfter Eigenschaftsbereich liefert bei fehlenden Angaben `unknown`.
 23. Widersprüchliche Allergen-Hierarchien verhindern Publish.
-24. Eine Rezeptreferenz kann eine Variante über ihren stabilen `variant_key` auswählen.
+24. Eine Rezeptreferenz wählt keine Variante; der stabile `variant_key` dient der späteren Verpflegungsplanung.
 25. Bestehende Zutaten-IDs und publizierte Rezept-Snapshots bleiben bei der Migration erhalten.
 
 ## Architektur

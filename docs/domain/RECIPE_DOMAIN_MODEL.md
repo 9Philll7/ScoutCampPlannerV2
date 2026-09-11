@@ -182,6 +182,12 @@ Changing the base ingredient must revalidate the selected unit.
 
 Variants of a base ingredient are treated as 1:1 interchangeable by the ingredient domain and are not explicitly selected in the recipe position.
 
+The concrete variant is selected only by a later catering-planning or
+cooking-unit workflow when participant conflicts require it. A different
+raw-material basis is not a variant: lactose-free butter may be a butter
+variant, while margarine is a separate ingredient and can be modeled as an
+explicit position-specific replacement.
+
 ### Duplicate base ingredients
 
 The same base ingredient may occur multiple times in the same recipe only in different groups. The ungrouped area behaves like one implicit group for this uniqueness rule.
@@ -445,7 +451,7 @@ Do not implement the following as recipe-domain responsibilities:
 - menu-plan revision update workflow
 - procurement rounding
 - inventory selection
-- automatic variant choice at cooking-unit level
+- automatic or manual variant choice at cooking-unit level
 - organizational handling of unresolved conflicts
 
 The recipe domain only exposes enough immutable data and conflict information for those later layers to operate.

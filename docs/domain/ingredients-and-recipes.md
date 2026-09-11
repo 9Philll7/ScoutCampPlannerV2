@@ -28,7 +28,9 @@ Measurement units and the allergen, intolerance, origin-property, and dietary-re
 
 ## Variants
 
-Variants are owned by the ingredient domain and are treated as the same basic ingredient with targeted property and conversion overrides. Recipe positions reference a concrete published ingredient revision and may select one of its variants through the stable `variant_key`. Without a variant key, the base form is used. This rule is defined by ADR-021 and supersedes the earlier implicit interchangeability rule.
+Variants are owned by the ingredient domain and are treated as the same basic ingredient with targeted property and conversion overrides. Recipe positions reference a concrete published ingredient revision but do not select a variant. A later catering-planning or cooking-unit use case may select a variant according to participant conflicts and must then evaluate its effective properties and conversions. This rule is defined by ADR-023 and supersedes only the selectable-variant part of ADR-021.
+
+A different raw-material basis is a separate ingredient rather than a variant. For example, lactose-free butter may be a butter variant, while margarine is its own ingredient and may be configured as an explicit position-specific replacement where appropriate.
 
 A recipe may define position-specific replacement ingredients for explicit allergen, intolerance, or dietary conflicts. Different replacement rules are not automatically combined.
 

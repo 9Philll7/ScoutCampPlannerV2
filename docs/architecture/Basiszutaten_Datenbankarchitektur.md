@@ -42,7 +42,11 @@ ingredient
 
 Persistierte Scopes sind `central`, `tenant` und `camp`. Eine Tenant- oder Lagerzutatenidentität kann über `source_ingredient_id` und `source_revision_id` auf ihren zentralen Ursprung verweisen. `local` ist nur ein fachlicher Sammelbegriff.
 
-Rezepte referenzieren die ID einer konkreten veröffentlichten Zutatenrevision und optional den stabilen `variant_key`. Eigenschaftsgruppen besitzen einen Reviewstatus, damit fehlende Angaben nicht versehentlich als unbedenklich ausgewertet werden.
+Rezepte referenzieren die ID einer konkreten veröffentlichten Zutatenrevision,
+aber keine einzelne Variante. Der stabile `variant_key` identifiziert Varianten
+innerhalb der Zutatenrevision für die spätere Verpflegungsplanung.
+Eigenschaftsgruppen besitzen einen Reviewstatus, damit fehlende Angaben nicht
+versehentlich als unbedenklich ausgewertet werden.
 
 ## Persistenz und Migrationen
 

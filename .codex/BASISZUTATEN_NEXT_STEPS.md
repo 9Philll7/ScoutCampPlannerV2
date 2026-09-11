@@ -14,6 +14,7 @@ Verbindliche Quellen:
 - `docs/decisions/adr-020-ingredient-management-permissions-and-search.md`
 - `docs/decisions/adr-021-revisioned-base-ingredients.md`
 - `docs/decisions/adr-022-central-ingredient-contributions.md`
+- `docs/decisions/adr-023-ingredient-variant-selection.md`
 
 Die Repository-Dokumentation hat Vorrang vor dieser Übergabe und vor früheren Chatverläufen.
 
@@ -379,14 +380,20 @@ Umgesetzt:
   speichern sowie veröffentlichte Zutaten mit Menge und Einheit hinzufügen.
 - Die Zutatensuche priorisiert Lager, danach Mandant und zuletzt den zentralen
   Katalog.
+- Rezeptpositionen wählen gemäß ADR-023 keine Variante. Die konkrete Auswahl
+  aus der referenzierten Zutatenrevision gehört in die spätere
+  Verpflegungsplanung.
+- Innerhalb einer Rezeptgruppe darf dieselbe Zutatenrevision nur einmal
+  vorkommen.
 
 Noch offen:
 
-- Auswahl und Persistenz eines optionalen `variant_key`
-- Gruppen, Ersatzregeln und Unterrezepte in der Oberfläche
+- Ersatzregeln und Unterrezepte in der Oberfläche
 - Publikationsworkflow und Validierungsanzeige im Rezepteditor
 - Aktualisierung eines Entwurfs auf eine neuere Zutatenrevision als bewusster
   Benutzerschritt
+- Auswahl einer geeigneten Zutatenvariante pro Verpflegungs- oder Kocheinheit
+  unter Berücksichtigung ihrer effektiven Konflikte und Umrechnungen
 
 Zentral veröffentlichte Rezepte dürfen weiterhin nur zentrale
 Zutatenrevisionen referenzieren.
@@ -397,7 +404,7 @@ Lagerpakete müssen die transitive, unveränderliche Datenmenge der enthaltenen 
 
 - Zutatenidentität
 - konkrete veröffentlichte Zutatenrevision
-- ausgewählte Variante
+- alle Varianten und Overrides der referenzierten Zutatenrevision
 - Einheiten und Umrechnungen
 - benötigte Allergen-, Unverträglichkeits- und Herkunftskatalogeinträge
 
@@ -409,8 +416,8 @@ Offline darf keine fehlende Stammdatenreferenz aus der Cloud nachladen müssen.
 - Alte Varianten hängen direkt an `BaseIngredient`; neue Varianten gehören zu einer Revision.
 - Alte Konfliktzuordnungen sind reine Ja/Nein-Beziehungen; das neue Modell benötigt Zustand und Quelle.
 - Direkte Zutatenzuordnungen zu `DietaryRequirement` sollen langfristig durch berechnete Eignung ersetzt werden.
-- Rezeptpositionen referenzieren Zutatenrevisionen; die optionale Auswahl eines
-  `variant_key` ist noch nicht umgesetzt.
+- Rezeptpositionen referenzieren Zutatenrevisionen, aber keine Variante. Die
+  Variantenauswahl ist gemäß ADR-023 Aufgabe der späteren Verpflegungsplanung.
 - `Guid.NewGuid()` wird derzeit beim Kopieren von Varianten in einen neuen Draft verwendet. Vor Persistenzintegration prüfen, ob IDs durch den Application Layer bereitgestellt werden sollen, damit Erzeugung und Tests vollständig deterministisch bleiben.
 - Der vollständige Drei-Wege-Merge und `merged_central_revision_id` sind noch nicht implementiert.
 - Allgemeine Einheiten, revisionsgebundene Zutatenumrechnungen sowie

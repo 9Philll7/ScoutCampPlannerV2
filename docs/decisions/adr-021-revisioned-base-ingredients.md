@@ -1,8 +1,8 @@
-# ADR-021: Revisioned base ingredients and selectable variants
+# ADR-021: Revisioned base ingredients and stable variants
 
 ## Status
 
-Accepted
+Accepted, partially superseded by ADR-023
 
 ## Context
 
@@ -18,7 +18,7 @@ Tenant and camp ingredients can be independent entries or forks of a central ing
 
 Every saved draft requires a name, category, and base unit. Property assignments, variants, and conversions may still be incomplete. Publishing requires a consistent, sufficiently reviewed revision.
 
-Ingredient variants belong to a revision and retain a stable `variant_key` across revisions. A recipe ingredient position references a concrete published ingredient revision and may additionally select a `variant_key`. Without a variant key, the base form is used.
+Ingredient variants belong to a revision and retain a stable `variant_key` across revisions. The original decision allowed recipe positions to select this key; ADR-023 supersedes that part and assigns variant selection to later catering planning.
 
 Allergens, intolerance triggers, and origin properties remain platform-wide catalogs. Vegan, vegetarian, pescetarian, lactose-free, milk-free, and gluten-free suitability is calculated from revisioned properties instead of being stored as direct ingredient assignments. Stable dietary-requirement identifiers may still be used for participant requirements and recipe rules.
 
@@ -31,8 +31,7 @@ Existing ingredient identities remain stable during migration. Their mutable fie
 ## Consequences
 
 - ADR-018's three ownership scopes remain in force.
-- The earlier statement that recipes never select variants is superseded.
+- Recipe variant selection is governed by ADR-023; recipe positions do not select variants.
 - Direct ingredient-to-dietary-requirement assignments are replaced by calculated suitability.
 - Ingredient publication, fork/merge behavior, recipe references, offline packages, and both database providers require coordinated migrations and tests.
 - Large-scale ingredient data entry should start only after this model and its migration path are implemented.
-

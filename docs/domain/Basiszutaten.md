@@ -6,7 +6,13 @@ Dieses Dokument beschreibt ausschließlich die Domäne **Basiszutaten** des Scou
 
 Nicht Bestandteil dieses Dokuments sind die fachliche Modellierung von Rezepten, Lagerbeständen, Einkaufsartikeln, Teilnehmern oder Kocheinheiten. Diese Domänen dürfen Basiszutaten referenzieren, werden hier aber nicht weiter modelliert.
 
-Ziel ist eine zentrale, revisionsfähige Zutatendatenbank mit lokalen Forks für mandanten- und lagerspezifische Änderungen. Verbindliche Architekturentscheidung ist [ADR-021](../decisions/adr-021-revisioned-base-ingredients.md).
+Ziel ist eine zentrale, revisionsfähige Zutatendatenbank mit lokalen Forks für
+mandanten- und lagerspezifische Änderungen. Verbindliche
+Architekturentscheidungen sind
+[ADR-021](../decisions/adr-021-revisioned-base-ingredients.md) für das
+Revisionsmodell und
+[ADR-023](../decisions/adr-023-ingredient-variant-selection.md) für die
+Verwendung von Varianten.
 
 ---
 
@@ -632,9 +638,22 @@ gesamten Entwurf explizit gespeichert; es gibt kein Auto-Save.
 
 ### 12.4 Verwendung in Rezepten
 
-Eine Rezeptposition referenziert immer eine konkrete veröffentlichte Zutatenrevision. Optional kann sie den stabilen `variant_key` einer Variante dieser Revision auswählen. Ohne `variant_key` wird die Basisform der Zutat verwendet. Dadurch können beispielsweise normale und laktosefreie Butter fachlich eindeutig unterschieden werden.
+Eine Rezeptposition referenziert immer eine konkrete veröffentlichte
+Zutatenrevision, aber keine einzelne Variante. Die Varianten sind Bestandteil
+dieser Revision und stehen später in der Verpflegungsplanung zur Auswahl. So
+kann beispielsweise für eine betroffene Kocheinheit laktosefreie Butter gewählt
+werden, ohne das Rezept auf diese Variante festzulegen.
 
-Eine neue Zutatenrevision verändert bestehende veröffentlichte Rezeptrevisionen nicht. Beim bewussten Aktualisieren eines Rezeptentwurfs muss eine weiterhin vorhandene Variante anhand ihres stabilen `variant_key` zugeordnet werden.
+Eine neue Zutatenrevision verändert bestehende veröffentlichte Rezeptrevisionen
+nicht. Beim bewussten Aktualisieren eines Rezeptentwurfs wird ausschließlich die
+referenzierte Zutatenrevision aktualisiert. Die konkrete Variantenauswahl gehört
+nicht zum Rezeptentwurf.
+
+Eine Variante bleibt fachlich dieselbe Zutat. Laktosefreie Butter darf daher
+eine Variante von Butter sein. Margarine besitzt eine andere Rohstoffbasis und
+ist eine eigene Basiszutat. Soll Margarine Butter in einem bestimmten Rezept
+ersetzen können, wird dafür eine explizite Ersatzregel an der Rezeptposition
+definiert.
 
 ---
 
@@ -779,7 +798,7 @@ Sie können von konkretem Produkt, Herstellungsprozess oder späteren Domänen a
 17. Persistierte Scopes sind `central`, `tenant` und `camp`; `local` ist nur ein Sammelbegriff.
 18. Jede gespeicherte Revision besitzt Name, Kategorie und Basiseinheit.
 19. Ein kompatibles Ergebnis setzt ausreichend geprüfte Eigenschaftsgruppen voraus.
-20. Rezeptpositionen referenzieren eine veröffentlichte Zutatenrevision und optional einen `variant_key`.
+20. Rezeptpositionen referenzieren eine veröffentlichte Zutatenrevision, aber keine Variante. Die Variantenauswahl erfolgt später in der Verpflegungsplanung.
 21. Archivierung betrifft die Zutatenidentität und verändert keine veröffentlichte Revision.
 22. Eine zentrale Einreichung verweist auf genau eine veröffentlichte lokale Revision.
 23. Annahme erzeugt einen ungeprüften zentralen Entwurf und niemals eine Veröffentlichung.
