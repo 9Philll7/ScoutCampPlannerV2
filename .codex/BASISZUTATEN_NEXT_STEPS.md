@@ -420,10 +420,10 @@ Gemäß ADR-024 umgesetzt:
 - vollständigen Varianten-Override ermöglichen
 - Quellenangabe und Prüfstatus speichern
 - PostgreSQL- und SQLite-Migrationen erstellen
+- Eingabe und Plausibilitätsprüfung im Zutateneditor ergänzen
 
 Noch offen:
 
-- Eingabe und Plausibilitätsprüfung im Zutateneditor ergänzen
 - Rezeptgesamtwerte und Werte pro Standardportion mit Vollständigkeitsstatus
   berechnen
 

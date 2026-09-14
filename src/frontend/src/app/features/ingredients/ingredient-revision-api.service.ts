@@ -7,6 +7,8 @@ export enum IngredientPropertyReviewState { Unreviewed = 0, Reviewed = 1 }
 export enum IngredientPropertyState { Contains = 0, DoesNotContain = 1, MayContain = 2, Unknown = 3 }
 export enum IngredientPropertySource { Inherent = 0, Derived = 1, ManuallyVerified = 2, ArticleDependent = 3 }
 export enum IngredientConversionPrecision { Exact = 0, Average = 1, Estimated = 2 }
+export enum IngredientNutritionReviewState { Unreviewed = 0, Reviewed = 1 }
+export enum IngredientNutritionSourceType { Manufacturer = 0, OfficialDatabase = 1, ManualEstimate = 2 }
 
 export interface IngredientCategoryReference {
   id: string;
@@ -66,6 +68,23 @@ export interface IngredientRevisionUnitConversionItem {
   factorInput?: string;
 }
 
+export interface IngredientNutritionProfileItem {
+  referenceQuantity: number;
+  referenceUnitId: string;
+  energyKilojoules: number | null;
+  fatGrams: number | null;
+  saturatedFatGrams: number | null;
+  carbohydrateGrams: number | null;
+  sugarsGrams: number | null;
+  proteinGrams: number | null;
+  saltGrams: number | null;
+  fiberGrams: number | null;
+  sourceType: IngredientNutritionSourceType;
+  sourceReference: string;
+  reviewState: IngredientNutritionReviewState;
+  referenceDate: string | null;
+}
+
 export interface IngredientVariantRevisionItem {
   id: string;
   variantKey: string;
@@ -76,6 +95,7 @@ export interface IngredientVariantRevisionItem {
   intoleranceOverrides: IngredientRevisionPropertyItem[];
   originOverrides: IngredientRevisionPropertyItem[];
   unitConversionOverrides: IngredientRevisionUnitConversionItem[];
+  nutritionProfile: IngredientNutritionProfileItem | null;
   isNew?: boolean;
 }
 
@@ -105,6 +125,7 @@ export interface IngredientRevisionDetails {
   origins: IngredientRevisionPropertyItem[];
   unitConversions: IngredientRevisionUnitConversionItem[];
   variants: IngredientVariantRevisionItem[];
+  nutritionProfile: IngredientNutritionProfileItem | null;
 }
 
 export interface CentralIngredientCandidate {
@@ -205,6 +226,7 @@ export class IngredientRevisionApiService {
     intolerances: IngredientRevisionPropertyItem[];
     origins: IngredientRevisionPropertyItem[];
     unitConversions: IngredientRevisionUnitConversionItem[];
+    nutritionProfile: IngredientNutritionProfileItem | null;
     variants: {
       id: string;
       variantKey: string;
@@ -215,6 +237,7 @@ export class IngredientRevisionApiService {
       intoleranceOverrides: IngredientRevisionPropertyItem[];
       originOverrides: IngredientRevisionPropertyItem[];
       unitConversionOverrides: IngredientRevisionUnitConversionItem[];
+      nutritionProfile: IngredientNutritionProfileItem | null;
     }[];
   }) {
     return this.http.put<IngredientRevisionMutationResponse>(
@@ -233,6 +256,7 @@ export class IngredientRevisionApiService {
     intolerances: IngredientRevisionPropertyItem[];
     origins: IngredientRevisionPropertyItem[];
     unitConversions: IngredientRevisionUnitConversionItem[];
+    nutritionProfile: IngredientNutritionProfileItem | null;
     variants: {
       id: string;
       variantKey: string;
@@ -243,6 +267,7 @@ export class IngredientRevisionApiService {
       intoleranceOverrides: IngredientRevisionPropertyItem[];
       originOverrides: IngredientRevisionPropertyItem[];
       unitConversionOverrides: IngredientRevisionUnitConversionItem[];
+      nutritionProfile: IngredientNutritionProfileItem | null;
     }[];
   }) {
     return this.http.post<IngredientRevisionMutationResponse>(

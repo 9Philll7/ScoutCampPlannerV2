@@ -17,6 +17,9 @@ import {
   CentralIngredientCandidate,
   IngredientCentralContribution,
   IngredientConversionPrecision,
+  IngredientNutritionProfileItem,
+  IngredientNutritionReviewState,
+  IngredientNutritionSourceType,
   IngredientPropertyReviewState,
   IngredientPropertySource,
   IngredientPropertyState,
@@ -28,12 +31,14 @@ import {
   IngredientRevisionState,
   IngredientRevisionSummary
 } from './ingredient-revision-api.service';
+import { IngredientNutritionEditorComponent } from './ingredient-nutrition-editor.component';
 
 @Component({
   selector: 'scp-ingredient-revision-editor',
   standalone: true,
   imports: [DatePipe, FormsModule, MatButtonModule, MatCardModule, MatCheckboxModule, MatFormFieldModule,
-    MatInputModule, MatProgressSpinnerModule, MatSelectModule, ActionIconComponent],
+    MatInputModule, MatProgressSpinnerModule, MatSelectModule, ActionIconComponent,
+    IngredientNutritionEditorComponent],
   template: `
     <div class="revision-editor-heading">
       <div><h4>{{ managementTitle() }}</h4><p>Entwürfe explizit speichern und nach der Prüfung veröffentlichen.</p></div>
@@ -215,6 +220,26 @@ import {
               <p class="unit-conversion-empty">Neben der Basiseinheit sind noch keine weiteren Einheiten hinterlegt.</p>
             }
           </section>
+          <section class="nutrition-profile">
+            <div class="unit-conversion-heading">
+              <div>
+                <h4>Nährwerte</h4>
+                <p>Optionale Schätzwerte für spätere Rezeptberechnungen. Fehlende Angaben werden nicht als 0 behandelt.</p>
+              </div>
+              <mat-checkbox [checked]="revision.nutritionProfile !== null"
+                (change)="setNutritionEnabled(revision, $event.checked)"
+                [disabled]="revision.state === publishedState || disabled()">
+                Nährwerte hinterlegen
+              </mat-checkbox>
+            </div>
+            @if (revision.nutritionProfile; as nutrition) {
+              <scp-ingredient-nutrition-editor [profile]="nutrition"
+                [units]="referenceData()?.units ?? []"
+                [disabled]="revision.state === publishedState || disabled()"/>
+            } @else {
+              <p class="unit-conversion-empty">Für diese Zutat sind keine Nährwerte hinterlegt.</p>
+            }
+          </section>
           <section class="ingredient-variants">
             <div class="unit-conversion-heading">
               <div>
@@ -358,6 +383,23 @@ import {
                         }
                         @if (!revision.unitConversions.length) {
                           <p class="unit-conversion-empty">Lege weitere Einheiten zuerst bei der Basiszutat an. Die Variante kann anschließend deren Faktor oder Genauigkeit überschreiben.</p>
+                        }
+                      </div>
+                    </section>
+                    <section>
+                      <h5>Nährwerte</h5>
+                      <div class="variant-nutrition">
+                        <mat-checkbox [checked]="variant.nutritionProfile !== null"
+                          (change)="setVariantNutritionEnabled(revision, variant, $event.checked)"
+                          [disabled]="revision.state === publishedState || disabled()">
+                          Abweichendes vollständiges Nährwertprofil
+                        </mat-checkbox>
+                        @if (variant.nutritionProfile; as nutrition) {
+                          <scp-ingredient-nutrition-editor [profile]="nutrition"
+                            [units]="referenceData()?.units ?? []"
+                            [disabled]="revision.state === publishedState || disabled()"/>
+                        } @else {
+                          <p class="variant-inherited-value">Wie Basiszutat: Das vollständige Nährwertprofil wird geerbt.</p>
                         }
                       </div>
                     </section>
@@ -533,11 +575,11 @@ import {
             <p class="revision-hint">„Geprüft“ bedeutet: Auch fehlende Einträge wurden bewusst kontrolliert.</p>
             <div class="revision-actions">
               <button matButton type="submit"
-                [disabled]="submitting() || disabled() || !isDirty(revision) || !unitConversionsValid(revision) || !variantsValid(revision)">
+                [disabled]="submitting() || disabled() || !isDirty(revision) || !unitConversionsValid(revision) || !nutritionProfilesValid(revision) || !variantsValid(revision)">
                 <scp-action-icon name="save"/>{{ pendingForkSourceRevisionId() ? 'Als Lageranpassung speichern' : 'Entwurf speichern' }}</button>
               @if (!pendingForkSourceRevisionId()) {
                 <button matButton="filled" type="button" (click)="publish()"
-                  [disabled]="submitting() || disabled() || isDirty(revision) || !allReviewed(revision) || !unitConversionsValid(revision) || !variantsValid(revision)">Veröffentlichen</button>
+                  [disabled]="submitting() || disabled() || isDirty(revision) || !allReviewed(revision) || !unitConversionsValid(revision) || !nutritionProfilesValid(revision) || !variantsValid(revision)">Veröffentlichen</button>
               }
             </div>
             @if (isDirty(revision) && allReviewed(revision)) {
@@ -575,10 +617,12 @@ import {
     .revision-list-item span:first-child { display: grid; gap: .15rem; } .revision-list-item small { color: #667168; }
     .revision-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; padding: 1rem;
       border: 1px solid #cddbcc; border-radius: .8rem; background: #f5faf4; }
-    .revision-form h4, .revision-form .revision-editor-heading, .unit-conversions, .ingredient-variants, .property-groups, .revision-hint, .revision-actions { grid-column: 1 / -1; }
+    .revision-form h4, .revision-form .revision-editor-heading, .unit-conversions, .nutrition-profile, .ingredient-variants, .property-groups, .revision-hint, .revision-actions { grid-column: 1 / -1; }
     .revision-form mat-form-field:first-of-type { grid-column: 1 / -1; }
     .property-groups { display: grid; gap: .65rem; }
     .unit-conversions { display: grid; gap: .65rem; padding: .85rem; border: 1px solid #d7e1d5;
+      border-radius: .65rem; background: #fff; }
+    .nutrition-profile { display: grid; gap: .75rem; padding: .85rem; border: 1px solid #d7e1d5;
       border-radius: .65rem; background: #fff; }
     .ingredient-variants { display: grid; gap: .65rem; padding: .85rem; border: 1px solid #d7e1d5;
       border-radius: .65rem; background: #fff; }
@@ -604,6 +648,7 @@ import {
     .variant-primary-origin { padding: .7rem .7rem 0; }
     .variant-primary-origin mat-form-field { width: min(100%, 28rem); }
     .variant-conversion-list { display: grid; gap: .55rem; padding: .7rem; }
+    .variant-nutrition { display: grid; gap: .75rem; padding: .7rem; }
     .variant-conversion-row { display: grid; grid-template-columns: minmax(14rem, 1fr) auto minmax(7rem, .7fr) auto minmax(10rem, 1fr);
       align-items: center; gap: .55rem; }
     .variant-inherited-value { color: #68736a; font-size: .84rem; }
@@ -830,7 +875,26 @@ export class IngredientRevisionEditorComponent {
 
   variantOverrideCount(variant: IngredientVariantRevisionItem) {
     return variant.allergenOverrides.length + variant.intoleranceOverrides.length +
-      variant.originOverrides.length + variant.unitConversionOverrides.length;
+      variant.originOverrides.length + variant.unitConversionOverrides.length +
+      (variant.nutritionProfile ? 1 : 0);
+  }
+
+  setNutritionEnabled(revision: IngredientRevisionDetails, enabled: boolean) {
+    revision.nutritionProfile = enabled ? this.newNutritionProfile(revision.baseUnitId) : null;
+  }
+
+  setVariantNutritionEnabled(
+    revision: IngredientRevisionDetails,
+    variant: IngredientVariantRevisionItem,
+    enabled: boolean)
+  {
+    if (!enabled) {
+      variant.nutritionProfile = null;
+      return;
+    }
+    variant.nutritionProfile = revision.nutritionProfile
+      ? { ...revision.nutritionProfile, reviewState: IngredientNutritionReviewState.Unreviewed }
+      : this.newNutritionProfile(revision.baseUnitId);
   }
 
   setVariantPropertyState(
@@ -935,10 +999,18 @@ export class IngredientRevisionEditorComponent {
   }
 
   setBaseUnit(revision: IngredientRevisionDetails, baseUnitId: string) {
+    const previousDimension = this.unitDimension(revision.baseUnitId);
     revision.baseUnitId = baseUnitId;
     revision.unitConversions = revision.unitConversions
       .filter(value => this.isAllowedConversionUnit(baseUnitId, value.sourceUnitId));
     this.removeOrphanedVariantConversions(revision);
+    if (previousDimension !== this.unitDimension(baseUnitId)) {
+      if (revision.nutritionProfile)
+        this.resetNutritionReference(revision.nutritionProfile, baseUnitId);
+      for (const variant of revision.variants)
+        if (variant.nutritionProfile)
+          this.resetNutritionReference(variant.nutritionProfile, baseUnitId);
+    }
   }
 
   addUnitConversion(revision: IngredientRevisionDetails) {
@@ -974,6 +1046,30 @@ export class IngredientRevisionEditorComponent {
       this.isAllowedConversionUnit(revision.baseUnitId, value.sourceUnitId));
   }
 
+  nutritionProfilesValid(revision: IngredientRevisionDetails) {
+    return this.nutritionProfileValid(revision.nutritionProfile, revision.baseUnitId) &&
+      revision.variants.every(value => this.nutritionProfileValid(
+        value.nutritionProfile, revision.baseUnitId));
+  }
+
+  private nutritionProfileValid(profile: IngredientNutritionProfileItem | null, baseUnitId: string) {
+    if (!profile) return true;
+    const numbers = [profile.energyKilojoules, profile.fatGrams, profile.saturatedFatGrams,
+      profile.carbohydrateGrams, profile.sugarsGrams, profile.proteinGrams,
+      profile.saltGrams, profile.fiberGrams];
+    const core = numbers.slice(0, 7);
+    return Number.isFinite(profile.referenceQuantity) && profile.referenceQuantity > 0 &&
+      this.unitDimension(profile.referenceUnitId) === this.unitDimension(baseUnitId) &&
+      !!profile.sourceReference.trim() && profile.sourceReference.trim().length <= 500 &&
+      numbers.every(value => value === null || Number.isFinite(value) && value >= 0) &&
+      (profile.saturatedFatGrams === null || profile.fatGrams === null ||
+        profile.saturatedFatGrams <= profile.fatGrams) &&
+      (profile.sugarsGrams === null || profile.carbohydrateGrams === null ||
+        profile.sugarsGrams <= profile.carbohydrateGrams) &&
+      (profile.reviewState !== IngredientNutritionReviewState.Reviewed ||
+        core.every(value => value !== null && Number.isFinite(value)));
+  }
+
   variantsValid(revision: IngredientRevisionDetails) {
     const names = revision.variants.map(value => value.name.trim().toLocaleUpperCase('de'));
     const keys = revision.variants.map(value => value.variantKey);
@@ -996,6 +1092,7 @@ export class IngredientRevisionEditorComponent {
       intoleranceOverrides: [],
       originOverrides: [],
       unitConversionOverrides: [],
+      nutritionProfile: null,
       isNew: true
     });
   }
@@ -1022,6 +1119,46 @@ export class IngredientRevisionEditorComponent {
     if (!baseUnit || !sourceUnit || baseUnit.id === sourceUnit.id) return false;
     const kitchenMeasureSymbols = new Set(['TL', 'EL', 'Prise', 'Bund']);
     return kitchenMeasureSymbols.has(sourceUnit.symbol) || sourceUnit.dimension !== baseUnit.dimension;
+  }
+
+  private newNutritionProfile(baseUnitId: string): IngredientNutritionProfileItem {
+    const reference = this.defaultNutritionReference(baseUnitId);
+    return {
+      referenceQuantity: reference.quantity,
+      referenceUnitId: reference.unitId,
+      energyKilojoules: null,
+      fatGrams: null,
+      saturatedFatGrams: null,
+      carbohydrateGrams: null,
+      sugarsGrams: null,
+      proteinGrams: null,
+      saltGrams: null,
+      fiberGrams: null,
+      sourceType: IngredientNutritionSourceType.Manufacturer,
+      sourceReference: '',
+      reviewState: IngredientNutritionReviewState.Unreviewed,
+      referenceDate: null
+    };
+  }
+
+  private resetNutritionReference(profile: IngredientNutritionProfileItem, baseUnitId: string) {
+    const reference = this.defaultNutritionReference(baseUnitId);
+    profile.referenceQuantity = reference.quantity;
+    profile.referenceUnitId = reference.unitId;
+    profile.reviewState = IngredientNutritionReviewState.Unreviewed;
+  }
+
+  private defaultNutritionReference(baseUnitId: string) {
+    const units = this.referenceData()?.units ?? [];
+    const dimension = this.unitDimension(baseUnitId);
+    const preferredSymbol = dimension === 0 ? 'g' : dimension === 1 ? 'ml' : 'Stk.';
+    const unit = units.find(value => value.dimension === dimension && value.symbol === preferredSymbol) ??
+      units.find(value => value.id === baseUnitId);
+    return { unitId: unit?.id ?? baseUnitId, quantity: dimension === 2 ? 1 : 100 };
+  }
+
+  private unitDimension(unitId: string) {
+    return this.referenceData()?.units.find(value => value.id === unitId)?.dimension ?? -1;
   }
 
   private removeOrphanedVariantConversions(revision: IngredientRevisionDetails) {
@@ -1118,6 +1255,7 @@ export class IngredientRevisionEditorComponent {
     this.pendingForkSourceRevisionId.set(null);
     this.error.set(''); this.notice.set('');
     this.api.get(revisionId).subscribe({ next: value => { this.initializeConversionFactorInputs(value);
+      this.initializeNutritionProfiles(value);
       this.selectedSnapshot = this.snapshot(value);
       if (value.state === this.draftState) {
         this.normalizeAllergenDetails(value);
@@ -1135,6 +1273,7 @@ export class IngredientRevisionEditorComponent {
       next: value => {
         value.state = this.draftState;
         this.initializeConversionFactorInputs(value);
+        this.initializeNutritionProfiles(value);
         this.selectedSnapshot = this.snapshot(value);
         this.pendingForkSourceRevisionId.set(sourceRevisionId);
         this.selected.set(value);
@@ -1154,6 +1293,7 @@ export class IngredientRevisionEditorComponent {
       allergenReviewState: revision.allergenReviewState, intoleranceReviewState: revision.intoleranceReviewState,
       originReviewState: revision.originReviewState,
       allergens: revision.allergens, intolerances: revision.intolerances, origins: revision.origins,
+      nutritionProfile: revision.nutritionProfile,
       unitConversions: revision.unitConversions.map(value => ({
         sourceUnitId: value.sourceUnitId,
         factorToBaseUnit: value.factorToBaseUnit,
@@ -1167,6 +1307,7 @@ export class IngredientRevisionEditorComponent {
         allergenOverrides: value.allergenOverrides,
         intoleranceOverrides: value.intoleranceOverrides,
         originOverrides: value.originOverrides,
+        nutritionProfile: value.nutritionProfile,
         unitConversionOverrides: value.unitConversionOverrides.map(conversion => ({
           sourceUnitId: conversion.sourceUnitId,
           factorToBaseUnit: conversion.factorToBaseUnit,
@@ -1208,7 +1349,8 @@ export class IngredientRevisionEditorComponent {
   publish() {
     const revision = this.selected();
     if (!revision || this.isDirty(revision) || !this.allReviewed(revision) ||
-        !this.unitConversionsValid(revision) || !this.variantsValid(revision)) return;
+        !this.unitConversionsValid(revision) || !this.nutritionProfilesValid(revision) ||
+        !this.variantsValid(revision)) return;
     if (this.scope() !== 'central') {
       this.submitting.set(true); this.error.set(''); this.notice.set('');
       this.api.findCentralCandidates(revision.id).subscribe({
@@ -1242,7 +1384,8 @@ export class IngredientRevisionEditorComponent {
   publishAnyway() {
     const revision = this.selected();
     if (!revision || this.isDirty(revision) || !this.allReviewed(revision) ||
-        !this.unitConversionsValid(revision) || !this.variantsValid(revision)) return;
+        !this.unitConversionsValid(revision) || !this.nutritionProfilesValid(revision) ||
+        !this.variantsValid(revision)) return;
     this.submitting.set(true); this.error.set(''); this.notice.set('');
     this.api.publish(revision.id, revision.rowVersion).subscribe({
       next: result => { this.submitting.set(false); revision.rowVersion = result.rowVersion;
@@ -1393,6 +1536,7 @@ export class IngredientRevisionEditorComponent {
     return JSON.stringify({ name: value.name.trim(), categoryId: value.categoryId, baseUnitId: value.baseUnitId,
       allergenReviewState: value.allergenReviewState, intoleranceReviewState: value.intoleranceReviewState,
       originReviewState: value.originReviewState,
+      nutritionProfile: value.nutritionProfile,
       allergens: this.sortedProperties(value.allergens), intolerances: this.sortedProperties(value.intolerances),
       origins: this.sortedProperties(value.origins),
       unitConversions: this.sortedUnitConversions(value.unitConversions),
@@ -1401,6 +1545,7 @@ export class IngredientRevisionEditorComponent {
         allergenOverrides: this.sortedProperties(variant.allergenOverrides),
         intoleranceOverrides: this.sortedProperties(variant.intoleranceOverrides),
         originOverrides: this.sortedProperties(variant.originOverrides),
+        nutritionProfile: variant.nutritionProfile,
         unitConversionOverrides: this.sortedUnitConversions(variant.unitConversionOverrides) })) });
   }
 
@@ -1423,6 +1568,12 @@ export class IngredientRevisionEditorComponent {
     for (const variant of revision.variants)
       for (const conversion of variant.unitConversionOverrides)
         conversion.factorInput = String(conversion.factorToBaseUnit).replace('.', ',');
+  }
+
+  private initializeNutritionProfiles(revision: IngredientRevisionDetails) {
+    revision.nutritionProfile ??= null;
+    for (const variant of revision.variants)
+      variant.nutritionProfile ??= null;
   }
 
   private uniqueVariantKey(
