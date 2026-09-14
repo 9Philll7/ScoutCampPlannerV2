@@ -468,3 +468,17 @@ profile or conversion is missing, the result is explicitly incomplete and the
 missing contribution is never interpreted as zero. Nutritional results are
 informational estimates. Medical recommendations, diet prescriptions and
 automatic health ratings are outside the recipe domain.
+
+Recipe snapshot schema version 2 embeds the nutrition profile of every
+referenced ingredient revision. This keeps later calculations independent of
+changes to the ingredient catalog. Schema-version-1 snapshots remain readable;
+because they contain no nutrition profile, their nutritional result is marked
+incomplete.
+
+The calculation returns totals for the requested demand and values per
+age-adjusted standard portion. Totals are only exposed when every effective
+ingredient contribution has a complete, reviewed profile and a valid reference
+conversion. Missing contributions retain ingredient, position and recipe-path
+provenance. Optional fibre remains unknown for the total if at least one
+otherwise complete contribution has no fibre value; this does not make the core
+nutrition result incomplete.

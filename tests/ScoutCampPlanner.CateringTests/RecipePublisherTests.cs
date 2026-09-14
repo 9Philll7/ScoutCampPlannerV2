@@ -77,6 +77,36 @@ public sealed class RecipePublisherTests
     }
 
     [Fact]
+    public async Task Publication_snapshots_reviewed_ingredient_nutrition()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        (Guid ingredientRevisionId, Guid unitId) =
+            await fixture.AddPublishedIngredientAsync("Reis", withNutrition: true);
+        var draft = new RecipeDraft(
+            Guid.NewGuid(), RecipeScopeType.Tenant, fixture.TenantId,
+            RecipeType.PortionBased, "Reisgericht");
+        draft.SetDetails("Beschreibung", "Quelle", null);
+        draft.ConfigurePortionReference(10m, true);
+        draft.AddIngredientPosition(new RecipeIngredientPosition(
+            Guid.NewGuid(), draft.Id, null, ingredientRevisionId, 1_000m, unitId, 0));
+        await fixture.Store.CreateAsync(
+            draft, fixture.UserId, fixture.Now, TestContext.Current.CancellationToken);
+
+        RecipePublicationResult published = await fixture.Publisher.PublishAsync(
+            draft.Id, 0, fixture.UserId, fixture.Now, acknowledgeWarnings: true,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        RecipeSnapshot snapshot = RecipeSnapshotBuilder.Deserialize(published.Revision!.SnapshotJson);
+        IngredientNutritionSnapshot nutrition = Assert.Single(snapshot.IngredientPositions)
+            .Ingredient.Nutrition!;
+        Assert.Equal(RecipeSnapshotBuilder.CurrentSchemaVersion, snapshot.SchemaVersion);
+        Assert.Equal(100m, nutrition.ReferenceQuantityInBaseUnit);
+        Assert.Equal(1_000m, nutrition.EnergyKilojoules);
+        Assert.Equal(IngredientNutritionReviewState.Reviewed, nutrition.ReviewState);
+        Assert.Equal("Testquelle", nutrition.SourceReference);
+    }
+
+    [Fact]
     public async Task Publication_rejects_stale_version_without_new_revision()
     {
         await using var fixture = await DatabaseFixture.CreateAsync();
@@ -197,7 +227,9 @@ public sealed class RecipePublisherTests
             return new DatabaseFixture(connection, database, store, publisher);
         }
 
-        public async Task<(Guid RevisionId, Guid UnitId)> AddPublishedIngredientAsync(string name)
+        public async Task<(Guid RevisionId, Guid UnitId)> AddPublishedIngredientAsync(
+            string name,
+            bool withNutrition = false)
         {
             Guid ingredientId = Guid.NewGuid();
             Guid revisionId = Guid.NewGuid();
@@ -230,6 +262,26 @@ public sealed class RecipePublisherTests
                     PublishedAtUtc = Now,
                     PublishedBy = UserId,
                 });
+            if (withNutrition)
+            {
+                Database.Add(new IngredientRevisionNutritionProfileRecord
+                {
+                    IngredientRevisionId = revisionId,
+                    ReferenceQuantity = 100m,
+                    ReferenceUnitId = unitId,
+                    EnergyKilojoules = 1_000m,
+                    FatGrams = 1m,
+                    SaturatedFatGrams = 0.2m,
+                    CarbohydrateGrams = 75m,
+                    SugarsGrams = 1m,
+                    ProteinGrams = 8m,
+                    SaltGrams = 0.01m,
+                    SourceType = (int)IngredientNutritionSourceType.OfficialDatabase,
+                    SourceReference = "Testquelle",
+                    ReviewState = (int)IngredientNutritionReviewState.Reviewed,
+                    ReferenceDate = new DateOnly(2026, 9, 14),
+                });
+            }
             await Database.SaveChangesAsync(TestContext.Current.CancellationToken);
             IngredientIdentityRecord identity = await Database.Set<IngredientIdentityRecord>()
                 .SingleAsync(value => value.Id == ingredientId, TestContext.Current.CancellationToken);

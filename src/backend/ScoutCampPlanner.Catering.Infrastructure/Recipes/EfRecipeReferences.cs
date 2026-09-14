@@ -113,7 +113,8 @@ public sealed class EfRecipeReferences(CateringDbContext database) :
                              value.State == (int)IngredientRevisionState.Published);
         return new IngredientSnapshotSource(
             ingredient.Id, ingredient.Name,
-            GetIngredientConflicts(ingredient.Id).OrderBy(value => value.Type).ThenBy(value => value.Id).ToArray());
+            GetIngredientConflicts(ingredient.Id).OrderBy(value => value.Type).ThenBy(value => value.Id).ToArray(),
+            GetNutrition(ingredient));
     }
 
     public IngredientUnitSnapshot GetIngredientUnit(Guid ingredientRevisionId, Guid unitId)
@@ -168,6 +169,29 @@ public sealed class EfRecipeReferences(CateringDbContext database) :
         if (target == Guid.Empty) return;
         if (!edges.TryGetValue(source, out HashSet<Guid>? targets)) edges[source] = targets = [];
         targets.Add(target);
+    }
+
+    private IngredientNutritionSnapshot? GetNutrition(IngredientRevisionRecord ingredient)
+    {
+        IngredientRevisionNutritionProfileRecord? record = database
+            .Set<IngredientRevisionNutritionProfileRecord>().AsNoTracking()
+            .SingleOrDefault(value => value.IngredientRevisionId == ingredient.Id);
+        if (record is null) return null;
+
+        IngredientNutritionProfile profile = IngredientNutritionProfilePersistence.ToDomain(record);
+        MeasurementUnit baseUnit = database.MeasurementUnits.AsNoTracking()
+            .Single(value => value.Id == ingredient.BaseUnitId);
+        MeasurementUnitSnapshot referenceUnit = GetUnit(profile.ReferenceUnitId);
+        if (baseUnit.Dimension != referenceUnit.Dimension)
+            throw new InvalidOperationException("The nutrition reference unit is not compatible with the ingredient base unit.");
+        decimal referenceQuantityInBaseUnit = profile.ReferenceQuantity *
+            referenceUnit.BaseUnitFactor / baseUnit.BaseUnitFactor;
+        return new IngredientNutritionSnapshot(
+            profile.ReferenceQuantity, referenceUnit, referenceQuantityInBaseUnit,
+            profile.EnergyKilojoules, profile.FatGrams, profile.SaturatedFatGrams,
+            profile.CarbohydrateGrams, profile.SugarsGrams, profile.ProteinGrams,
+            profile.SaltGrams, profile.FiberGrams, profile.SourceType,
+            profile.SourceReference, profile.ReviewState, profile.ReferenceDate);
     }
 
     private static bool IsAutomaticUnitPair(MeasurementUnit first, MeasurementUnit second) =>

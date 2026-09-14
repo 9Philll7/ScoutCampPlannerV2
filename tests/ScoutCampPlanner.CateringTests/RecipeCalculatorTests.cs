@@ -81,7 +81,8 @@ public sealed class RecipeCalculatorTests
         Guid replacementId = Guid.NewGuid();
         var conflict = new ConflictReference(ConflictType.Allergen, Guid.NewGuid());
         var ruleConflict = new ConflictReference(ConflictType.Intolerance, Guid.NewGuid());
-        var replacementIngredient = new IngredientSnapshotSource(Guid.NewGuid(), "Ersatz", [conflict]);
+        var replacementIngredient = new IngredientSnapshotSource(
+            Guid.NewGuid(), "Ersatz", [conflict], Nutrition(100m));
         var replacement = new IngredientReplacementSnapshot(
             replacementId, replacementIngredient, 3m, new IngredientUnitSnapshot(Gram, 1m), [ruleConflict]);
         IngredientPositionSnapshot position = Ingredient(1m) with
@@ -99,6 +100,105 @@ public sealed class RecipeCalculatorTests
         Assert.Equal(6m, ingredient.Quantity);
         Assert.Equal(replacementId, ingredient.AppliedReplacementRuleId);
         Assert.Equal([conflict, ruleConflict], result.Conflicts);
+        Assert.True(result.Nutrition.IsComplete);
+        Assert.Equal(6m, result.Nutrition.Total!.EnergyKilojoules);
+    }
+
+    [Fact]
+    public void Calculates_complete_nutrition_totals_and_values_per_standard_portion()
+    {
+        Guid revisionId = Guid.NewGuid();
+        IngredientPositionSnapshot grams = Ingredient(500m) with
+        {
+            Ingredient = NutritionIngredient("Reis", Nutrition(100m, fiber: 2m)),
+        };
+        IngredientPositionSnapshot kilograms = Ingredient(1m) with
+        {
+            Ingredient = NutritionIngredient("Bohnen", Nutrition(200m, fiber: 4m)),
+            Unit = new IngredientUnitSnapshot(Kilogram, 1_000m),
+        };
+
+        RecipeCalculationResult result = Calculator((revisionId,
+            PortionRecipe(10m, false, grams, kilograms))).Calculate(
+                new RecipeCalculationRequest(revisionId, 20m, 20m));
+
+        Assert.True(result.Nutrition.IsComplete);
+        Assert.Empty(result.Nutrition.MissingContributions);
+        Assert.Equal(5_000m, result.Nutrition.Total!.EnergyKilojoules);
+        Assert.Equal(250m, result.Nutrition.PerStandardPortion!.EnergyKilojoules);
+        Assert.Equal(100m, result.Nutrition.Total.FiberGrams);
+        Assert.Equal(result.Nutrition.Total.EnergyKilojoules / 4.184m,
+            result.Nutrition.Total.EnergyKilocalories);
+    }
+
+    [Fact]
+    public void Marks_nutrition_incomplete_and_lists_every_missing_contribution()
+    {
+        Guid revisionId = Guid.NewGuid();
+        IngredientPositionSnapshot missing = Ingredient(1m);
+        IngredientPositionSnapshot unreviewed = Ingredient(1m) with
+        {
+            Ingredient = NutritionIngredient("Ungeprüft", Nutrition(100m) with
+            {
+                ReviewState = IngredientNutritionReviewState.Unreviewed,
+            }),
+        };
+
+        RecipeCalculationResult result = Calculator((revisionId,
+            PortionRecipe(10m, false, missing, unreviewed))).Calculate(
+                new RecipeCalculationRequest(revisionId, 10m, 10m));
+
+        Assert.False(result.Nutrition.IsComplete);
+        Assert.Null(result.Nutrition.Total);
+        Assert.Null(result.Nutrition.PerStandardPortion);
+        Assert.Equal(
+            [MissingNutritionReason.ProfileMissing, MissingNutritionReason.ProfileUnreviewed],
+            result.Nutrition.MissingContributions.Select(value => value.Reason));
+    }
+
+    [Fact]
+    public void Keeps_complete_core_nutrition_when_optional_fiber_is_unknown()
+    {
+        Guid revisionId = Guid.NewGuid();
+        IngredientPositionSnapshot position = Ingredient(100m) with
+        {
+            Ingredient = NutritionIngredient("Zutat", Nutrition(100m, fiber: null)),
+        };
+
+        RecipeCalculationResult result = Calculator((revisionId,
+            PortionRecipe(10m, false, position))).Calculate(
+                new RecipeCalculationRequest(revisionId, 10m, 10m));
+
+        Assert.True(result.Nutrition.IsComplete);
+        Assert.Null(result.Nutrition.Total!.FiberGrams);
+        Assert.Null(result.Nutrition.PerStandardPortion!.FiberGrams);
+    }
+
+    [Fact]
+    public void Deserializes_legacy_snapshot_without_nutrition_data()
+    {
+        const string json = """
+            {
+              "schemaVersion": 1,
+              "name": "Alt",
+              "recipeType": "PortionBased",
+              "reference": { "standardServings": 10, "standardPortionFactor": 1 },
+              "defaultAgeGroupScalingApplies": false,
+              "tags": [], "groups": [],
+              "ingredientPositions": [{
+                "id": "11111111-1111-1111-1111-111111111111", "sortOrder": 0,
+                "ingredient": { "ingredientId": "22222222-2222-2222-2222-222222222222", "name": "Alt", "conflicts": [] },
+                "quantity": 100,
+                "unit": { "unit": { "unitId": "33333333-3333-3333-3333-333333333333", "name": "Gramm", "symbol": "g", "dimension": "Mass", "baseUnitFactor": 1 }, "referenceQuantityPerUnit": 1 },
+                "scalingMode": "Linear", "ageGroupScaling": "Inherit", "replacements": []
+              }],
+              "subrecipePositions": [], "exposedConflicts": []
+            }
+            """;
+
+        RecipeSnapshot snapshot = RecipeSnapshotBuilder.Deserialize(json);
+
+        Assert.Null(Assert.Single(snapshot.IngredientPositions).Ingredient.Nutrition);
     }
 
     [Fact]
@@ -125,6 +225,16 @@ public sealed class RecipeCalculatorTests
         StepwiseScaling? stepwise = null) =>
         new(Guid.NewGuid(), null, 0, new IngredientSnapshotSource(Guid.NewGuid(), "Zutat", []),
             quantity, new IngredientUnitSnapshot(Gram, 1m), scalingMode, ageMode, stepwise, []);
+
+    private static IngredientSnapshotSource NutritionIngredient(
+        string name,
+        IngredientNutritionSnapshot nutrition) =>
+        new(Guid.NewGuid(), name, [], nutrition);
+
+    private static IngredientNutritionSnapshot Nutrition(decimal energyKilojoules, decimal? fiber = 1m) =>
+        new(100m, Gram, 100m, energyKilojoules, 10m, 2m, 20m, 5m, 6m, 0.5m, fiber,
+            IngredientNutritionSourceType.OfficialDatabase, "Testquelle",
+            IngredientNutritionReviewState.Reviewed, new DateOnly(2026, 9, 14));
 
     private static RecipeSnapshot PortionRecipe(
         decimal servings,

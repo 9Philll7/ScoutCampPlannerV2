@@ -11,10 +11,28 @@ public sealed record MeasurementUnitSnapshot(
     MeasurementDimension Dimension,
     decimal BaseUnitFactor);
 
+public sealed record IngredientNutritionSnapshot(
+    decimal ReferenceQuantity,
+    MeasurementUnitSnapshot ReferenceUnit,
+    decimal ReferenceQuantityInBaseUnit,
+    decimal? EnergyKilojoules,
+    decimal? FatGrams,
+    decimal? SaturatedFatGrams,
+    decimal? CarbohydrateGrams,
+    decimal? SugarsGrams,
+    decimal? ProteinGrams,
+    decimal? SaltGrams,
+    decimal? FiberGrams,
+    IngredientNutritionSourceType SourceType,
+    string SourceReference,
+    IngredientNutritionReviewState ReviewState,
+    DateOnly? ReferenceDate);
+
 public sealed record IngredientSnapshotSource(
     [property: JsonPropertyName("ingredientId")] Guid IngredientRevisionId,
     string Name,
-    IReadOnlyList<ConflictReference> Conflicts);
+    IReadOnlyList<ConflictReference> Conflicts,
+    IngredientNutritionSnapshot? Nutrition = null);
 
 public sealed record IngredientUnitSnapshot(
     MeasurementUnitSnapshot Unit,
@@ -95,7 +113,7 @@ public sealed record RecipeSnapshot(
 
 public sealed class RecipeSnapshotBuilder(IRecipeSnapshotReferences references)
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     public RecipeSnapshot Build(RecipeDraft draft)
     {

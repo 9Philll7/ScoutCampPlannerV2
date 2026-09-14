@@ -224,3 +224,24 @@ Published revisions are immutable and all external references target a revision 
 Never resolve a historical subrecipe reference to 'latest revision'.
 
 Never mutate historical quantities/warnings because a base ingredient or central recipe later changes. If current catalog semantics are also needed, expose them as a separate re-evaluation view.
+
+## 14. Nutrition calculation
+
+Nutrition values are calculated from the effective flattened ingredient list
+after scaling, nested-recipe expansion and replacement selection. The selected
+recipe unit is first converted to the ingredient base quantity using the
+conversion captured in the recipe snapshot. That quantity is then related to
+the captured nutrition reference quantity.
+
+The calculation returns:
+
+- estimated totals for the requested demand;
+- estimated values per age-adjusted standard portion;
+- a completeness flag;
+- every missing contribution with ingredient, position and recipe path.
+
+Totals are absent rather than partially summed if a contribution has no
+profile, an unreviewed profile or an invalid reference. Optional fibre does not
+affect core completeness; its total is absent if one of the otherwise complete
+profiles has no fibre value. kcal are derived from kJ and are not stored as an
+independent source value.
