@@ -46,6 +46,15 @@ export interface RecipeEditorContent {
 }
 export interface RecipeEditorDraft {
   id: string; campId: string; status: number; draftVersion: number; content: RecipeEditorContent;
+  ingredientReferences: RecipeEditorIngredientReference[];
+}
+
+export interface RecipeEditorIngredientReference {
+  revisionId: string;
+  name: string;
+  scope: number;
+  units: { unitId: string; name: string; symbol: string; dimension: number;
+    baseUnitFactor: number; referenceQuantityPerUnit: number }[];
 }
 
 export interface RecipeNutritionValues {

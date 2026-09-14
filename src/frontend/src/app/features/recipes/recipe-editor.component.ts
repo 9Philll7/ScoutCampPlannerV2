@@ -346,7 +346,8 @@ export class RecipeEditorComponent {
   }
 
   ingredient(position: RecipeEditorIngredientPosition) {
-    return this.ingredients().find(value => value.revisionId === position.ingredientRevisionId);
+    return this.ingredients().find(value => value.revisionId === position.ingredientRevisionId) ??
+      this.selected()?.ingredientReferences.find(value => value.revisionId === position.ingredientRevisionId);
   }
 
   orderedGroups() {
@@ -494,8 +495,9 @@ export class RecipeEditorComponent {
       'Bezugsmenge oder Umrechnung ist ungültig';
   }
 
-  scopeLabel(scope: IngredientCatalogEntry['scope'] | undefined) {
-    return scope === 'Camp' ? 'Lager' : scope === 'Tenant' ? 'Organisation' : scope === 'Central' ? 'Zentral' : '';
+  scopeLabel(scope: IngredientCatalogEntry['scope'] | number | undefined) {
+    return scope === 'Camp' || scope === 2 ? 'Lager' : scope === 'Tenant' || scope === 1 ? 'Organisation' :
+      scope === 'Central' || scope === 0 ? 'Zentral' : '';
   }
   statusLabel(status: number) { return status === 0 ? 'Entwurf' : status === 1 ? 'Aktiv' : 'Archiviert'; }
 

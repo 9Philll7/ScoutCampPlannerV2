@@ -41,7 +41,22 @@ public sealed record RecipeEditorDraft(
     Guid CampId,
     RecipeStatus Status,
     long DraftVersion,
-    RecipeEditorContent Content);
+    RecipeEditorContent Content,
+    IReadOnlyList<RecipeEditorIngredientReference> IngredientReferences);
+
+public sealed record RecipeEditorIngredientReference(
+    Guid RevisionId,
+    string Name,
+    IngredientScopeType Scope,
+    IReadOnlyList<RecipeEditorIngredientUnitReference> Units);
+
+public sealed record RecipeEditorIngredientUnitReference(
+    Guid UnitId,
+    string Name,
+    string Symbol,
+    MeasurementDimension Dimension,
+    decimal BaseUnitFactor,
+    decimal ReferenceQuantityPerUnit);
 
 public enum RecipeEditorStatus
 {
@@ -72,10 +87,18 @@ public interface IRecipeEditorStore
         CancellationToken cancellationToken = default);
 }
 
+public interface IRecipeEditorIngredientReferenceStore
+{
+    Task<IReadOnlyList<RecipeEditorIngredientReference>> FindPublishedAsync(
+        IReadOnlyCollection<Guid> revisionIds,
+        CancellationToken cancellationToken = default);
+}
+
 public sealed class RecipeEditorService(
     IRecipeEditorStore drafts,
     IRecipeEditorAuthorization authorization,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IRecipeEditorIngredientReferenceStore? ingredientReferences = null)
 {
     public async Task<RecipeEditorResult> FindCampAsync(
         Guid campId, Guid recipeId, Guid actorUserId, CancellationToken cancellationToken = default)
@@ -88,7 +111,7 @@ public sealed class RecipeEditorService(
         RecipeDraft? draft = await drafts.FindAsync(recipeId, cancellationToken);
         return draft is null || draft.ScopeType != RecipeScopeType.Camp || draft.ScopeId != campId
             ? new(RecipeEditorStatus.NotFound)
-            : new(RecipeEditorStatus.Found, Map(draft));
+            : new(RecipeEditorStatus.Found, await MapAsync(draft, cancellationToken));
     }
 
     public async Task<RecipeEditorResult> CreateCampAsync(
@@ -103,7 +126,7 @@ public sealed class RecipeEditorService(
         RecipeDraft draft = Build(Guid.NewGuid(), RecipeScopeType.Camp, campId, RecipeStatus.Draft, content);
         RecipeDraft created = await drafts.CreateCampAsync(
             draft, campId, actorUserId, timeProvider.GetUtcNow(), cancellationToken);
-        return new(RecipeEditorStatus.Created, Map(created));
+        return new(RecipeEditorStatus.Created, await MapAsync(created, cancellationToken));
     }
 
     public async Task<RecipeEditorResult> SaveCampAsync(
@@ -125,9 +148,10 @@ public sealed class RecipeEditorService(
             replacement, expectedVersion, actorUserId, timeProvider.GetUtcNow(), cancellationToken);
         return saved.Status switch
         {
-            RecipeDraftSaveStatus.Saved => new(RecipeEditorStatus.Saved, Map(saved.CurrentDraft!)),
+            RecipeDraftSaveStatus.Saved => new(RecipeEditorStatus.Saved,
+                await MapAsync(saved.CurrentDraft!, cancellationToken)),
             RecipeDraftSaveStatus.VersionConflict => new(RecipeEditorStatus.VersionConflict,
-                saved.CurrentDraft is null ? null : Map(saved.CurrentDraft)),
+                saved.CurrentDraft is null ? null : await MapAsync(saved.CurrentDraft, cancellationToken)),
             _ => new(RecipeEditorStatus.NotFound),
         };
     }
@@ -182,7 +206,17 @@ public sealed class RecipeEditorService(
         return draft;
     }
 
-    private static RecipeEditorDraft Map(RecipeDraft draft) => new(
+    private async Task<RecipeEditorDraft> MapAsync(RecipeDraft draft, CancellationToken cancellationToken)
+    {
+        Guid[] revisionIds = draft.IngredientPositions
+            .Select(value => value.IngredientRevisionId)
+            .Concat(draft.IngredientPositions.SelectMany(value => value.ReplacementRules)
+                .Select(value => value.ReplacementIngredientRevisionId))
+            .OfType<Guid>().Distinct().ToArray();
+        IReadOnlyList<RecipeEditorIngredientReference> references = ingredientReferences is null
+            ? []
+            : await ingredientReferences.FindPublishedAsync(revisionIds, cancellationToken);
+        return new RecipeEditorDraft(
         draft.Id,
         draft.ScopeId!.Value,
         draft.Status,
@@ -212,7 +246,9 @@ public sealed class RecipeEditorService(
                     replacement.ReplacementServings, replacement.ReplacementQuantity,
                     replacement.ReplacementUnitId,
                     replacement.Conflicts.Select(conflict => new RecipeEditorConflict(conflict.Type, conflict.Id))
-                        .ToArray())).ToArray())).ToArray()));
+                        .ToArray())).ToArray())).ToArray()),
+            references);
+    }
 
     private static Guid Required(Guid value, string parameterName) =>
         value == Guid.Empty ? throw new ArgumentException("ID is required.", parameterName) : value;

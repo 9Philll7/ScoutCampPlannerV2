@@ -115,6 +115,7 @@ builder.Services.AddScoped<IRecipeEditorAuthorization>(services =>
     services.GetRequiredService<PlatformRecipeAuthorization>());
 builder.Services.AddScoped<RecipeEditorService>();
 builder.Services.AddScoped<IRecipeEditorStore, RecipeEditorStore>();
+builder.Services.AddScoped<IRecipeEditorIngredientReferenceStore, RecipeEditorIngredientReferenceStore>();
 builder.Services.AddScoped<RecipeLifecycleService>();
 builder.Services.AddScoped<IRecipeLibraryStore, RecipeLibraryStore>();
 builder.Services.AddScoped<RecipeLibraryService>();

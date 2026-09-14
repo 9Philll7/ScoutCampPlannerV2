@@ -72,6 +72,35 @@ public sealed class RecipeEditorServiceTests
         Assert.Equal("Aktueller Stand", result.Draft.Content.Name);
     }
 
+    [Fact]
+    public async Task Find_resolves_the_exact_pinned_ingredient_revision()
+    {
+        Guid campId = Guid.NewGuid();
+        Guid recipeId = Guid.NewGuid();
+        Guid revisionId = Guid.NewGuid();
+        Guid unitId = Guid.NewGuid();
+        var draft = new RecipeDraft(
+            recipeId, RecipeScopeType.Camp, campId, RecipeType.PortionBased, "Porridge");
+        draft.AddIngredientPosition(new RecipeIngredientPosition(
+            Guid.NewGuid(), recipeId, null, revisionId, 100m, unitId, 0));
+        var references = new FakeIngredientReferences(new RecipeEditorIngredientReference(
+            revisionId, "Haferflocken – Revision 1", IngredientScopeType.Central,
+            [new RecipeEditorIngredientUnitReference(
+                unitId, "Gramm", "g", MeasurementDimension.Mass, 1m, 1m)]));
+        var service = new RecipeEditorService(
+            new FakeStore { FoundDraft = draft }, new FakeAuthorization(true),
+            new FixedTimeProvider(Now), references);
+
+        RecipeEditorResult result = await service.FindCampAsync(
+            campId, recipeId, Guid.NewGuid(), TestContext.Current.CancellationToken);
+
+        RecipeEditorIngredientReference reference = Assert.Single(result.Draft!.IngredientReferences);
+        Assert.Equal(revisionId, reference.RevisionId);
+        Assert.Equal("Haferflocken – Revision 1", reference.Name);
+        Assert.Equal(unitId, Assert.Single(reference.Units).UnitId);
+        Assert.Equal([revisionId], references.RequestedRevisionIds);
+    }
+
     private static RecipeEditorContent Content() => new(
         "Neues Rezept", null, null, null, RecipeType.PortionBased, 10, null, null, true, null,
         [], [], [], []);
@@ -111,6 +140,20 @@ public sealed class RecipeEditorServiceTests
         public Task<bool> CanEditCampAsync(
             Guid actorUserId, Guid campId, CancellationToken cancellationToken = default) =>
             Task.FromResult(allowed);
+    }
+
+    private sealed class FakeIngredientReferences(params RecipeEditorIngredientReference[] references)
+        : IRecipeEditorIngredientReferenceStore
+    {
+        public IReadOnlyList<Guid> RequestedRevisionIds { get; private set; } = [];
+
+        public Task<IReadOnlyList<RecipeEditorIngredientReference>> FindPublishedAsync(
+            IReadOnlyCollection<Guid> revisionIds,
+            CancellationToken cancellationToken = default)
+        {
+            RequestedRevisionIds = revisionIds.ToArray();
+            return Task.FromResult<IReadOnlyList<RecipeEditorIngredientReference>>(references);
+        }
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
