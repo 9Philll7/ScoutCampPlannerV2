@@ -96,8 +96,11 @@ builder.Services.AddScoped<EfRecipeReferences>();
 builder.Services.AddScoped<IRecipeRevisionSource>(services => services.GetRequiredService<EfRecipeReferences>());
 builder.Services.AddScoped<IRecipeValidationReferences>(services => services.GetRequiredService<EfRecipeReferences>());
 builder.Services.AddScoped<IRecipeSnapshotReferences>(services => services.GetRequiredService<EfRecipeReferences>());
+builder.Services.AddScoped<IRecipeSnapshotSource>(services => services.GetRequiredService<EfRecipeReferences>());
 builder.Services.AddScoped<RecipePublicationValidator>();
 builder.Services.AddScoped<RecipeSnapshotBuilder>();
+builder.Services.AddScoped<RecipeCalculator>();
+builder.Services.AddScoped<RecipeNutritionPreviewService>();
 builder.Services.AddScoped<RecipePublisher>();
 builder.Services.AddScoped<PlatformRecipeAuthorization>();
 builder.Services.AddScoped<IRecipePermanentDeleteAuthorization>(services =>
@@ -624,6 +627,20 @@ app.MapGet("/api/camps/{campId:guid}/recipes/{recipeId:guid}/draft", async (
     ToRecipeEditorResult(await recipes.FindCampAsync(
         campId, recipeId, Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken)))
     .RequireAuthorization();
+app.MapGet("/api/camps/{campId:guid}/recipes/{recipeId:guid}/draft/nutrition", async (
+    Guid campId, Guid recipeId, ClaimsPrincipal principal, RecipeNutritionPreviewService recipes,
+    CancellationToken cancellationToken) =>
+{
+    RecipeNutritionPreviewResult result = await recipes.PreviewCampAsync(
+        campId, recipeId, Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken);
+    return result.Status switch
+    {
+        RecipeNutritionPreviewStatus.Found => Results.Ok(result.Nutrition),
+        RecipeNutritionPreviewStatus.Forbidden => Results.Forbid(),
+        RecipeNutritionPreviewStatus.NotFound => Results.NotFound(),
+        _ => Results.UnprocessableEntity(new { code = "recipe_nutrition_not_calculable" }),
+    };
+}).RequireAuthorization();
 app.MapPost("/api/camps/{campId:guid}/recipes/drafts", async (
     Guid campId, RecipeEditorContent request, ClaimsPrincipal principal, RecipeEditorService recipes,
     CancellationToken cancellationToken) =>

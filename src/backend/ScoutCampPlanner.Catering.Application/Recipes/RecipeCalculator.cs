@@ -70,12 +70,20 @@ public sealed class RecipeCalculator(IRecipeSnapshotSource snapshots)
         ArgumentNullException.ThrowIfNull(request);
         if (request.RecipeRevisionId == Guid.Empty)
             throw new ArgumentException("Recipe revision ID is required.", nameof(request));
+        return Calculate(request, snapshots.GetRevision(request.RecipeRevisionId));
+    }
+
+    public RecipeCalculationResult Calculate(RecipeCalculationRequest request, RecipeSnapshot root)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(root);
+        if (request.RecipeRevisionId == Guid.Empty)
+            throw new ArgumentException("Recipe revision ID is required.", nameof(request));
         if (request.AgeAdjustedServings <= 0)
             throw new ArgumentOutOfRangeException(nameof(request), "Age-adjusted servings must be positive.");
         if (request.DirectParticipantDemand <= 0)
             throw new ArgumentOutOfRangeException(nameof(request), "Direct participant demand must be positive.");
 
-        RecipeSnapshot root = snapshots.GetRevision(request.RecipeRevisionId);
         if (root.RecipeType != RecipeType.PortionBased || root.Reference.StandardServings is not > 0)
             throw new InvalidOperationException("Only a published portion-based recipe can be calculated at top level.");
 

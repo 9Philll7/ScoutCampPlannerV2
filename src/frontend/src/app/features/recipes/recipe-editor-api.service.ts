@@ -48,6 +48,33 @@ export interface RecipeEditorDraft {
   id: string; campId: string; status: number; draftVersion: number; content: RecipeEditorContent;
 }
 
+export interface RecipeNutritionValues {
+  energyKilojoules: number;
+  energyKilocalories: number;
+  fatGrams: number;
+  saturatedFatGrams: number;
+  carbohydrateGrams: number;
+  sugarsGrams: number;
+  proteinGrams: number;
+  saltGrams: number;
+  fiberGrams: number | null;
+}
+
+export interface MissingNutritionContribution {
+  ingredientRevisionId: string;
+  ingredientName: string;
+  recipeRevisionPath: string[];
+  positionId: string;
+  reason: number;
+}
+
+export interface RecipeNutritionCalculation {
+  isComplete: boolean;
+  total: RecipeNutritionValues | null;
+  perStandardPortion: RecipeNutritionValues | null;
+  missingContributions: MissingNutritionContribution[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class RecipeEditorApiService {
   private readonly http = inject(HttpClient);
@@ -65,6 +92,12 @@ export class RecipeEditorApiService {
 
   get(campId: string, recipeId: string) {
     return this.http.get<RecipeEditorDraft>(`${this.baseUrl}/api/camps/${campId}/recipes/${recipeId}/draft`,
+      { withCredentials: true });
+  }
+
+  nutrition(campId: string, recipeId: string) {
+    return this.http.get<RecipeNutritionCalculation>(
+      `${this.baseUrl}/api/camps/${campId}/recipes/${recipeId}/draft/nutrition`,
       { withCredentials: true });
   }
 

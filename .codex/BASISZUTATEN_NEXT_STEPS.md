@@ -423,9 +423,6 @@ Gemäß ADR-024 umgesetzt:
 - Eingabe und Plausibilitätsprüfung im Zutateneditor ergänzen
 - Rezeptgesamtwerte und Werte pro Standardportion mit Vollständigkeitsstatus
   im Application Layer berechnen
-
-Noch offen:
-
 - berechnete Nährwerte über die API im Rezepteditor anzeigen
 
 Keine medizinischen Bewertungen oder automatischen Ernährungsampeln einführen.

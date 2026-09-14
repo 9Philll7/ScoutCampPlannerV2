@@ -1,4 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { DecimalPipe } from '@angular/common';
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -11,7 +12,8 @@ import { MatSelectModule } from '@angular/material/select';
 import { IngredientCatalogEntry } from '../camp/camp-api.service';
 import { ActionIconComponent } from '../../shared/action-icon.component';
 import { RecipeCatalogEntry, RecipeEditorApiService, RecipeEditorContent,
-  RecipeEditorDraft, RecipeEditorGroup, RecipeEditorIngredientPosition } from './recipe-editor-api.service';
+  RecipeEditorDraft, RecipeEditorGroup, RecipeEditorIngredientPosition,
+  RecipeNutritionCalculation, RecipeNutritionValues } from './recipe-editor-api.service';
 
 interface IngredientSection {
   id: string | null;
@@ -22,7 +24,7 @@ interface IngredientSection {
 @Component({
   selector: 'scp-recipe-editor',
   standalone: true,
-  imports: [FormsModule, MatButtonModule, MatCardModule, MatCheckboxModule, MatFormFieldModule,
+  imports: [DecimalPipe, FormsModule, MatButtonModule, MatCardModule, MatCheckboxModule, MatFormFieldModule,
     MatInputModule, MatProgressSpinnerModule, MatSelectModule, ActionIconComponent],
   template: `
     <div class="recipe-heading">
@@ -168,6 +170,58 @@ interface IngredientSection {
           }
         </section>
 
+        <section class="recipe-section nutrition-section">
+          <div class="section-title">
+            <div><h4>Nährwertschätzung</h4><p>Berechnet aus dem zuletzt gespeicherten Rezeptstand.</p></div>
+            <button matButton type="button" (click)="loadNutrition()"
+              [disabled]="changed() || nutritionLoading()">
+              Neu berechnen
+            </button>
+          </div>
+          @if (changed()) {
+            <p class="nutrition-hint">Speichere die Änderungen, um die Nährwerte neu zu berechnen.</p>
+          } @else if (nutritionLoading()) {
+            <div class="recipe-loading"><mat-spinner diameter="24"/><span>Nährwerte werden berechnet …</span></div>
+          } @else if (nutrition(); as calculation) {
+            @if (calculation.isComplete && calculation.perStandardPortion && calculation.total) {
+              <p class="nutrition-state complete">Vollständige Schätzung auf Basis geprüfter Zutatenprofile.</p>
+              <h5>Pro Standardportion</h5>
+              <div class="nutrition-grid">
+                <span><strong>{{ calculation.perStandardPortion.energyKilojoules | number:'1.0-1' }} kJ</strong><small>{{ calculation.perStandardPortion.energyKilocalories | number:'1.0-1' }} kcal</small></span>
+                <span><strong>{{ calculation.perStandardPortion.fatGrams | number:'1.0-2' }} g</strong><small>Fett</small></span>
+                <span><strong>{{ calculation.perStandardPortion.saturatedFatGrams | number:'1.0-2' }} g</strong><small>davon gesättigt</small></span>
+                <span><strong>{{ calculation.perStandardPortion.carbohydrateGrams | number:'1.0-2' }} g</strong><small>Kohlenhydrate</small></span>
+                <span><strong>{{ calculation.perStandardPortion.sugarsGrams | number:'1.0-2' }} g</strong><small>davon Zucker</small></span>
+                <span><strong>{{ calculation.perStandardPortion.proteinGrams | number:'1.0-2' }} g</strong><small>Eiweiß</small></span>
+                <span><strong>{{ calculation.perStandardPortion.saltGrams | number:'1.0-3' }} g</strong><small>Salz</small></span>
+                <span><strong>{{ optionalGrams(calculation.perStandardPortion.fiberGrams) }}</strong><small>Ballaststoffe</small></span>
+              </div>
+              <details class="nutrition-total">
+                <summary>Gesamtwerte des Rezepts</summary>
+                <div class="nutrition-grid">
+                  <span><strong>{{ calculation.total.energyKilojoules | number:'1.0-1' }} kJ</strong><small>{{ calculation.total.energyKilocalories | number:'1.0-1' }} kcal</small></span>
+                  <span><strong>{{ calculation.total.fatGrams | number:'1.0-2' }} g</strong><small>Fett</small></span>
+                  <span><strong>{{ calculation.total.saturatedFatGrams | number:'1.0-2' }} g</strong><small>davon gesättigt</small></span>
+                  <span><strong>{{ calculation.total.carbohydrateGrams | number:'1.0-2' }} g</strong><small>Kohlenhydrate</small></span>
+                  <span><strong>{{ calculation.total.sugarsGrams | number:'1.0-2' }} g</strong><small>davon Zucker</small></span>
+                  <span><strong>{{ calculation.total.proteinGrams | number:'1.0-2' }} g</strong><small>Eiweiß</small></span>
+                  <span><strong>{{ calculation.total.saltGrams | number:'1.0-3' }} g</strong><small>Salz</small></span>
+                  <span><strong>{{ optionalGrams(calculation.total.fiberGrams) }}</strong><small>Ballaststoffe</small></span>
+                </div>
+              </details>
+            } @else {
+              <p class="nutrition-state incomplete">Die Nährwertschätzung ist noch unvollständig.</p>
+              <ul class="nutrition-missing">
+                @for (missing of calculation.missingContributions; track missing.positionId + missing.ingredientRevisionId) {
+                  <li><strong>{{ missing.ingredientName }}</strong>: {{ nutritionReason(missing.reason) }}</li>
+                }
+              </ul>
+            }
+          } @else {
+            <p class="nutrition-hint">{{ nutritionMessage() || 'Für dieses Rezept sind noch keine Nährwerte berechenbar.' }}</p>
+          }
+        </section>
+
         <div class="recipe-actions">
           <button matButton="filled" type="submit" [disabled]="disabled() || saving() || !changed()">
             <scp-action-icon name="save"/>Speichern</button>
@@ -209,9 +263,20 @@ interface IngredientSection {
     .position-name { display: grid; gap: .15rem; } .picker-fields { display: grid; grid-template-columns: 2fr 1fr; gap: .7rem; }
     .candidate-list { display: flex; flex-wrap: wrap; gap: .5rem; }
     .candidate-list button span { display: grid; text-align: left; }
+    .nutrition-section h5 { margin: 0; }
+    .nutrition-state { padding: .65rem .8rem; border-radius: .6rem; }
+    .nutrition-state.complete { color: #205b3b; background: #edf8f1; }
+    .nutrition-state.incomplete { color: #7b5414; background: #fff7e8; }
+    .nutrition-hint, .nutrition-missing { color: #657269; }
+    .nutrition-grid { display: grid; grid-template-columns: repeat(4, minmax(8rem, 1fr)); gap: .6rem; }
+    .nutrition-grid span { display: grid; gap: .15rem; padding: .65rem; border-radius: .6rem; background: #f1f6f3; }
+    .nutrition-grid small { display: block; }
+    .nutrition-total { display: grid; gap: .7rem; }
+    .nutrition-total summary { cursor: pointer; color: #315d48; font-weight: 600; }
+    .nutrition-missing { margin: 0; padding-left: 1.25rem; }
     .recipe-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: .8rem; }
-    @media (max-width: 900px) { .position-card { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 720px) { .field-grid, .picker-fields, .position-card { grid-template-columns: 1fr; } }
+    @media (max-width: 900px) { .position-card, .nutrition-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 720px) { .field-grid, .picker-fields, .position-card, .nutrition-grid { grid-template-columns: 1fr; } }
   `
 })
 export class RecipeEditorComponent {
@@ -227,6 +292,9 @@ export class RecipeEditorComponent {
   readonly saving = signal(false);
   readonly error = signal('');
   readonly notice = signal('');
+  readonly nutrition = signal<RecipeNutritionCalculation | null>(null);
+  readonly nutritionLoading = signal(false);
+  readonly nutritionMessage = signal('');
   private snapshot = '';
 
   readonly ingredientCandidates = computed(() => {
@@ -399,6 +467,33 @@ export class RecipeEditorComponent {
     } });
   }
 
+  loadNutrition() {
+    const draft = this.selected();
+    if (!draft || this.changed() || this.nutritionLoading()) return;
+    this.nutritionLoading.set(true); this.nutritionMessage.set('');
+    this.api.nutrition(this.campId(), draft.id).subscribe({
+      next: value => {
+        this.nutrition.set(value); this.nutritionLoading.set(false);
+      },
+      error: (response: HttpErrorResponse) => {
+        this.nutrition.set(null); this.nutritionLoading.set(false);
+        this.nutritionMessage.set(response.status === 422
+          ? 'Ergänze zuerst Standardportionen und mindestens eine vollständig konfigurierte Zutat.'
+          : 'Die Nährwerte konnten nicht berechnet werden.');
+      }
+    });
+  }
+
+  optionalGrams(value: number | null) {
+    return value === null ? 'Unbekannt' : `${this.formatNumber(value, 2)} g`;
+  }
+
+  nutritionReason(reason: number) {
+    return reason === 0 ? 'kein Nährwertprofil hinterlegt' :
+      reason === 1 ? 'Nährwertprofil noch nicht vollständig geprüft' :
+      'Bezugsmenge oder Umrechnung ist ungültig';
+  }
+
   scopeLabel(scope: IngredientCatalogEntry['scope'] | undefined) {
     return scope === 'Camp' ? 'Lager' : scope === 'Tenant' ? 'Organisation' : scope === 'Central' ? 'Zentral' : '';
   }
@@ -406,6 +501,7 @@ export class RecipeEditorComponent {
 
   private setDraft(draft: RecipeEditorDraft) {
     this.selected.set(draft); this.targetGroupId.set(null); this.snapshot = JSON.stringify(draft.content);
+    this.nutrition.set(null); this.nutritionMessage.set(''); this.loadNutrition();
   }
   private positionsForGroup(groupId: string | null) {
     return [...(this.selected()?.content.ingredientPositions ?? [])]
@@ -439,4 +535,7 @@ export class RecipeEditorComponent {
     return `Gruppe ${suffix}`;
   }
   private loadCatalogOnly() { this.api.list(this.campId()).subscribe({ next: values => this.recipes.set(values) }); }
+  private formatNumber(value: number, maximumFractionDigits: number) {
+    return new Intl.NumberFormat('de-DE', { maximumFractionDigits }).format(value);
+  }
 }
