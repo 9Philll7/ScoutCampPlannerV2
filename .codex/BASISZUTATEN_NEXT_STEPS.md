@@ -401,7 +401,7 @@ Zutatenrevisionen referenzieren.
 
 ### 10. Offline-Pakete erweitern
 
-Lagerpakete müssen die transitive, unveränderliche Datenmenge der enthaltenen Rezeptrevisionen übernehmen:
+Für veröffentlichte Upstream-Rezepte im Lagerkatalog umgesetzt:
 
 - Zutatenidentität
 - konkrete veröffentlichte Zutatenrevision
@@ -411,6 +411,17 @@ Lagerpakete müssen die transitive, unveränderliche Datenmenge der enthaltenen 
 - benötigte Allergen-, Unverträglichkeits- und Herkunftskatalogeinträge
 
 Offline darf keine fehlende Stammdatenreferenz aus der Cloud nachladen müssen.
+
+Der eingebettete Catering-Referenzabschnitt besitzt eine eigene Schemaversion,
+wird auf transitive Vollständigkeit geprüft und nur idempotent ergänzt. Beim
+Rückimport ersetzt er keine zentralen oder mandantenweiten Katalogdaten.
+
+Noch offen:
+
+- camp-lokale Rezeptentwürfe und ihre Bibliothekseinträge als vollständigen,
+  camp-bezogenen Replace-Bereich transportieren
+- Bearbeitungen dieses camp-lokalen Rezeptbereichs aus der Offlinephase sicher
+  in die Cloud zurückführen
 
 ### 11. Nährwertprofile vervollständigen
 

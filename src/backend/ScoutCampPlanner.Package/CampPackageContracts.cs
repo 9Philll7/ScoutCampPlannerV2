@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace ScoutCampPlanner.Package;
@@ -34,7 +35,8 @@ public sealed record CampPackagePayload(
     IReadOnlyList<StructureNodeData> StructureNodes,
     IReadOnlyList<MealPlanData> MealPlans,
     IReadOnlyList<CampMealTypeData>? CampMealTypes = null,
-    IReadOnlyList<CampMealData>? CampMeals = null);
+    IReadOnlyList<CampMealData>? CampMeals = null,
+    JsonElement CateringReferenceData = default);
 
 public sealed record TenantData(Guid Id, string Name);
 public sealed record CampData(

@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using System.Text.Json;
 using ScoutCampPlanner.Camp.Domain;
 using ScoutCampPlanner.Camp.Infrastructure;
 using ScoutCampPlanner.Catering.Domain;
 using ScoutCampPlanner.Catering.Infrastructure;
+using ScoutCampPlanner.Catering.Infrastructure.Offline;
 using ScoutCampPlanner.Platform.Domain;
 using ScoutCampPlanner.Platform.Infrastructure;
 
@@ -73,6 +75,8 @@ public sealed class CampPackageService(
             catering.MealPlans.AddRange(package.MealPlans.Select(x => new MealPlan(x.Id, x.CampId, x.Name)));
             catering.CampMealTypes.AddRange((package.CampMealTypes ?? []).Select(x => new CampMealType(x.Id, x.CampId, x.Name, x.SortOrder)));
             catering.CampMeals.AddRange((package.CampMeals ?? []).Select(x => new CampMeal(x.Id, x.CampId, x.MealTypeId, x.Date, x.IsActive)));
+            await new CampOfflineReferenceStore(catering).ImportAsync(
+                package.CateringReferenceData, package.Camp.Id, cancellationToken);
             await SaveAllAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
@@ -179,6 +183,8 @@ public sealed class CampPackageService(
             .Select(x => new CampMealTypeData(x.Id, x.CampId, x.Name, x.SortOrder)).ToListAsync(cancellationToken);
         var campMeals = await catering.CampMeals.Where(x => x.CampId == entity.Id)
             .Select(x => new CampMealData(x.Id, x.CampId, x.MealTypeId, x.Date, x.IsActive)).ToListAsync(cancellationToken);
+        JsonElement cateringReferenceData = await new CampOfflineReferenceStore(catering)
+            .ExportAsync(entity.Id, cancellationToken);
         var manifest = new CampPackageManifest(CampPackageVersions.Current, tenant.Id, entity.Id,
             entity.ActiveTransferId!.Value, entity.BaselineVersion, direction, IncludedModules,
             timeProvider.GetUtcNow());
@@ -188,7 +194,7 @@ public sealed class CampPackageService(
                 entity.StartDate ?? throw new InvalidOperationException("Legacy camps without a period cannot be exported."),
                 entity.EndDate ?? throw new InvalidOperationException("Legacy camps without a period cannot be exported."),
                 entity.StructureMode.ToString(), entity.GetStructureLevelNames()), stages, estimates, foodFactors,
-            structureNodes, meals, mealTypes, campMeals));
+            structureNodes, meals, mealTypes, campMeals, cateringReferenceData));
     }
 
     private async Task EnlistAsync(IDbContextTransaction transaction, CancellationToken cancellationToken)

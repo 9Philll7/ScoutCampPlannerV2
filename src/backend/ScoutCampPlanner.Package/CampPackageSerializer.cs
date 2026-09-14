@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
+using ScoutCampPlanner.Catering.Infrastructure.Offline;
 
 namespace ScoutCampPlanner.Package;
 
@@ -15,6 +16,7 @@ public static class CampPackageSerializer
 
     public static byte[] Serialize(CampPackagePayload package)
     {
+        Validate(package);
         var payload = JsonSerializer.SerializeToUtf8Bytes(package, Options);
         using var output = new MemoryStream();
         using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
@@ -54,6 +56,9 @@ public static class CampPackageSerializer
     {
         if (package.CampStages is null || package.ParticipantEstimates is null || package.CampStageFoodFactors is null)
             throw new CampPackageValidationException("Camp stages are missing.");
+        if (package.CateringReferenceData.ValueKind != JsonValueKind.Object)
+            throw new CampPackageValidationException("Catering reference data is missing.");
+        CampOfflineReferenceStore.Validate(package.CateringReferenceData, package.Camp.Id);
         if (package.Manifest.FormatVersion != CampPackageVersions.Current)
             throw new CampPackageValidationException($"Unsupported package version {package.Manifest.FormatVersion}.");
         if (package.Manifest.TenantId != package.Tenant.Id || package.Manifest.CampId != package.Camp.Id)

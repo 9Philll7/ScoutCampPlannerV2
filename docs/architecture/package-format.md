@@ -32,6 +32,21 @@ Version 1 requires the `Camp` and `Catering` module payloads. Platform data is l
 
 The Catering payload includes the camp-specific meal labels and every dated meal with its active state, so arrival/departure-day adjustments survive Cloud → Local → Cloud replacement.
 
+Before the first product release, version 1 was additionally extended with a versioned `cateringReferenceData` module object. It contains the immutable dependency closure of every upstream recipe revision included in the camp recipe library:
+
+- the camp-library reference needed to expose the recipe locally
+- the exact published recipe revision and all recursively referenced subrecipe revisions
+- the referenced recipe identities
+- every referenced published ingredient revision and its ingredient identity
+- the current published revision of each included ingredient identity when it differs from the recipe-pinned revision
+- variants and their property, unit-conversion, and nutrition overrides
+- revision-bound properties, unit conversions, and nutrition profiles including source, review state, and reference date
+- measurement units and the provider-identical ingredient reference catalogues needed to resolve those records locally
+
+The embedded Catering reference schema currently has version 1 and is validated independently inside package format version 1. A missing, malformed, cross-camp, duplicate, or transitively incomplete reference section rejects the complete package. Offline use does not load a missing dependency from the cloud.
+
+These records are imported idempotently: an existing immutable identity is not updated or deleted. On return import, the cloud remains authoritative for central and tenant-wide recipe and ingredient catalogues; the reference section never grants replacement authority over them. Transfer and replacement of mutable camp-local recipe drafts is not part of this increment and remains separate work.
+
 ## Import rules
 
 - Manifest and payload identities must match.
@@ -44,7 +59,7 @@ The Catering payload includes the camp-specific meal labels and every dated meal
 
 ## Versioning
 
-The implementation currently accepts exactly version 1. Compatibility fixtures and an explicit migration registry must be added before a second format version is introduced.
+The implementation currently accepts exactly version 1. As no product version has been released yet, earlier development-only version-1 files without the mandatory Catering reference section are intentionally rejected. Compatibility fixtures and an explicit migration registry must be added before a second format version is introduced.
 
 ## Planned audit transfer in version 2
 
