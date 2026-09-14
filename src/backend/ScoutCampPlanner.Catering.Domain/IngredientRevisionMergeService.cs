@@ -43,6 +43,9 @@ public sealed class IngredientRevisionMergeService
         string name = MergeValue("name", baseRevision.Name, localRevision.Name, remoteRevision.Name, conflicts);
         Guid categoryId = MergeValue("category", baseRevision.CategoryId, localRevision.CategoryId, remoteRevision.CategoryId, conflicts);
         Guid baseUnitId = MergeValue("base_unit", baseRevision.BaseUnitId, localRevision.BaseUnitId, remoteRevision.BaseUnitId, conflicts);
+        IngredientNutritionProfile? nutritionProfile = MergeValue(
+            "nutrition", baseRevision.NutritionProfile, localRevision.NutritionProfile,
+            remoteRevision.NutritionProfile, conflicts);
         IngredientPropertyReviewState allergenReview = MergeValue(
             "allergens.review_state", baseRevision.AllergenReviewState, localRevision.AllergenReviewState,
             remoteRevision.AllergenReviewState, conflicts);
@@ -89,7 +92,8 @@ public sealed class IngredientRevisionMergeService
             allergenReview,
             intoleranceReview,
             originReview,
-            remoteRevision.Id);
+            remoteRevision.Id,
+            nutritionProfile);
         return new IngredientMergeResult(draft, []);
     }
 
@@ -167,7 +171,8 @@ public sealed class IngredientRevisionMergeService
         PropertySetsEqual(left.AllergenOverrides, right.AllergenOverrides) &&
         PropertySetsEqual(left.IntoleranceOverrides, right.IntoleranceOverrides) &&
         PropertySetsEqual(left.OriginOverrides, right.OriginOverrides) &&
-        ConversionSetsEqual(left.UnitConversionOverrides, right.UnitConversionOverrides);
+        ConversionSetsEqual(left.UnitConversionOverrides, right.UnitConversionOverrides) &&
+        left.NutritionProfile == right.NutritionProfile;
 
     private static bool PropertySetsEqual(
         IEnumerable<IngredientPropertyValue> left,

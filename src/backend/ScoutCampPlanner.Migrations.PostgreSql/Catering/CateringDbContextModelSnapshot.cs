@@ -1327,6 +1327,76 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                     b.ToTable("IngredientRevisionIntolerances", "catering");
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionNutritionProfileRecord", b =>
+                {
+                    b.Property<Guid>("IngredientRevisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("CarbohydrateGrams")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<decimal?>("EnergyKilojoules")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<decimal?>("FatGrams")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<decimal?>("FiberGrams")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<decimal?>("ProteinGrams")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<DateOnly?>("ReferenceDate")
+                        .HasColumnType("date");
+
+                    b.Property<decimal>("ReferenceQuantity")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<Guid>("ReferenceUnitId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ReviewState")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("SaltGrams")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<decimal?>("SaturatedFatGrams")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<string>("SourceReference")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("SourceType")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("SugarsGrams")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.HasKey("IngredientRevisionId");
+
+                    b.HasIndex("ReferenceUnitId");
+
+                    b.ToTable("IngredientRevisionNutritionProfiles", "catering", t =>
+                        {
+                            t.HasCheckConstraint("CK_IngredientRevisionNutritionProfiles_ReferenceQuantity_Positive", "\"ReferenceQuantity\" > 0");
+
+                            t.HasCheckConstraint("CK_IngredientRevisionNutritionProfiles_Values_NonNegative", "(\"EnergyKilojoules\" IS NULL OR \"EnergyKilojoules\" >= 0) AND (\"FatGrams\" IS NULL OR \"FatGrams\" >= 0) AND (\"SaturatedFatGrams\" IS NULL OR \"SaturatedFatGrams\" >= 0) AND (\"CarbohydrateGrams\" IS NULL OR \"CarbohydrateGrams\" >= 0) AND (\"SugarsGrams\" IS NULL OR \"SugarsGrams\" >= 0) AND (\"ProteinGrams\" IS NULL OR \"ProteinGrams\" >= 0) AND (\"SaltGrams\" IS NULL OR \"SaltGrams\" >= 0) AND (\"FiberGrams\" IS NULL OR \"FiberGrams\" >= 0)");
+                        });
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionOriginRecord", b =>
                 {
                     b.Property<Guid>("IngredientRevisionId")
@@ -1504,6 +1574,76 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                     b.HasIndex("IntoleranceId");
 
                     b.ToTable("IngredientVariantIntoleranceOverrides", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientVariantNutritionProfileRecord", b =>
+                {
+                    b.Property<Guid>("VariantRevisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("CarbohydrateGrams")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<decimal?>("EnergyKilojoules")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<decimal?>("FatGrams")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<decimal?>("FiberGrams")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<decimal?>("ProteinGrams")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<DateOnly?>("ReferenceDate")
+                        .HasColumnType("date");
+
+                    b.Property<decimal>("ReferenceQuantity")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<Guid>("ReferenceUnitId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ReviewState")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("SaltGrams")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<decimal?>("SaturatedFatGrams")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<string>("SourceReference")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("SourceType")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("SugarsGrams")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.HasKey("VariantRevisionId");
+
+                    b.HasIndex("ReferenceUnitId");
+
+                    b.ToTable("IngredientVariantNutritionProfiles", "catering", t =>
+                        {
+                            t.HasCheckConstraint("CK_IngredientVariantNutritionProfiles_ReferenceQuantity_Positive", "\"ReferenceQuantity\" > 0");
+
+                            t.HasCheckConstraint("CK_IngredientVariantNutritionProfiles_Values_NonNegative", "(\"EnergyKilojoules\" IS NULL OR \"EnergyKilojoules\" >= 0) AND (\"FatGrams\" IS NULL OR \"FatGrams\" >= 0) AND (\"SaturatedFatGrams\" IS NULL OR \"SaturatedFatGrams\" >= 0) AND (\"CarbohydrateGrams\" IS NULL OR \"CarbohydrateGrams\" >= 0) AND (\"SugarsGrams\" IS NULL OR \"SugarsGrams\" >= 0) AND (\"ProteinGrams\" IS NULL OR \"ProteinGrams\" >= 0) AND (\"SaltGrams\" IS NULL OR \"SaltGrams\" >= 0) AND (\"FiberGrams\" IS NULL OR \"FiberGrams\" >= 0)");
+                        });
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientVariantOriginOverrideRecord", b =>
@@ -2484,6 +2624,21 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionNutritionProfileRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionRecord", null)
+                        .WithOne()
+                        .HasForeignKey("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionNutritionProfileRecord", "IngredientRevisionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.MeasurementUnit", null)
+                        .WithMany()
+                        .HasForeignKey("ReferenceUnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionOriginRecord", b =>
                 {
                     b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionRecord", null)
@@ -2571,6 +2726,21 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                     b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientVariantRevisionRecord", null)
                         .WithMany()
                         .HasForeignKey("VariantRevisionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientVariantNutritionProfileRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.MeasurementUnit", null)
+                        .WithMany()
+                        .HasForeignKey("ReferenceUnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientVariantRevisionRecord", null)
+                        .WithOne()
+                        .HasForeignKey("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientVariantNutritionProfileRecord", "VariantRevisionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

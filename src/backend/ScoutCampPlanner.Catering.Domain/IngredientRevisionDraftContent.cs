@@ -14,7 +14,8 @@ public sealed record IngredientRevisionDraftContent
         IReadOnlyList<IngredientPropertyValue> intolerances,
         IReadOnlyList<IngredientPropertyValue> origins,
         IReadOnlyList<IngredientRevisionUnitConversion> unitConversions,
-        IReadOnlyList<IngredientVariantDraftContent>? variants)
+        IReadOnlyList<IngredientVariantDraftContent>? variants,
+        IngredientNutritionProfile? nutritionProfile)
     {
         Name = name;
         NormalizedName = normalizedName;
@@ -28,6 +29,7 @@ public sealed record IngredientRevisionDraftContent
         Origins = origins;
         UnitConversions = unitConversions;
         Variants = variants;
+        NutritionProfile = nutritionProfile;
     }
 
     public string Name { get; }
@@ -42,6 +44,7 @@ public sealed record IngredientRevisionDraftContent
     public IReadOnlyList<IngredientPropertyValue> Origins { get; }
     public IReadOnlyList<IngredientRevisionUnitConversion> UnitConversions { get; }
     public IReadOnlyList<IngredientVariantDraftContent>? Variants { get; }
+    public IngredientNutritionProfile? NutritionProfile { get; }
 
     public static IngredientRevisionDraftContent Create(
         string name,
@@ -54,7 +57,8 @@ public sealed record IngredientRevisionDraftContent
         IEnumerable<IngredientPropertyValue>? intolerances = null,
         IEnumerable<IngredientPropertyValue>? origins = null,
         IEnumerable<IngredientRevisionUnitConversion>? unitConversions = null,
-        IEnumerable<IngredientVariantDraftContent>? variants = null)
+        IEnumerable<IngredientVariantDraftContent>? variants = null,
+        IngredientNutritionProfile? nutritionProfile = null)
     {
         (string display, string normalized) = CatalogName.Normalize(name, nameof(name), 200);
         if (categoryId == Guid.Empty)
@@ -105,7 +109,8 @@ public sealed record IngredientRevisionDraftContent
             NormalizeProperties(intolerances, nameof(intolerances)),
             NormalizeProperties(origins, nameof(origins)),
             normalizedConversions,
-            normalizedVariants);
+            normalizedVariants,
+            nutritionProfile);
     }
 
     private static IReadOnlyList<IngredientPropertyValue> NormalizeProperties(
@@ -130,7 +135,8 @@ public sealed record IngredientVariantDraftContent
         IEnumerable<IngredientPropertyValue>? allergenOverrides = null,
         IEnumerable<IngredientPropertyValue>? intoleranceOverrides = null,
         IEnumerable<IngredientPropertyValue>? originOverrides = null,
-        IEnumerable<IngredientRevisionUnitConversion>? unitConversionOverrides = null)
+        IEnumerable<IngredientRevisionUnitConversion>? unitConversionOverrides = null,
+        IngredientNutritionProfile? nutritionProfile = null)
     {
         Id = id == Guid.Empty ? throw new ArgumentException("Variant ID is required.", nameof(id)) : id;
         VariantKey = IngredientVariantRevision.NormalizeKey(variantKey);
@@ -143,6 +149,7 @@ public sealed record IngredientVariantDraftContent
         IntoleranceOverrides = NormalizeProperties(intoleranceOverrides, nameof(intoleranceOverrides));
         OriginOverrides = NormalizeProperties(originOverrides, nameof(originOverrides));
         UnitConversionOverrides = unitConversionOverrides?.OrderBy(value => value.SourceUnitId).ToArray() ?? [];
+        NutritionProfile = nutritionProfile;
         if (UnitConversionOverrides.Select(value => value.SourceUnitId).Distinct().Count() !=
             UnitConversionOverrides.Count)
             throw new ArgumentException("Conversion source unit IDs must be unique.", nameof(unitConversionOverrides));
@@ -158,6 +165,7 @@ public sealed record IngredientVariantDraftContent
     public IReadOnlyList<IngredientPropertyValue> IntoleranceOverrides { get; }
     public IReadOnlyList<IngredientPropertyValue> OriginOverrides { get; }
     public IReadOnlyList<IngredientRevisionUnitConversion> UnitConversionOverrides { get; }
+    public IngredientNutritionProfile? NutritionProfile { get; }
 
     private static IReadOnlyList<IngredientPropertyValue> NormalizeProperties(
         IEnumerable<IngredientPropertyValue>? values,

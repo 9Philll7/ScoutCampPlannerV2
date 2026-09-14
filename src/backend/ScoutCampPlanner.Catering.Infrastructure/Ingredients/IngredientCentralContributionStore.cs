@@ -288,6 +288,17 @@ public sealed class IngredientCentralContributionStore(CateringDbContext databas
         database.AddRange(conversions.Select(value => new IngredientRevisionUnitConversionRecord
             { IngredientRevisionId = targetRevisionId, SourceUnitId = value.SourceUnitId,
               FactorToBaseUnit = value.FactorToBaseUnit, Precision = value.Precision }));
+        IngredientRevisionNutritionProfileRecord? nutrition = await database
+            .Set<IngredientRevisionNutritionProfileRecord>().AsNoTracking()
+            .SingleOrDefaultAsync(value => value.IngredientRevisionId == sourceRevisionId, cancellationToken);
+        if (nutrition is not null)
+        {
+            IngredientRevisionNutritionProfileRecord copy =
+                IngredientNutritionProfilePersistence.CreateRevisionRecord(
+                    targetRevisionId, IngredientNutritionProfilePersistence.ToDomain(nutrition));
+            copy.ReviewState = (int)IngredientNutritionReviewState.Unreviewed;
+            database.Add(copy);
+        }
 
         IngredientVariantRevisionRecord[] variants = await database.Set<IngredientVariantRevisionRecord>()
             .AsNoTracking().Where(value => value.IngredientRevisionId == sourceRevisionId)
@@ -301,6 +312,8 @@ public sealed class IngredientCentralContributionStore(CateringDbContext databas
             .Where(value => ids.Contains(value.VariantRevisionId)).ToArrayAsync(cancellationToken);
         var conversionOverrides = await database.Set<IngredientVariantUnitConversionOverrideRecord>().AsNoTracking()
             .Where(value => ids.Contains(value.VariantRevisionId)).ToArrayAsync(cancellationToken);
+        var nutritionProfiles = await database.Set<IngredientVariantNutritionProfileRecord>().AsNoTracking()
+            .Where(value => ids.Contains(value.VariantRevisionId)).ToArrayAsync(cancellationToken);
         foreach (IngredientVariantRevisionRecord variant in variants)
         {
             Guid id = Guid.NewGuid();
@@ -310,6 +323,16 @@ public sealed class IngredientCentralContributionStore(CateringDbContext databas
                 Name = variant.Name, NormalizedName = variant.NormalizedName, Status = variant.Status,
                 SortOrder = variant.SortOrder,
             });
+            IngredientVariantNutritionProfileRecord? variantNutrition = nutritionProfiles
+                .SingleOrDefault(value => value.VariantRevisionId == variant.Id);
+            if (variantNutrition is not null)
+            {
+                IngredientVariantNutritionProfileRecord copy =
+                    IngredientNutritionProfilePersistence.CreateVariantRecord(
+                        id, IngredientNutritionProfilePersistence.ToDomain(variantNutrition));
+                copy.ReviewState = (int)IngredientNutritionReviewState.Unreviewed;
+                database.Add(copy);
+            }
             database.AddRange(allergenOverrides.Where(value => value.VariantRevisionId == variant.Id)
                 .Select(value => new IngredientVariantAllergenOverrideRecord
                     { VariantRevisionId = id, AllergenId = value.AllergenId, State = value.State, Source = value.Source }));

@@ -556,6 +556,82 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
         Assert.Null(identity.CurrentPublishedRevisionId);
     }
 
+    [Fact]
+    public async Task Nutrition_profiles_roundtrip_and_copy_to_the_next_draft()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Seed seed = await fixture.SeedDraftAsync(reviewed: true);
+        var store = new IngredientRevisionWorkflowStore(fixture.Database);
+        Guid variantId = Guid.NewGuid();
+        IngredientNutritionProfile revisionProfile = Nutrition(seed.UnitId, 1_000m);
+        IngredientNutritionProfile variantProfile = Nutrition(seed.UnitId, 800m);
+        IngredientRevisionDraftContent content = IngredientRevisionDraftContent.Create(
+            "Linsen", seed.CategoryId, seed.UnitId,
+            IngredientPropertyReviewState.Reviewed,
+            IngredientPropertyReviewState.Reviewed,
+            IngredientPropertyReviewState.Reviewed,
+            variants:
+            [
+                new IngredientVariantDraftContent(
+                    variantId, "canned", "Dose", true, 0,
+                    nutritionProfile: variantProfile),
+            ],
+            nutritionProfile: revisionProfile);
+
+        IngredientRevisionMutationResult saved = await store.SaveDraftAsync(
+            seed.RevisionId, content, 1, seed.ActorId, DateTimeOffset.UtcNow,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(IngredientRevisionMutationStatus.Saved, saved.Status);
+        IngredientRevisionDraftDetails stored = Assert.IsType<IngredientRevisionDraftDetails>(
+            await store.GetAsync(seed.RevisionId, TestContext.Current.CancellationToken));
+        Assert.Equal(1_000m, stored.NutritionProfile?.EnergyKilojoules);
+        Assert.Equal(800m, Assert.Single(stored.Variants).NutritionProfile?.EnergyKilojoules);
+
+        IngredientRevisionMutationResult published = await store.PublishAsync(
+            seed.RevisionId, saved.RowVersion!.Value, seed.ActorId, DateTimeOffset.UtcNow,
+            TestContext.Current.CancellationToken);
+        Assert.Equal(IngredientRevisionMutationStatus.Published, published.Status);
+        Guid copyId = Guid.NewGuid();
+        IngredientRevisionMutationResult copied = await store.CreateDraftFromPublishedAsync(
+            seed.RevisionId, copyId, seed.ActorId, DateTimeOffset.UtcNow,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(IngredientRevisionMutationStatus.Created, copied.Status);
+        IngredientRevisionDraftDetails copy = Assert.IsType<IngredientRevisionDraftDetails>(
+            await store.GetAsync(copyId, TestContext.Current.CancellationToken));
+        Assert.Equal(1_000m, copy.NutritionProfile?.EnergyKilojoules);
+        Assert.Equal(800m, Assert.Single(copy.Variants).NutritionProfile?.EnergyKilojoules);
+    }
+
+    [Fact]
+    public async Task Nutrition_profile_reference_unit_must_match_the_base_dimension()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Seed seed = await fixture.SeedDraftAsync(reviewed: true);
+        var liter = new MeasurementUnit(Guid.NewGuid(), "Liter", "l", MeasurementDimension.Volume, 1_000m);
+        fixture.Database.Add(liter);
+        await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
+        var store = new IngredientRevisionWorkflowStore(fixture.Database);
+        IngredientRevisionDraftContent content = IngredientRevisionDraftContent.Create(
+            "Linsen", seed.CategoryId, seed.UnitId,
+            IngredientPropertyReviewState.Reviewed,
+            IngredientPropertyReviewState.Reviewed,
+            IngredientPropertyReviewState.Reviewed,
+            nutritionProfile: Nutrition(liter.Id, 1_000m));
+
+        IngredientRevisionMutationResult result = await store.SaveDraftAsync(
+            seed.RevisionId, content, 1, seed.ActorId, DateTimeOffset.UtcNow,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(IngredientRevisionMutationStatus.Invalid, result.Status);
+    }
+
+    private static IngredientNutritionProfile Nutrition(Guid unitId, decimal energyKilojoules) => new(
+        100m, unitId, energyKilojoules, 10m, 2m, 20m, 3m, 8m, 1m, 4m,
+        IngredientNutritionSourceType.Manufacturer, "Herstelleretikett",
+        IngredientNutritionReviewState.Reviewed, new DateOnly(2026, 9, 14));
+
     private sealed class DatabaseFixture(SqliteConnection connection, CateringDbContext database) : IAsyncDisposable
     {
         public CateringDbContext Database { get; } = database;

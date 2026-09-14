@@ -412,14 +412,17 @@ Lagerpakete müssen die transitive, unveränderliche Datenmenge der enthaltenen 
 
 Offline darf keine fehlende Stammdatenreferenz aus der Cloud nachladen müssen.
 
-### 11. Nährwertprofile umsetzen
+### 11. Nährwertprofile vervollständigen
 
-Gemäß ADR-024 in einem eigenen Inkrement:
+Gemäß ADR-024 umgesetzt:
 
 - revisionsgebundenes optionales Nährwertprofil modellieren
 - vollständigen Varianten-Override ermöglichen
 - Quellenangabe und Prüfstatus speichern
 - PostgreSQL- und SQLite-Migrationen erstellen
+
+Noch offen:
+
 - Eingabe und Plausibilitätsprüfung im Zutateneditor ergänzen
 - Rezeptgesamtwerte und Werte pro Standardportion mit Vollständigkeitsstatus
   berechnen

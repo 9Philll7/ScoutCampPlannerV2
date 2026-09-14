@@ -11,8 +11,66 @@ internal static class RevisionedIngredientPersistenceConfiguration
         ConfigureIdentityAndRevision(modelBuilder);
         ConfigureContributions(modelBuilder);
         ConfigureRevisionProperties(modelBuilder);
+        ConfigureNutritionProfiles(modelBuilder);
         ConfigureVariants(modelBuilder);
     }
+
+    private static void ConfigureNutritionProfiles(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<IngredientRevisionNutritionProfileRecord>(entity =>
+        {
+            entity.ToTable("IngredientRevisionNutritionProfiles", table =>
+            {
+                table.HasCheckConstraint("CK_IngredientRevisionNutritionProfiles_ReferenceQuantity_Positive", "\"ReferenceQuantity\" > 0");
+                table.HasCheckConstraint("CK_IngredientRevisionNutritionProfiles_Values_NonNegative", NutritionValuesNonNegativeConstraint());
+            });
+            entity.HasKey(value => value.IngredientRevisionId);
+            ConfigureNutritionProperties(entity);
+            entity.HasOne<IngredientRevisionRecord>().WithOne()
+                .HasForeignKey<IngredientRevisionNutritionProfileRecord>(value => value.IngredientRevisionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<MeasurementUnit>().WithMany().HasForeignKey(value => value.ReferenceUnitId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<IngredientVariantNutritionProfileRecord>(entity =>
+        {
+            entity.ToTable("IngredientVariantNutritionProfiles", table =>
+            {
+                table.HasCheckConstraint("CK_IngredientVariantNutritionProfiles_ReferenceQuantity_Positive", "\"ReferenceQuantity\" > 0");
+                table.HasCheckConstraint("CK_IngredientVariantNutritionProfiles_Values_NonNegative", NutritionValuesNonNegativeConstraint());
+            });
+            entity.HasKey(value => value.VariantRevisionId);
+            ConfigureNutritionProperties(entity);
+            entity.HasOne<IngredientVariantRevisionRecord>().WithOne()
+                .HasForeignKey<IngredientVariantNutritionProfileRecord>(value => value.VariantRevisionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<MeasurementUnit>().WithMany().HasForeignKey(value => value.ReferenceUnitId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureNutritionProperties<TEntity>(Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<TEntity> entity)
+        where TEntity : class
+    {
+        string[] decimalProperties =
+        [
+            "ReferenceQuantity", "EnergyKilojoules", "FatGrams", "SaturatedFatGrams",
+            "CarbohydrateGrams", "SugarsGrams", "ProteinGrams", "SaltGrams", "FiberGrams",
+        ];
+        foreach (string property in decimalProperties)
+            entity.Property(property).HasPrecision(18, 6);
+        entity.Property<string>("SourceReference").HasMaxLength(500);
+    }
+
+    private static string NutritionValuesNonNegativeConstraint() =>
+        "(\"EnergyKilojoules\" IS NULL OR \"EnergyKilojoules\" >= 0) AND " +
+        "(\"FatGrams\" IS NULL OR \"FatGrams\" >= 0) AND " +
+        "(\"SaturatedFatGrams\" IS NULL OR \"SaturatedFatGrams\" >= 0) AND " +
+        "(\"CarbohydrateGrams\" IS NULL OR \"CarbohydrateGrams\" >= 0) AND " +
+        "(\"SugarsGrams\" IS NULL OR \"SugarsGrams\" >= 0) AND " +
+        "(\"ProteinGrams\" IS NULL OR \"ProteinGrams\" >= 0) AND " +
+        "(\"SaltGrams\" IS NULL OR \"SaltGrams\" >= 0) AND " +
+        "(\"FiberGrams\" IS NULL OR \"FiberGrams\" >= 0)";
 
     private static void ConfigureMasterData(ModelBuilder modelBuilder)
     {

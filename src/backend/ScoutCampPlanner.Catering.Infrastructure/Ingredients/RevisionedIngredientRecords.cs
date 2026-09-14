@@ -52,6 +52,25 @@ internal sealed class IngredientRevisionRecord
     public Guid? PublishedBy { get; set; }
 }
 
+internal sealed class IngredientRevisionNutritionProfileRecord
+{
+    public Guid IngredientRevisionId { get; set; }
+    public decimal ReferenceQuantity { get; set; }
+    public Guid ReferenceUnitId { get; set; }
+    public decimal? EnergyKilojoules { get; set; }
+    public decimal? FatGrams { get; set; }
+    public decimal? SaturatedFatGrams { get; set; }
+    public decimal? CarbohydrateGrams { get; set; }
+    public decimal? SugarsGrams { get; set; }
+    public decimal? ProteinGrams { get; set; }
+    public decimal? SaltGrams { get; set; }
+    public decimal? FiberGrams { get; set; }
+    public int SourceType { get; set; }
+    public string SourceReference { get; set; } = string.Empty;
+    public int ReviewState { get; set; }
+    public DateOnly? ReferenceDate { get; set; }
+}
+
 internal sealed class IngredientCategoryRecord
 {
     public Guid Id { get; set; }
@@ -131,6 +150,25 @@ internal sealed class IngredientVariantRevisionRecord
     public string NormalizedName { get; set; } = string.Empty;
     public int Status { get; set; }
     public int SortOrder { get; set; }
+}
+
+internal sealed class IngredientVariantNutritionProfileRecord
+{
+    public Guid VariantRevisionId { get; set; }
+    public decimal ReferenceQuantity { get; set; }
+    public Guid ReferenceUnitId { get; set; }
+    public decimal? EnergyKilojoules { get; set; }
+    public decimal? FatGrams { get; set; }
+    public decimal? SaturatedFatGrams { get; set; }
+    public decimal? CarbohydrateGrams { get; set; }
+    public decimal? SugarsGrams { get; set; }
+    public decimal? ProteinGrams { get; set; }
+    public decimal? SaltGrams { get; set; }
+    public decimal? FiberGrams { get; set; }
+    public int SourceType { get; set; }
+    public string SourceReference { get; set; } = string.Empty;
+    public int ReviewState { get; set; }
+    public DateOnly? ReferenceDate { get; set; }
 }
 
 internal sealed class IngredientVariantAllergenOverrideRecord

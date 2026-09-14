@@ -39,6 +39,13 @@ public sealed class IngredientCentralContributionPersistenceTests
     {
         await using var fixture = await Fixture.CreateAsync();
         Seed local = await fixture.AddPublishedAsync(IngredientScopeType.Camp, Guid.NewGuid(), "Polenta");
+        fixture.Database.Add(IngredientNutritionProfilePersistence.CreateRevisionRecord(
+            local.RevisionId,
+            new IngredientNutritionProfile(
+                100m, local.UnitId, 1_500m, 2m, 0.5m, 75m, 1m, 8m, 0.1m, 4m,
+                IngredientNutritionSourceType.OfficialDatabase, "Testdatenbank",
+                IngredientNutritionReviewState.Reviewed)));
+        await fixture.Database.SaveChangesAsync(TestContext.Current.CancellationToken);
         var store = new IngredientCentralContributionStore(fixture.Database);
         IngredientContributionMutationResult submitted = await store.SubmitAsync(
             Guid.NewGuid(), local.RevisionId, local.ActorId, DateTimeOffset.UtcNow,
@@ -57,6 +64,12 @@ public sealed class IngredientCentralContributionPersistenceTests
         Assert.Equal((int)IngredientPropertyReviewState.Unreviewed, centralDraft.AllergenReviewState);
         Assert.Equal((int)IngredientPropertyReviewState.Unreviewed, centralDraft.IntoleranceReviewState);
         Assert.Equal((int)IngredientPropertyReviewState.Unreviewed, centralDraft.OriginReviewState);
+        IngredientRevisionNutritionProfileRecord copiedNutrition = await fixture.Database
+            .Set<IngredientRevisionNutritionProfileRecord>().AsNoTracking()
+            .SingleAsync(value => value.IngredientRevisionId == centralDraft.Id,
+                TestContext.Current.CancellationToken);
+        Assert.Equal(1_500m, copiedNutrition.EnergyKilojoules);
+        Assert.Equal((int)IngredientNutritionReviewState.Unreviewed, copiedNutrition.ReviewState);
         IngredientRevisionRecord unchangedLocal = await fixture.Database.Set<IngredientRevisionRecord>()
             .AsNoTracking().SingleAsync(value => value.Id == local.RevisionId,
                 TestContext.Current.CancellationToken);
@@ -181,7 +194,7 @@ public sealed class IngredientCentralContributionPersistenceTests
                 await Database.SaveChangesAsync(TestContext.Current.CancellationToken);
             }
             Database.ChangeTracker.Clear();
-            return new Seed(ingredientId, revisionId, actorId);
+            return new Seed(ingredientId, revisionId, actorId, unit.Id);
         }
 
         public async ValueTask DisposeAsync()
@@ -191,5 +204,5 @@ public sealed class IngredientCentralContributionPersistenceTests
         }
     }
 
-    private sealed record Seed(Guid IngredientId, Guid RevisionId, Guid ActorId);
+    private sealed record Seed(Guid IngredientId, Guid RevisionId, Guid ActorId, Guid UnitId);
 }

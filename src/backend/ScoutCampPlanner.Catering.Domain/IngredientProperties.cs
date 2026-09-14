@@ -68,6 +68,7 @@ public sealed class IngredientVariantRevision
     public IReadOnlyCollection<IngredientPropertyValue> IntoleranceOverrides => intoleranceOverrides.Values.ToArray();
     public IReadOnlyCollection<IngredientPropertyValue> OriginOverrides => originOverrides.Values.ToArray();
     public IReadOnlyCollection<IngredientRevisionUnitConversion> UnitConversionOverrides => unitConversionOverrides.Values.ToArray();
+    public IngredientNutritionProfile? NutritionProfile { get; private set; }
 
     internal void Rename(string name) =>
         (Name, NormalizedName) = CatalogName.Normalize(name, nameof(name), 200);
@@ -77,6 +78,7 @@ public sealed class IngredientVariantRevision
     internal void SetOriginOverride(IngredientPropertyValue value) => originOverrides[value.PropertyId] = value;
     internal void SetUnitConversionOverride(IngredientRevisionUnitConversion value) =>
         unitConversionOverrides[value.SourceUnitId] = value;
+    internal void SetNutritionProfile(IngredientNutritionProfile? value) => NutritionProfile = value;
 
     internal IngredientVariantRevision Copy(Guid id)
     {
@@ -89,6 +91,7 @@ public sealed class IngredientVariantRevision
             copy.SetOriginOverride(value);
         foreach (IngredientRevisionUnitConversion value in unitConversionOverrides.Values)
             copy.SetUnitConversionOverride(value);
+        copy.SetNutritionProfile(NutritionProfile);
         return copy;
     }
 

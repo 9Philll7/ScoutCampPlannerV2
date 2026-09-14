@@ -83,6 +83,13 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
             .Set<IngredientVariantUnitConversionOverrideRecord>().AsNoTracking()
             .Where(value => variantIds.Contains(value.VariantRevisionId))
             .ToArrayAsync(cancellationToken);
+        IngredientRevisionNutritionProfileRecord? nutritionProfile = await database
+            .Set<IngredientRevisionNutritionProfileRecord>().AsNoTracking()
+            .SingleOrDefaultAsync(value => value.IngredientRevisionId == revisionId, cancellationToken);
+        IngredientVariantNutritionProfileRecord[] variantNutritionProfiles = await database
+            .Set<IngredientVariantNutritionProfileRecord>().AsNoTracking()
+            .Where(value => variantIds.Contains(value.VariantRevisionId))
+            .ToArrayAsync(cancellationToken);
 
         IngredientRevisionRecord revision = header.Revision;
         return new IngredientRevisionDraftDetails(
@@ -118,8 +125,11 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
                     .Select(value => PropertyItem(value.OriginPropertyId, value.State, value.Source)).ToArray(),
                 conversionOverrides.Where(value => value.VariantRevisionId == variant.Id)
                     .Select(value => ConversionItem(value.SourceUnitId, value.FactorToBaseUnit, value.Precision))
-                    .ToArray()))
-                .ToArray());
+                    .ToArray(),
+                variantNutritionProfiles.Where(value => value.VariantRevisionId == variant.Id)
+                    .Select(IngredientNutritionProfilePersistence.ToItem).SingleOrDefault()))
+                .ToArray(),
+            nutritionProfile is null ? null : IngredientNutritionProfilePersistence.ToItem(nutritionProfile));
     }
 
     public async Task<IReadOnlyList<IngredientRevisionSummary>> ListAsync(
@@ -204,6 +214,9 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
             UpdatedAtUtc = createdAtUtc,
             UpdatedBy = actorUserId,
         });
+        if (content.NutritionProfile is not null)
+            database.Add(IngredientNutritionProfilePersistence.CreateRevisionRecord(
+                revisionId, content.NutritionProfile));
 
         try
         {
@@ -296,6 +309,13 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
             UpdatedAtUtc = createdAtUtc,
             UpdatedBy = actorUserId,
         });
+        IngredientRevisionNutritionProfileRecord? publishedNutrition = await database
+            .Set<IngredientRevisionNutritionProfileRecord>().AsNoTracking()
+            .SingleOrDefaultAsync(value => value.IngredientRevisionId == published.Id, cancellationToken);
+        if (publishedNutrition is not null)
+            database.Add(IngredientNutritionProfilePersistence.CreateRevisionRecord(
+                newRevisionId,
+                IngredientNutritionProfilePersistence.ToDomain(publishedNutrition)));
 
         IngredientRevisionAllergenRecord[] allergens = await database
             .Set<IngredientRevisionAllergenRecord>().AsNoTracking()
@@ -354,6 +374,9 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
         IngredientVariantUnitConversionOverrideRecord[] conversionOverrides = await database
             .Set<IngredientVariantUnitConversionOverrideRecord>().AsNoTracking()
             .Where(value => sourceVariantIds.Contains(value.VariantRevisionId)).ToArrayAsync(cancellationToken);
+        IngredientVariantNutritionProfileRecord[] variantNutritionProfiles = await database
+            .Set<IngredientVariantNutritionProfileRecord>().AsNoTracking()
+            .Where(value => sourceVariantIds.Contains(value.VariantRevisionId)).ToArrayAsync(cancellationToken);
         foreach (IngredientVariantRevisionRecord variant in variants)
         {
             Guid variantId = Guid.NewGuid();
@@ -367,6 +390,12 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
                 Status = variant.Status,
                 SortOrder = variant.SortOrder,
             });
+            IngredientVariantNutritionProfileRecord? variantNutrition = variantNutritionProfiles
+                .SingleOrDefault(value => value.VariantRevisionId == variant.Id);
+            if (variantNutrition is not null)
+                database.Add(IngredientNutritionProfilePersistence.CreateVariantRecord(
+                    variantId,
+                    IngredientNutritionProfilePersistence.ToDomain(variantNutrition)));
             database.AddRange(allergenOverrides.Where(value => value.VariantRevisionId == variant.Id)
                 .Select(value => new IngredientVariantAllergenOverrideRecord
                 {
@@ -505,6 +534,9 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
             UpdatedAtUtc = createdAtUtc,
             UpdatedBy = actorUserId,
         });
+        if (content.NutritionProfile is not null)
+            database.Add(IngredientNutritionProfilePersistence.CreateRevisionRecord(
+                revisionId, content.NutritionProfile));
         database.AddRange(content.Allergens.Select(value => new IngredientRevisionAllergenRecord
         {
             IngredientRevisionId = revisionId,
@@ -546,6 +578,9 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
                 Status = variant.IsActive ? 0 : 1,
                 SortOrder = variant.SortOrder,
             });
+            if (variant.NutritionProfile is not null)
+                database.Add(IngredientNutritionProfilePersistence.CreateVariantRecord(
+                    variantId, variant.NutritionProfile));
             database.AddRange(variant.AllergenOverrides.Select(value => new IngredientVariantAllergenOverrideRecord
             {
                 VariantRevisionId = variantId, AllergenId = value.PropertyId,
@@ -631,6 +666,9 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
         await database.Set<IngredientRevisionUnitConversionRecord>()
             .Where(value => value.IngredientRevisionId == revisionId)
             .ExecuteDeleteAsync(cancellationToken);
+        await database.Set<IngredientRevisionNutritionProfileRecord>()
+            .Where(value => value.IngredientRevisionId == revisionId)
+            .ExecuteDeleteAsync(cancellationToken);
 
         DetachTrackedRevisionDetails(revisionId);
 
@@ -662,6 +700,9 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
             FactorToBaseUnit = value.FactorToBaseUnit,
             Precision = (int)value.Precision,
         }));
+        if (content.NutritionProfile is not null)
+            database.Add(IngredientNutritionProfilePersistence.CreateRevisionRecord(
+                revisionId, content.NutritionProfile));
         if (content.Variants is not null &&
             !await SynchronizeVariantsAsync(revisionId, content.Variants, cancellationToken))
         {
@@ -734,6 +775,9 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
             await database.Set<IngredientVariantUnitConversionOverrideRecord>()
                 .Where(value => variantIds.Contains(value.VariantRevisionId))
                 .ExecuteDeleteAsync(cancellationToken);
+            await database.Set<IngredientVariantNutritionProfileRecord>()
+                .Where(value => variantIds.Contains(value.VariantRevisionId))
+                .ExecuteDeleteAsync(cancellationToken);
 
             DetachTrackedOverrides(variantIds);
 
@@ -769,6 +813,10 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
                     FactorToBaseUnit = value.FactorToBaseUnit,
                     Precision = (int)value.Precision,
                 })));
+            database.AddRange(variants
+                .Where(variant => variant.NutritionProfile is not null)
+                .Select(variant => IngredientNutritionProfilePersistence.CreateVariantRecord(
+                    variant.Id, variant.NutritionProfile!)));
         }
 
         database.RemoveRange(existing.Values);
@@ -980,6 +1028,13 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
         IngredientPropertyValue[] allOrigins = content.Origins
             .Concat(variants.SelectMany(value => value.OriginOverrides))
             .ToArray();
+        Guid[] nutritionReferenceUnitIds = variants
+            .Select(value => value.NutritionProfile)
+            .Prepend(content.NutritionProfile)
+            .Where(value => value is not null)
+            .Select(value => value!.ReferenceUnitId)
+            .Distinct()
+            .ToArray();
 
         return await database.Set<IngredientCategoryRecord>().AsNoTracking()
             .AnyAsync(value => value.Id == content.CategoryId, cancellationToken) &&
@@ -995,6 +1050,8 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
             database.MeasurementUnits.AsNoTracking().Select(value => value.Id),
             cancellationToken) &&
         await AllConversionUnitsAllowedAsync(content.BaseUnitId, allConversions, cancellationToken) &&
+        await NutritionUnitsCompatibleAsync(
+            content.BaseUnitId, nutritionReferenceUnitIds, cancellationToken) &&
         await AllReferencesExistAsync(allAllergens.Select(value => value.PropertyId),
             database.Set<IngredientAllergenDefinitionRecord>().Where(value => value.Status == 0).Select(value => value.Id),
             cancellationToken) &&
@@ -1004,6 +1061,22 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
         await AllReferencesExistAsync(allOrigins.Select(value => value.PropertyId),
             database.Set<IngredientOriginPropertyRecord>().Where(value => value.Status == 0).Select(value => value.Id),
             cancellationToken);
+    }
+
+    private async Task<bool> NutritionUnitsCompatibleAsync(
+        Guid baseUnitId,
+        IReadOnlyCollection<Guid> referenceUnitIds,
+        CancellationToken cancellationToken)
+    {
+        if (referenceUnitIds.Count == 0)
+            return true;
+        MeasurementDimension? baseDimension = await database.MeasurementUnits.AsNoTracking()
+            .Where(value => value.Id == baseUnitId)
+            .Select(value => (MeasurementDimension?)value.Dimension)
+            .SingleOrDefaultAsync(cancellationToken);
+        return baseDimension.HasValue && await database.MeasurementUnits.AsNoTracking()
+            .CountAsync(value => referenceUnitIds.Contains(value.Id) &&
+                value.Dimension == baseDimension.Value, cancellationToken) == referenceUnitIds.Count;
     }
 
     private static async Task<bool> AllReferencesExistAsync(

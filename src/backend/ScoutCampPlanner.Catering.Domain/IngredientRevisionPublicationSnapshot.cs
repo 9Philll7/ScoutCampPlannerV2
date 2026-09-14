@@ -2,7 +2,8 @@ namespace ScoutCampPlanner.Catering.Domain;
 
 public sealed record IngredientVariantPublicationSnapshot(
     string VariantKey,
-    IReadOnlyCollection<IngredientPropertyValue> AllergenOverrides);
+    IReadOnlyCollection<IngredientPropertyValue> AllergenOverrides,
+    IngredientNutritionProfile? NutritionProfile = null);
 
 public sealed record IngredientRevisionPublicationSnapshot(
     IngredientRevisionState State,
@@ -10,5 +11,5 @@ public sealed record IngredientRevisionPublicationSnapshot(
     IngredientPropertyReviewState IntoleranceReviewState,
     IngredientPropertyReviewState OriginReviewState,
     IReadOnlyCollection<IngredientPropertyValue> Allergens,
-    IReadOnlyCollection<IngredientVariantPublicationSnapshot> Variants);
-
+    IReadOnlyCollection<IngredientVariantPublicationSnapshot> Variants,
+    IngredientNutritionProfile? NutritionProfile = null);

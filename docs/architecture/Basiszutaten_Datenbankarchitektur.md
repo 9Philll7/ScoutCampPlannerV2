@@ -51,11 +51,13 @@ innerhalb der Zutatenrevision für die spätere Verpflegungsplanung.
 Eigenschaftsgruppen besitzen einen Reviewstatus, damit fehlende Angaben nicht
 versehentlich als unbedenklich ausgewertet werden.
 
-## Geplante Nährwertpersistenz
+## Nährwertpersistenz
 
 ADR-024 ergänzt je Zutatenrevision höchstens ein optionales Nährwertprofil und
-je Variante höchstens ein vollständiges Ersatzprofil. Die Implementierung und
-die provider-spezifischen Migrationen stehen noch aus.
+je Variante höchstens ein vollständiges Ersatzprofil. Das Modell wird in den
+Tabellen `IngredientRevisionNutritionProfiles` und
+`IngredientVariantNutritionProfiles` gespeichert. Getrennte EF-Core-Migrationen
+für PostgreSQL und SQLite liegen vor.
 
 Das Revisionsprofil enthält Bezugsmenge, Referenzeinheit, Energie in kJ, die
 sechs verpflichtenden Mengenfelder des ersten Umfangs, optionale
@@ -66,6 +68,11 @@ Overrides persistiert.
 Referenzeinheiten verweisen auf den bestehenden Einheitenkatalog und müssen mit
 der Basiseinheit der zugehörigen Zutatenrevision kompatibel sein. Bestehende
 Zutaten benötigen für die Migration kein Profil.
+
+Entwürfe übernehmen die Profile beim Kopieren veröffentlichter Revisionen.
+Zentrale Einreichungen kopieren die Werte und setzen ihren Prüfstatus wie die
+übrigen prüfpflichtigen Angaben auf ungeprüft zurück. Die Eingabe im
+Zutateneditor und die Rezeptberechnung folgen in getrennten Inkrementen.
 
 ## Persistenz und Migrationen
 

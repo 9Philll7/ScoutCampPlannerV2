@@ -73,6 +73,7 @@ public sealed class IngredientRevision
     public IReadOnlyCollection<IngredientPropertyValue> Origins => origins.Values.ToArray();
     public IReadOnlyCollection<IngredientRevisionUnitConversion> UnitConversions => unitConversions.Values.ToArray();
     public IReadOnlyCollection<IngredientVariantRevision> Variants => variants.AsReadOnly();
+    public IngredientNutritionProfile? NutritionProfile { get; private set; }
 
     public void SetContent(
         string name,
@@ -134,6 +135,16 @@ public sealed class IngredientRevision
         if (value.SourceUnitId == BaseUnitId)
             throw new ArgumentException("The base unit does not require an ingredient-specific conversion.", nameof(value));
         unitConversions[value.SourceUnitId] = value;
+        MarkChanged(changedBy, changedAt);
+    }
+
+    public void SetNutritionProfile(
+        IngredientNutritionProfile? profile,
+        Guid changedBy,
+        DateTimeOffset changedAt)
+    {
+        EnsureDraft();
+        NutritionProfile = profile;
         MarkChanged(changedBy, changedAt);
     }
 
@@ -200,6 +211,17 @@ public sealed class IngredientRevision
         MarkChanged(changedBy, changedAt);
     }
 
+    public void SetVariantNutritionProfile(
+        string variantKey,
+        IngredientNutritionProfile? profile,
+        Guid changedBy,
+        DateTimeOffset changedAt)
+    {
+        EnsureDraft();
+        GetVariant(variantKey).SetNutritionProfile(profile);
+        MarkChanged(changedBy, changedAt);
+    }
+
     internal void CopyRevisionDetailsFrom(IngredientRevision source)
     {
         foreach (IngredientPropertyValue value in source.allergens.Values)
@@ -212,6 +234,7 @@ public sealed class IngredientRevision
             unitConversions.Add(value.SourceUnitId, value);
         foreach (IngredientVariantRevision variant in source.variants)
             variants.Add(variant.Copy(Guid.NewGuid()));
+        NutritionProfile = source.NutritionProfile;
         AllergenReviewState = source.AllergenReviewState;
         IntoleranceReviewState = source.IntoleranceReviewState;
         OriginReviewState = source.OriginReviewState;
@@ -226,7 +249,8 @@ public sealed class IngredientRevision
         IngredientPropertyReviewState allergenReviewState,
         IngredientPropertyReviewState intoleranceReviewState,
         IngredientPropertyReviewState originReviewState,
-        Guid mergedCentralRevisionId)
+        Guid mergedCentralRevisionId,
+        IngredientNutritionProfile? nutritionProfile = null)
     {
         EnsureDraft();
         allergens.Clear();
@@ -234,6 +258,7 @@ public sealed class IngredientRevision
         origins.Clear();
         unitConversions.Clear();
         variants.Clear();
+        NutritionProfile = nutritionProfile;
         foreach (IngredientPropertyValue value in mergedAllergens)
             allergens.Add(value.PropertyId, value);
         foreach (IngredientPropertyValue value in mergedIntolerances)
@@ -269,7 +294,9 @@ public sealed class IngredientRevision
         Allergens,
         Variants.Select(value => new IngredientVariantPublicationSnapshot(
             value.VariantKey,
-            value.AllergenOverrides)).ToArray());
+            value.AllergenOverrides,
+            value.NutritionProfile)).ToArray(),
+        NutritionProfile);
 
     private void EnsureDraft()
     {

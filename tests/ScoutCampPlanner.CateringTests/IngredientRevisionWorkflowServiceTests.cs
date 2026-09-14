@@ -39,6 +39,7 @@ public sealed class IngredientRevisionWorkflowServiceTests
             new FixedTimeProvider(new DateTimeOffset(2026, 8, 30, 12, 0, 0, TimeSpan.Zero)));
         Guid allergenId = Guid.NewGuid();
         Guid sourceUnitId = Guid.NewGuid();
+        Guid baseUnitId = Guid.NewGuid();
         Guid variantId = Guid.NewGuid();
 
         IngredientRevisionMutationResult result = await service.SaveDraftAsync(
@@ -46,7 +47,7 @@ public sealed class IngredientRevisionWorkflowServiceTests
             new SaveIngredientRevisionDraftRequest(
                 "  Rote   Linsen ",
                 Guid.NewGuid(),
-                Guid.NewGuid(),
+                baseUnitId,
                 IngredientPropertyReviewState.Reviewed,
                 IngredientPropertyReviewState.Unreviewed,
                 IngredientPropertyReviewState.Reviewed,
@@ -64,7 +65,9 @@ public sealed class IngredientRevisionWorkflowServiceTests
                     AllergenOverrides: [new IngredientRevisionPropertyItem(
                         allergenId,
                         IngredientPropertyState.DoesNotContain,
-                        IngredientPropertySource.ManuallyVerified)])]),
+                        IngredientPropertySource.ManuallyVerified)],
+                    NutritionProfile: Nutrition(baseUnitId, 800m))],
+                NutritionProfile: Nutrition(baseUnitId, 1_000m)),
             Guid.NewGuid(),
             TestContext.Current.CancellationToken);
 
@@ -82,6 +85,8 @@ public sealed class IngredientRevisionWorkflowServiceTests
         Assert.Equal("Geräuchert", variant.Name);
         Assert.Equal(IngredientPropertyState.DoesNotContain,
             Assert.Single(variant.AllergenOverrides).State);
+        Assert.Equal(1_000m, store.SavedContent.NutritionProfile?.EnergyKilojoules);
+        Assert.Equal(800m, variant.NutritionProfile?.EnergyKilojoules);
         Assert.Equal(4, store.ExpectedRowVersion);
     }
 
@@ -223,6 +228,11 @@ public sealed class IngredientRevisionWorkflowServiceTests
         Assert.Equal(IngredientRevisionMutationStatus.Invalid, result.Status);
         Assert.Null(store.SavedContent);
     }
+
+    private static IngredientNutritionProfileItem Nutrition(Guid unitId, decimal energyKilojoules) => new(
+        100m, unitId, energyKilojoules, 10m, 2m, 20m, 3m, 8m, 1m, null,
+        IngredientNutritionSourceType.Manufacturer, "Herstelleretikett",
+        IngredientNutritionReviewState.Reviewed);
 
     private sealed class FakeStore(IngredientRevisionScope? scope) : IIngredientRevisionWorkflowStore
     {
