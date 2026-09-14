@@ -264,6 +264,7 @@ Fachlich enthält eine Zutatenrevision:
 - Unverträglichkeitsauslöser
 - Herkunftsmerkmale
 - zutatenspezifische Umrechnungen
+- das vollständige Nährwertprofil
 - Varianten
 
 ### 6.1 Name
@@ -389,6 +390,28 @@ gespeicherte Faktor bedeutet:
 `1 alternative Einheit = Faktor × Basiseinheit`. Die Basiseinheit selbst wird
 nicht nochmals als Umrechnung gespeichert. Veröffentlichte Umrechnungen werden
 wie alle anderen Revisionsdaten nur über einen neuen Entwurf geändert.
+
+### 7.3 Nährwertprofil
+
+Eine Zutatenrevision kann gemäß
+[ADR-024](../decisions/adr-024-nutrition-profiles.md) ein geprüftes
+Nährwertprofil besitzen. Es bezieht sich standardmäßig auf 100 g, 100 ml oder
+bei einer Stück-Zutat auf ein Stück. Die Referenzeinheit muss mit der
+Basiseinheit kompatibel sein; Rezeptberechnungen verwenden das bestehende
+Einheiten- und Umrechnungssystem.
+
+Der erste Umfang enthält Energie in kJ sowie Fett, gesättigte Fettsäuren,
+Kohlenhydrate, Zucker, Eiweiß und Salz. Ballaststoffe sind optional. kcal werden
+für die Anzeige aus kJ berechnet.
+
+Ein fehlender Wert ist unbekannt und nicht `0`. Ein geprüftes Profil muss alle
+Kernwerte vollständig enthalten, die Quelle ausweisen und die fachlichen
+Plausibilitätsregeln erfüllen. Fehlende Nährwertdaten verhindern die
+Veröffentlichung der übrigen Zutatenrevision nicht.
+
+Varianten erben das vollständige Profil. Falls eine Variante abweichende
+Nährwerte benötigt, ersetzt sie das Profil vollständig; einzelne Felder werden
+nicht mit einer anderen Quelle gemischt.
 
 ---
 
@@ -600,6 +623,7 @@ Varianten erben:
 - Unverträglichkeitsauslöser
 - Herkunftsmerkmale
 - zutatenspezifische Umrechnungen
+- das vollständige Nährwertprofil
 
 ### 12.2 Nicht überschreibbar
 
@@ -616,10 +640,15 @@ Varianten können gezielt überschreiben:
 - Unverträglichkeitszustände
 - Herkunftsmerkmale
 - zutatenspezifische Umrechnungen
+- das vollständige Nährwertprofil
 
 Effektiver Wert:
 
 `Basiswert der Zutatenrevision + Varianten-Override`
+
+Für Eigenschaften und Einheiten gelten die beschriebenen einzelnen Overrides.
+Das Nährwertprofil ist davon ausgenommen: Ein Variantenprofil ersetzt das
+geerbte Profil immer vollständig.
 
 Im Zutateneditor erbt eine Variante zunächst alle Werte der Basisrevision.
 Nur eine bewusst abweichende Auswahl wird als Override gespeichert. Wird die
@@ -804,6 +833,8 @@ Sie können von konkretem Produkt, Herstellungsprozess oder späteren Domänen a
 23. Annahme erzeugt einen ungeprüften zentralen Entwurf und niemals eine Veröffentlichung.
 24. Ablösung archiviert die lokale Identität und verändert keine historischen Rezeptrevisionen.
 25. Die Veröffentlichung eines aus einer Einreichung entstandenen zentralen Entwurfs löst die unveränderte lokale Ausgangsidentität automatisch ab; neuere lokale Arbeitsstände werden nicht automatisch archiviert.
+26. Fehlende Nährwertangaben werden niemals als `0` behandelt.
+27. Ein Varianten-Nährwertprofil ersetzt das geerbte Profil vollständig.
 
 ---
 

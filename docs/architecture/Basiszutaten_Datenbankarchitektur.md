@@ -14,6 +14,7 @@ Dieses Schema modelliert ausschließlich:
 - Unverträglichkeitsauslöser
 - Herkunftsmerkmale
 - Zutatenvarianten und Overrides
+- revisionsgebundene Nährwertprofile
 - Herkunft lokaler Forks und Update-Basis
 
 Nicht enthalten:
@@ -33,11 +34,13 @@ ingredient
     ├── ingredient_revision_intolerance
     ├── ingredient_revision_origin
     ├── ingredient_revision_unit_conversion
+    ├── ingredient_revision_nutrition_profile
     └── ingredient_variant_revision
         ├── ingredient_variant_allergen_override
         ├── ingredient_variant_intolerance_override
         ├── ingredient_variant_origin_override
-        └── ingredient_variant_unit_conversion_override
+        ├── ingredient_variant_unit_conversion_override
+        └── ingredient_variant_nutrition_profile
 ```
 
 Persistierte Scopes sind `central`, `tenant` und `camp`. Eine Tenant- oder Lagerzutatenidentität kann über `source_ingredient_id` und `source_revision_id` auf ihren zentralen Ursprung verweisen. `local` ist nur ein fachlicher Sammelbegriff.
@@ -47,6 +50,22 @@ aber keine einzelne Variante. Der stabile `variant_key` identifiziert Varianten
 innerhalb der Zutatenrevision für die spätere Verpflegungsplanung.
 Eigenschaftsgruppen besitzen einen Reviewstatus, damit fehlende Angaben nicht
 versehentlich als unbedenklich ausgewertet werden.
+
+## Geplante Nährwertpersistenz
+
+ADR-024 ergänzt je Zutatenrevision höchstens ein optionales Nährwertprofil und
+je Variante höchstens ein vollständiges Ersatzprofil. Die Implementierung und
+die provider-spezifischen Migrationen stehen noch aus.
+
+Das Revisionsprofil enthält Bezugsmenge, Referenzeinheit, Energie in kJ, die
+sechs verpflichtenden Mengenfelder des ersten Umfangs, optionale
+Ballaststoffe, Quellenart, Quellenangabe und Prüfstatus. Das Variantenprofil
+besitzt dieselbe fachliche Struktur. Einzelne Variantenfelder werden nicht als
+Overrides persistiert.
+
+Referenzeinheiten verweisen auf den bestehenden Einheitenkatalog und müssen mit
+der Basiseinheit der zugehörigen Zutatenrevision kompatibel sein. Bestehende
+Zutaten benötigen für die Migration kein Profil.
 
 ## Persistenz und Migrationen
 

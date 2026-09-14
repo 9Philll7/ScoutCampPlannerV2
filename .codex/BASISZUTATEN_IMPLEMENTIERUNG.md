@@ -25,6 +25,10 @@ berücksichtigen. Varianten bleiben Teil der referenzierten Zutatenrevision; ihr
 Auswahl erfolgt gemäß ADR-023 später in der Verpflegungsplanung und nicht im
 Rezepteditor.
 
+Nährwertprofile waren nicht Teil dieses ursprünglichen Implementierungsumfangs.
+Ihre spätere revisionsgebundene Erweiterung ist in ADR-024 festgelegt und muss
+als eigenes Inkrement umgesetzt werden.
+
 ## Fachliche Kernanforderungen
 
 ### Zentrale und lokale Zutaten

@@ -39,6 +39,23 @@ The requirement originates from participant needs.
 Example:
 Normal butter can require lactose-free butter depending on participants.
 
+## Nutrition
+
+An ingredient revision may contain the optional nutrition profile defined by
+[ADR-024](../decisions/adr-024-nutrition-profiles.md). Its initial values are energy, fat, saturates, carbohydrate, sugars,
+protein and salt, with optional fibre. Missing data remains unknown and is not
+treated as zero.
+
+Recipe nutrition is calculated from immutable ingredient revisions, quantities
+and existing unit conversions. Totals and per-standard-portion values must be
+marked as incomplete whenever a required ingredient profile or conversion is
+missing. The result is an estimate and does not provide medical advice or an
+automatic health rating.
+
+A variant inherits the complete ingredient profile or replaces it with a
+complete variant-specific profile. It does not override isolated nutrient
+fields.
+
 ## Central, tenant and camp data
 
 Published recipes flow explicitly from the central catalog into a tenant library and from there into a camp library. Every reference targets a concrete immutable revision. Editing an upstream recipe creates an independently editable copy in the receiving scope with lineage to its source revision.

@@ -15,6 +15,7 @@ Verbindliche Quellen:
 - `docs/decisions/adr-021-revisioned-base-ingredients.md`
 - `docs/decisions/adr-022-central-ingredient-contributions.md`
 - `docs/decisions/adr-023-ingredient-variant-selection.md`
+- `docs/decisions/adr-024-nutrition-profiles.md`
 
 Die Repository-Dokumentation hat Vorrang vor dieser Übergabe und vor früheren Chatverläufen.
 
@@ -406,9 +407,24 @@ Lagerpakete müssen die transitive, unveränderliche Datenmenge der enthaltenen 
 - konkrete veröffentlichte Zutatenrevision
 - alle Varianten und Overrides der referenzierten Zutatenrevision
 - Einheiten und Umrechnungen
+- Nährwertprofile einschließlich Quelle und Prüfstatus
 - benötigte Allergen-, Unverträglichkeits- und Herkunftskatalogeinträge
 
 Offline darf keine fehlende Stammdatenreferenz aus der Cloud nachladen müssen.
+
+### 11. Nährwertprofile umsetzen
+
+Gemäß ADR-024 in einem eigenen Inkrement:
+
+- revisionsgebundenes optionales Nährwertprofil modellieren
+- vollständigen Varianten-Override ermöglichen
+- Quellenangabe und Prüfstatus speichern
+- PostgreSQL- und SQLite-Migrationen erstellen
+- Eingabe und Plausibilitätsprüfung im Zutateneditor ergänzen
+- Rezeptgesamtwerte und Werte pro Standardportion mit Vollständigkeitsstatus
+  berechnen
+
+Keine medizinischen Bewertungen oder automatischen Ernährungsampeln einführen.
 
 ## Bekannte Übergangsrisiken
 

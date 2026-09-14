@@ -455,3 +455,16 @@ Do not implement the following as recipe-domain responsibilities:
 - organizational handling of unresolved conflicts
 
 The recipe domain only exposes enough immutable data and conflict information for those later layers to operate.
+
+## 21. Nutritional information
+
+Nutrition profiles are owned by immutable ingredient revisions as defined by
+[ADR-024](../decisions/adr-024-nutrition-profiles.md). Recipe totals and values per standard portion are derived from the
+ingredient quantities and available conversions; they are not mutable recipe
+master data.
+
+Calculated values must carry a completeness state. If any required ingredient
+profile or conversion is missing, the result is explicitly incomplete and the
+missing contribution is never interpreted as zero. Nutritional results are
+informational estimates. Medical recommendations, diet prescriptions and
+automatic health ratings are outside the recipe domain.
