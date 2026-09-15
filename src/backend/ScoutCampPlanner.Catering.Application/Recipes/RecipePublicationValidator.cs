@@ -97,7 +97,12 @@ public sealed class RecipePublicationValidator(IRecipeValidationReferences refer
 
         foreach (var duplicate in draft.IngredientPositions
                      .Where(value => value.IngredientRevisionId.HasValue)
-                     .GroupBy(value => (value.GroupId, value.IngredientRevisionId))
+                     .GroupBy(value =>
+                     {
+                         Guid revisionId = value.IngredientRevisionId!.Value;
+                         Guid ingredientId = references.FindIngredient(revisionId)?.IngredientId ?? revisionId;
+                         return (value.GroupId, IngredientId: ingredientId);
+                     })
                      .Where(value => value.Count() > 1))
             foreach (RecipeIngredientPosition position in duplicate)
                 AddError(issues, RecipeValidationCodes.IngredientDuplicate, Context("positionId", position.Id));
@@ -253,7 +258,7 @@ public sealed class RecipePublicationValidator(IRecipeValidationReferences refer
         }
     }
 
-    private static void AddUnresolvedConflictWarnings(
+    private void AddUnresolvedConflictWarnings(
         IEnumerable<ConflictReference> exposedConflicts,
         IEnumerable<ConflictReference> coveredConflicts,
         IReadOnlyDictionary<string, string> context,
@@ -264,7 +269,7 @@ public sealed class RecipePublicationValidator(IRecipeValidationReferences refer
             AddWarning(issues, RecipeValidationCodes.ConflictUnresolved, WithConflict(context, conflict));
     }
 
-    private static void AddReplacementConflictWarnings(
+    private void AddReplacementConflictWarnings(
         IEnumerable<ConflictReference> declaredConflicts,
         IEnumerable<ConflictReference> originalConflicts,
         IEnumerable<ConflictReference> replacementConflicts,
@@ -280,7 +285,7 @@ public sealed class RecipePublicationValidator(IRecipeValidationReferences refer
             AddWarning(issues, RecipeValidationCodes.ReplacementCreatesConflict, WithConflict(context, conflict));
     }
 
-    private static IReadOnlyDictionary<string, string> WithConflict(
+    private IReadOnlyDictionary<string, string> WithConflict(
         IReadOnlyDictionary<string, string> context,
         ConflictReference conflict)
     {
@@ -289,6 +294,8 @@ public sealed class RecipePublicationValidator(IRecipeValidationReferences refer
             ["conflictType"] = conflict.Type.ToString(),
             ["conflictId"] = conflict.Id.ToString(),
         };
+        string? conflictName = references.FindConflictName(conflict);
+        if (!string.IsNullOrWhiteSpace(conflictName)) result["conflictName"] = conflictName;
         return result;
     }
 

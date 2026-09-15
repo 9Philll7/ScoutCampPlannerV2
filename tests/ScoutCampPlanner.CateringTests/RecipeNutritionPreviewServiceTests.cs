@@ -94,6 +94,10 @@ public sealed class RecipeNutritionPreviewServiceTests
         public Task<bool> CanEditCampAsync(
             Guid actorUserId, Guid campId, CancellationToken cancellationToken = default) =>
             Task.FromResult(allowed);
+
+        public Task<bool> CanPublishCampAsync(
+            Guid actorUserId, Guid campId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(allowed);
     }
 
     private sealed class FakeReferences(Guid ingredientId, Guid unitId) :

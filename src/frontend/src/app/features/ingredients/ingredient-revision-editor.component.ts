@@ -264,10 +264,10 @@ import { IngredientNutritionEditorComponent } from './ingredient-nutrition-edito
                     [disabled]="revision.state === publishedState || disabled()">Aktiv</mat-checkbox>
                   @if (revision.state === draftState && !disabled()) {
                     <div class="variant-actions">
-                      @if (variant.isNew) {
-                        <button matIconButton type="button" aria-label="Neue Variante verwerfen"
-                          (click)="removeNewVariant(revision, index)"><scp-action-icon name="remove"/></button>
-                      }
+                      <button matIconButton type="button"
+                        [attr.aria-label]="variant.isNew ? 'Neue Variante verwerfen' : 'Variante aus dem Entwurf entfernen'"
+                        [title]="variant.isNew ? 'Neue Variante verwerfen' : 'Variante aus dem Entwurf entfernen'"
+                        (click)="removeVariant(revision, index)"><scp-action-icon name="remove"/></button>
                     </div>
                   }
                 </div>
@@ -1107,9 +1107,10 @@ export class IngredientRevisionEditorComponent {
       variant.variantKey = this.uniqueVariantKey(revision, variant, name);
   }
 
-  removeNewVariant(revision: IngredientRevisionDetails, index: number) {
-    if (!revision.variants[index]?.isNew) return;
+  removeVariant(revision: IngredientRevisionDetails, index: number) {
+    if (!revision.variants[index]) return;
     revision.variants.splice(index, 1);
+    revision.variants.forEach((variant, sortOrder) => variant.sortOrder = sortOrder);
   }
 
   private isAllowedConversionUnit(baseUnitId: string, sourceUnitId: string) {

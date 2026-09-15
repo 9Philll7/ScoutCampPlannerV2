@@ -102,6 +102,7 @@ builder.Services.AddScoped<RecipeSnapshotBuilder>();
 builder.Services.AddScoped<RecipeCalculator>();
 builder.Services.AddScoped<RecipeNutritionPreviewService>();
 builder.Services.AddScoped<RecipePublisher>();
+builder.Services.AddScoped<IRecipePublisher>(services => services.GetRequiredService<RecipePublisher>());
 builder.Services.AddScoped<PlatformRecipeAuthorization>();
 builder.Services.AddScoped<IRecipePermanentDeleteAuthorization>(services =>
     services.GetRequiredService<PlatformRecipeAuthorization>());
@@ -114,6 +115,7 @@ builder.Services.AddScoped<IRecipeCatalogAuthorization>(services =>
 builder.Services.AddScoped<IRecipeEditorAuthorization>(services =>
     services.GetRequiredService<PlatformRecipeAuthorization>());
 builder.Services.AddScoped<RecipeEditorService>();
+builder.Services.AddScoped<CampRecipePublicationService>();
 builder.Services.AddScoped<IRecipeEditorStore, RecipeEditorStore>();
 builder.Services.AddScoped<IRecipeEditorIngredientReferenceStore, RecipeEditorIngredientReferenceStore>();
 builder.Services.AddScoped<RecipeLifecycleService>();
@@ -655,6 +657,14 @@ app.MapPut("/api/camps/{campId:guid}/recipes/{recipeId:guid}/draft", async (
         campId, recipeId, request.ExpectedVersion, request.Content,
         Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken)))
     .RequireAuthorization();
+app.MapPost("/api/camps/{campId:guid}/recipes/{recipeId:guid}/publish", async (
+    Guid campId, Guid recipeId, PublishCampRecipeRequest request, ClaimsPrincipal principal,
+    CampRecipePublicationService recipes, CancellationToken cancellationToken) =>
+    ToCampRecipePublicationResult(await recipes.PublishAsync(
+        campId, recipeId, request.ExpectedVersion, request.AcknowledgeWarnings,
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), request.ChangeNote,
+        cancellationToken)))
+    .RequireAuthorization();
 app.MapGet("/api/ingredients/central", async (
     ClaimsPrincipal principal, IngredientCatalogService ingredients, CancellationToken cancellationToken) =>
 {
@@ -1064,6 +1074,18 @@ static IResult ToRecipeEditorResult(RecipeEditorResult result) => result.Status 
     _ => Results.BadRequest(),
 };
 
+static IResult ToCampRecipePublicationResult(CampRecipePublicationResult result) => result.Status switch
+{
+    CampRecipePublicationStatus.Published => Results.Ok(result),
+    CampRecipePublicationStatus.Forbidden => Results.Forbid(),
+    CampRecipePublicationStatus.NotFound => Results.NotFound(),
+    CampRecipePublicationStatus.ValidationFailed => Results.UnprocessableEntity(result),
+    CampRecipePublicationStatus.WarningAcknowledgementRequired => Results.Conflict(result),
+    CampRecipePublicationStatus.VersionConflict => Results.Conflict(result),
+    CampRecipePublicationStatus.Archived => Results.Conflict(result),
+    _ => Results.UnprocessableEntity(result),
+};
+
 static void Configure(DbContextOptionsBuilder options, DbConnection connection, string provider, string module)
 {
     if (provider.Equals("PostgreSql", StringComparison.OrdinalIgnoreCase))
@@ -1085,3 +1107,7 @@ static void Configure(DbContextOptionsBuilder options, DbConnection connection, 
 }
 
 public sealed record SaveRecipeEditorRequest(long ExpectedVersion, RecipeEditorContent Content);
+public sealed record PublishCampRecipeRequest(
+    long ExpectedVersion,
+    bool AcknowledgeWarnings,
+    string? ChangeNote = null);

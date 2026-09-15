@@ -302,6 +302,30 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
         Assert.Equal(10.5m, storedConversion.FactorToBaseUnit);
         Assert.Equal(3, (await fixture.Database.Set<IngredientRevisionRecord>().AsNoTracking()
             .SingleAsync(TestContext.Current.CancellationToken)).RowVersion);
+
+        IngredientRevisionDraftContent withoutVariant = IngredientRevisionDraftContent.Create(
+            "Linsen",
+            seed.CategoryId,
+            seed.UnitId,
+            IngredientPropertyReviewState.Unreviewed,
+            IngredientPropertyReviewState.Unreviewed,
+            IngredientPropertyReviewState.Unreviewed,
+            unitConversions: [new IngredientRevisionUnitConversion(
+                spoonId, 15m, IngredientConversionPrecision.Average)],
+            variants: []);
+        IngredientRevisionMutationResult removed = await store.SaveDraftAsync(
+            seed.RevisionId, withoutVariant, 3, seed.ActorId, DateTimeOffset.UtcNow,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(IngredientRevisionMutationStatus.Saved, removed.Status);
+        Assert.Empty(await fixture.Database.Set<IngredientVariantRevisionRecord>().AsNoTracking()
+            .ToArrayAsync(TestContext.Current.CancellationToken));
+        Assert.Empty(await fixture.Database.Set<IngredientVariantAllergenOverrideRecord>().AsNoTracking()
+            .ToArrayAsync(TestContext.Current.CancellationToken));
+        Assert.Empty(await fixture.Database.Set<IngredientVariantIntoleranceOverrideRecord>().AsNoTracking()
+            .ToArrayAsync(TestContext.Current.CancellationToken));
+        Assert.Empty(await fixture.Database.Set<IngredientVariantUnitConversionOverrideRecord>().AsNoTracking()
+            .ToArrayAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]

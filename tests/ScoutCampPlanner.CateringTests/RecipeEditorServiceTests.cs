@@ -84,9 +84,9 @@ public sealed class RecipeEditorServiceTests
         draft.AddIngredientPosition(new RecipeIngredientPosition(
             Guid.NewGuid(), recipeId, null, revisionId, 100m, unitId, 0));
         var references = new FakeIngredientReferences(new RecipeEditorIngredientReference(
-            revisionId, "Haferflocken – Revision 1", IngredientScopeType.Central,
+            revisionId, Guid.NewGuid(), 1, "Haferflocken – Revision 1", IngredientScopeType.Central,
             [new RecipeEditorIngredientUnitReference(
-                unitId, "Gramm", "g", MeasurementDimension.Mass, 1m, 1m)]));
+                unitId, "Gramm", "g", MeasurementDimension.Mass, 1m, 1m)], [], null));
         var service = new RecipeEditorService(
             new FakeStore { FoundDraft = draft }, new FakeAuthorization(true),
             new FixedTimeProvider(Now), references);
@@ -138,6 +138,10 @@ public sealed class RecipeEditorServiceTests
             Task.FromResult(allowed);
 
         public Task<bool> CanEditCampAsync(
+            Guid actorUserId, Guid campId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(allowed);
+
+        public Task<bool> CanPublishCampAsync(
             Guid actorUserId, Guid campId, CancellationToken cancellationToken = default) =>
             Task.FromResult(allowed);
     }

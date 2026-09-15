@@ -51,10 +51,22 @@ export interface RecipeEditorDraft {
 
 export interface RecipeEditorIngredientReference {
   revisionId: string;
+  ingredientId: string;
+  revisionNumber: number;
   name: string;
   scope: number;
   units: { unitId: string; name: string; symbol: string; dimension: number;
     baseUnitFactor: number; referenceQuantityPerUnit: number }[];
+  conflicts: { type: number; id: string; name: string; preventableByVariants: string[] }[];
+  availableUpdate: RecipeEditorIngredientUpdate | null;
+}
+
+export interface RecipeEditorIngredientUpdate {
+  revisionId: string;
+  revisionNumber: number;
+  name: string;
+  units: RecipeEditorIngredientReference['units'];
+  conflicts: RecipeEditorIngredientReference['conflicts'];
 }
 
 export interface RecipeNutritionValues {
@@ -82,6 +94,22 @@ export interface RecipeNutritionCalculation {
   total: RecipeNutritionValues | null;
   perStandardPortion: RecipeNutritionValues | null;
   missingContributions: MissingNutritionContribution[];
+}
+
+export interface RecipeValidationIssue {
+  code: string;
+  severity: number;
+  message: string;
+  context: Record<string, string>;
+}
+
+export interface RecipePublicationResponse {
+  status: number;
+  validation: { issues: RecipeValidationIssue[]; errors: RecipeValidationIssue[];
+    warnings: RecipeValidationIssue[] } | null;
+  revisionId: string | null;
+  revisionNumber: number | null;
+  draftVersion: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -118,5 +146,12 @@ export class RecipeEditorApiService {
   save(campId: string, draft: RecipeEditorDraft) {
     return this.http.put<RecipeEditorDraft>(`${this.baseUrl}/api/camps/${campId}/recipes/${draft.id}/draft`,
       { expectedVersion: draft.draftVersion, content: draft.content }, { withCredentials: true });
+  }
+
+  publish(campId: string, draft: RecipeEditorDraft, acknowledgeWarnings: boolean) {
+    return this.http.post<RecipePublicationResponse>(
+      `${this.baseUrl}/api/camps/${campId}/recipes/${draft.id}/publish`,
+      { expectedVersion: draft.draftVersion, acknowledgeWarnings },
+      { withCredentials: true });
   }
 }

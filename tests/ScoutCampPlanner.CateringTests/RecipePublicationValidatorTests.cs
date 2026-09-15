@@ -63,6 +63,25 @@ public sealed class RecipePublicationValidatorTests
     }
 
     [Fact]
+    public void Different_revisions_of_the_same_ingredient_are_duplicates_in_one_group()
+    {
+        var references = new FakeReferences();
+        Guid ingredientId = references.AddIngredient();
+        Guid newerRevisionId = references.AddIngredientRevision(ingredientId);
+        Guid oldUnitId = references.AddIngredientUnit(ingredientId);
+        Guid newUnitId = references.AddIngredientUnit(newerRevisionId);
+        var draft = CompletePortionDraft();
+        draft.AddIngredientPosition(new RecipeIngredientPosition(
+            Guid.NewGuid(), draft.Id, null, ingredientId, 1m, oldUnitId, 0));
+        draft.AddIngredientPosition(new RecipeIngredientPosition(
+            Guid.NewGuid(), draft.Id, null, newerRevisionId, 1m, newUnitId, 1));
+
+        RecipeValidationResult result = new RecipePublicationValidator(references).Validate(draft);
+
+        Assert.Equal(2, result.Errors.Count(value => value.Code == RecipeValidationCodes.IngredientDuplicate));
+    }
+
+    [Fact]
     public void Same_conflict_on_two_replacement_rules_is_rejected()
     {
         var references = new FakeReferences();
@@ -129,9 +148,9 @@ public sealed class RecipePublicationValidatorTests
         Guid replacementUnit = references.AddIngredientUnit(replacementId);
         var declared = new ConflictReference(ConflictType.Allergen, Guid.NewGuid());
         var created = new ConflictReference(ConflictType.DietaryRequirement, Guid.NewGuid());
-        references.AddIngredientConflict(originalId, declared);
-        references.AddIngredientConflict(replacementId, declared);
-        references.AddIngredientConflict(replacementId, created);
+        references.AddIngredientConflict(originalId, declared, "Milch");
+        references.AddIngredientConflict(replacementId, declared, "Milch");
+        references.AddIngredientConflict(replacementId, created, "Vegan");
         var draft = CompletePortionDraft();
         var position = new RecipeIngredientPosition(
             Guid.NewGuid(), draft.Id, null, originalId, 1m, originalUnit, 0);
@@ -141,8 +160,12 @@ public sealed class RecipePublicationValidatorTests
 
         RecipeValidationResult result = new RecipePublicationValidator(references).Validate(draft);
 
-        Assert.Contains(result.Warnings, value => value.Code == RecipeValidationCodes.ReplacementConflictRemains);
-        Assert.Contains(result.Warnings, value => value.Code == RecipeValidationCodes.ReplacementCreatesConflict);
+        RecipeValidationIssue remains = Assert.Single(result.Warnings,
+            value => value.Code == RecipeValidationCodes.ReplacementConflictRemains);
+        RecipeValidationIssue createdWarning = Assert.Single(result.Warnings,
+            value => value.Code == RecipeValidationCodes.ReplacementCreatesConflict);
+        Assert.Equal("Milch", remains.Context["conflictName"]);
+        Assert.Equal("Vegan", createdWarning.Context["conflictName"]);
     }
 
     private static RecipeDraft CompletePortionDraft()
@@ -161,19 +184,34 @@ public sealed class RecipePublicationValidatorTests
         private readonly HashSet<Guid> units = [];
         private readonly Dictionary<Guid, RecipeRevisionDescriptor> revisions = [];
         private readonly Dictionary<Guid, HashSet<ConflictReference>> ingredientConflicts = [];
+        private readonly Dictionary<ConflictReference, string> conflictNames = [];
 
         public HashSet<Guid> CyclicRecipeIds { get; } = [];
 
         public Guid AddIngredient(IngredientScopeType scopeType = IngredientScopeType.Central, Guid? scopeId = null)
         {
             Guid id = Guid.NewGuid();
-            ingredients[id] = new IngredientDescriptor(id, scopeType, scopeId);
+            ingredients[id] = new IngredientDescriptor(id, id, scopeType, scopeId);
             ingredientConflicts[id] = [];
             return id;
         }
 
-        public void AddIngredientConflict(Guid ingredientId, ConflictReference conflict) =>
+        public Guid AddIngredientRevision(
+            Guid ingredientId,
+            IngredientScopeType scopeType = IngredientScopeType.Central,
+            Guid? scopeId = null)
+        {
+            Guid revisionId = Guid.NewGuid();
+            ingredients[revisionId] = new IngredientDescriptor(revisionId, ingredientId, scopeType, scopeId);
+            ingredientConflicts[revisionId] = [];
+            return revisionId;
+        }
+
+        public void AddIngredientConflict(Guid ingredientId, ConflictReference conflict, string? name = null)
+        {
             ingredientConflicts.GetValueOrDefault(ingredientId)?.Add(conflict);
+            if (name is not null) conflictNames[conflict] = name;
+        }
 
         public Guid AddIngredientUnit(Guid ingredientId)
         {
@@ -195,6 +233,7 @@ public sealed class RecipePublicationValidatorTests
             ingredientUnits.Contains((ingredientId, unitId));
         public IReadOnlySet<ConflictReference> GetIngredientConflicts(Guid ingredientId) =>
             ingredientConflicts.GetValueOrDefault(ingredientId) ?? new HashSet<ConflictReference>();
+        public string? FindConflictName(ConflictReference conflict) => conflictNames.GetValueOrDefault(conflict);
         public bool UnitExists(Guid unitId) => units.Contains(unitId);
         public bool AreUnitsCompatible(Guid sourceUnitId, Guid targetUnitId) => sourceUnitId == targetUnitId;
         public RecipeRevisionDescriptor? FindRevision(Guid revisionId) =>

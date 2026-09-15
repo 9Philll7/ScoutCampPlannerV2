@@ -46,9 +46,26 @@ public sealed record RecipeEditorDraft(
 
 public sealed record RecipeEditorIngredientReference(
     Guid RevisionId,
+    Guid IngredientId,
+    int RevisionNumber,
     string Name,
     IngredientScopeType Scope,
-    IReadOnlyList<RecipeEditorIngredientUnitReference> Units);
+    IReadOnlyList<RecipeEditorIngredientUnitReference> Units,
+    IReadOnlyList<RecipeEditorConflictReference> Conflicts,
+    RecipeEditorIngredientUpdate? AvailableUpdate);
+
+public sealed record RecipeEditorIngredientUpdate(
+    Guid RevisionId,
+    int RevisionNumber,
+    string Name,
+    IReadOnlyList<RecipeEditorIngredientUnitReference> Units,
+    IReadOnlyList<RecipeEditorConflictReference> Conflicts);
+
+public sealed record RecipeEditorConflictReference(
+    ConflictType Type,
+    Guid Id,
+    string Name,
+    IReadOnlyList<string> PreventableByVariants);
 
 public sealed record RecipeEditorIngredientUnitReference(
     Guid UnitId,
@@ -74,6 +91,7 @@ public interface IRecipeEditorAuthorization
 {
     Task<bool> CanReadCampAsync(Guid actorUserId, Guid campId, CancellationToken cancellationToken = default);
     Task<bool> CanEditCampAsync(Guid actorUserId, Guid campId, CancellationToken cancellationToken = default);
+    Task<bool> CanPublishCampAsync(Guid actorUserId, Guid campId, CancellationToken cancellationToken = default);
 }
 
 public interface IRecipeEditorStore

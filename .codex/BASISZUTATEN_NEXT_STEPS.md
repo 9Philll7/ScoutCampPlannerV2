@@ -390,9 +390,17 @@ Umgesetzt:
 Noch offen:
 
 - Ersatzregeln und Unterrezepte in der Oberfläche
-- Publikationsworkflow und Validierungsanzeige im Rezepteditor
+- Publikationsworkflow und Validierungsanzeige im Rezepteditor – umgesetzt:
+  - eigene Lagerberechtigung `recipes.publish`
+  - strukturierte Fehler blockieren die Veröffentlichung
+  - Warnungen werden vor einer erneuten, ausdrücklich bestätigten
+    Veröffentlichungsanfrage angezeigt
+  - erfolgreiche Veröffentlichung erzeugt eine unveränderliche Revision
+  - gleichzeitige Änderungen werden als Versionskonflikt gemeldet
 - Aktualisierung eines Entwurfs auf eine neuere Zutatenrevision als bewusster
-  Benutzerschritt
+  Benutzerschritt – im Lager-Rezepteditor umgesetzt; verwendete Revision und
+  Konflikte sind je Position sichtbar, eine neuere Revision wird angeboten und
+  erst durch ausdrückliche Auswahl übernommen
 - Auswahl einer geeigneten Zutatenvariante pro Verpflegungs- oder Kocheinheit
   unter Berücksichtigung ihrer effektiven Konflikte und Umrechnungen
 

@@ -18,7 +18,7 @@ public sealed class EfRecipeReferences(CateringDbContext database) :
          where revision.Id == ingredientRevisionId &&
                revision.State == (int)IngredientRevisionState.Published
          select new IngredientDescriptor(
-             revision.Id, (IngredientScopeType)identity.ScopeType, identity.ScopeId))
+             revision.Id, identity.Id, (IngredientScopeType)identity.ScopeType, identity.ScopeId))
         .SingleOrDefault();
 
     public bool IsUnitAvailableForIngredient(Guid ingredientRevisionId, Guid unitId)
@@ -51,6 +51,17 @@ public sealed class EfRecipeReferences(CateringDbContext database) :
             .Select(value => new ConflictReference(ConflictType.Intolerance, value.IntoleranceId)));
         return result;
     }
+
+    public string? FindConflictName(ConflictReference conflict) => conflict.Type switch
+    {
+        ConflictType.Allergen => database.Set<IngredientAllergenDefinitionRecord>().AsNoTracking()
+            .Where(value => value.Id == conflict.Id).Select(value => value.Name).SingleOrDefault(),
+        ConflictType.Intolerance => database.Set<IngredientIntoleranceDefinitionRecord>().AsNoTracking()
+            .Where(value => value.Id == conflict.Id).Select(value => value.Name).SingleOrDefault(),
+        ConflictType.DietaryRequirement => database.DietaryRequirements.AsNoTracking()
+            .Where(value => value.Id == conflict.Id).Select(value => value.Name).SingleOrDefault(),
+        _ => null,
+    };
 
     public bool UnitExists(Guid unitId) => database.MeasurementUnits.AsNoTracking().Any(value => value.Id == unitId);
 

@@ -27,6 +27,8 @@ public sealed class RecipeEditorIngredientReferenceStoreTests
         Guid currentRevisionId = Guid.NewGuid();
         Guid oldUnitId = Guid.NewGuid();
         Guid currentUnitId = Guid.NewGuid();
+        Guid allergenId = Guid.NewGuid();
+        Guid variantId = Guid.NewGuid();
         Guid userId = Guid.NewGuid();
         var now = new DateTimeOffset(2026, 9, 14, 12, 0, 0, TimeSpan.Zero);
         var identity = new IngredientIdentityRecord
@@ -40,7 +42,39 @@ public sealed class RecipeEditorIngredientReferenceStoreTests
             new MeasurementUnit(oldUnitId, "Alte Rezepteinheit", "are", MeasurementDimension.Mass, 1m),
             new MeasurementUnit(currentUnitId, "Neue Rezepteinheit", "nre", MeasurementDimension.Mass, 1m),
             Revision(oldRevisionId, ingredientId, 1, "Alter Name", oldUnitId, userId, now),
-            Revision(currentRevisionId, ingredientId, 2, "Neuer Name", currentUnitId, userId, now.AddDays(1)));
+            Revision(currentRevisionId, ingredientId, 2, "Neuer Name", currentUnitId, userId, now.AddDays(1)),
+            new IngredientAllergenDefinitionRecord
+            {
+                Id = allergenId,
+                Code = "MILK_TEST",
+                Name = "Milch",
+                IsEuMajorAllergen = true,
+                Status = 0,
+            },
+            new IngredientRevisionAllergenRecord
+            {
+                IngredientRevisionId = oldRevisionId,
+                AllergenId = allergenId,
+                State = (int)IngredientPropertyState.Contains,
+                Source = (int)IngredientPropertySource.ManuallyVerified,
+            },
+            new IngredientVariantRevisionRecord
+            {
+                Id = variantId,
+                IngredientRevisionId = oldRevisionId,
+                VariantKey = "MILCHFREI",
+                Name = "Milchfreie Variante",
+                NormalizedName = "MILCHFREIE VARIANTE",
+                Status = 0,
+                SortOrder = 0,
+            },
+            new IngredientVariantAllergenOverrideRecord
+            {
+                VariantRevisionId = variantId,
+                AllergenId = allergenId,
+                State = (int)IngredientPropertyState.DoesNotContain,
+                Source = (int)IngredientPropertySource.ManuallyVerified,
+            });
         await database.SaveChangesAsync(TestContext.Current.CancellationToken);
         identity.CurrentPublishedRevisionId = currentRevisionId;
         await database.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -52,8 +86,17 @@ public sealed class RecipeEditorIngredientReferenceStoreTests
 
         var reference = Assert.Single(result);
         Assert.Equal(oldRevisionId, reference.RevisionId);
+        Assert.Equal(ingredientId, reference.IngredientId);
+        Assert.Equal(1, reference.RevisionNumber);
         Assert.Equal("Alter Name", reference.Name);
         Assert.Equal(oldUnitId, Assert.Single(reference.Units).UnitId);
+        var conflict = Assert.Single(reference.Conflicts);
+        Assert.Equal("Milch", conflict.Name);
+        Assert.Equal(["Milchfreie Variante"], conflict.PreventableByVariants);
+        Assert.Equal(currentRevisionId, reference.AvailableUpdate!.RevisionId);
+        Assert.Equal(2, reference.AvailableUpdate.RevisionNumber);
+        Assert.Equal("Neuer Name", reference.AvailableUpdate.Name);
+        Assert.Equal(currentUnitId, Assert.Single(reference.AvailableUpdate.Units).UnitId);
     }
 
     private static IngredientRevisionRecord Revision(

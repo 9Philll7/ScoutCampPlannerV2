@@ -101,6 +101,10 @@ public sealed class PlatformRecipeAuthorization(PlatformDbContext database) :
         Guid actorUserId, Guid campId, CancellationToken cancellationToken = default) =>
         HasCampPermissionAsync(actorUserId, campId, Permissions.Recipes.Edit, cancellationToken);
 
+    public Task<bool> CanPublishCampAsync(
+        Guid actorUserId, Guid campId, CancellationToken cancellationToken = default) =>
+        HasCampPermissionAsync(actorUserId, campId, Permissions.Recipes.Publish, cancellationToken);
+
     public async Task<bool> CanManageCentralAsync(
         Guid actorUserId, CancellationToken cancellationToken = default)
     {

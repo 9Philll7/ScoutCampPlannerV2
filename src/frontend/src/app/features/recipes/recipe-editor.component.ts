@@ -13,7 +13,8 @@ import { IngredientCatalogEntry } from '../camp/camp-api.service';
 import { ActionIconComponent } from '../../shared/action-icon.component';
 import { RecipeCatalogEntry, RecipeEditorApiService, RecipeEditorContent,
   RecipeEditorDraft, RecipeEditorGroup, RecipeEditorIngredientPosition,
-  RecipeNutritionCalculation, RecipeNutritionValues } from './recipe-editor-api.service';
+  RecipeNutritionCalculation, RecipeNutritionValues, RecipePublicationResponse,
+  RecipeValidationIssue, RecipeEditorIngredientUpdate } from './recipe-editor-api.service';
 
 interface IngredientSection {
   id: string | null;
@@ -71,6 +72,10 @@ interface IngredientSection {
               <button matButton type="button" (click)="addGroup()"><scp-action-icon name="add"/>Gruppe</button>
             }
           </div>
+          <div class="conflict-legend" aria-label="Legende für Zutatenkonflikte">
+            <span class="preventable">Gelb: durch eine Variante vermeidbar</span>
+            <span class="unavoidable">Rot: durch keine Variante vermeidbar</span>
+          </div>
           <div class="group-list">
             @for (section of ingredientSections(); track section.id ?? 'ungrouped') {
               <article class="ingredient-group" [class.ungrouped]="!section.group">
@@ -102,7 +107,27 @@ interface IngredientSection {
                   @for (position of section.positions; track position.id; let first = $first; let last = $last) {
                     <div class="position-card">
                       <div class="position-name"><strong>{{ ingredient(position)?.name ?? 'Unbekannte Zutat' }}</strong>
-                        <small>{{ scopeLabel(ingredient(position)?.scope) }}</small></div>
+                        <small>{{ scopeLabel(ingredient(position)?.scope) }}
+                          @if (ingredientReference(position); as reference) { · Revision {{ reference.revisionNumber }} }
+                        </small>
+                        @if ((ingredient(position)?.conflicts ?? []).length) {
+                          <div class="conflict-list" aria-label="Konflikte der Zutat">
+                            @for (conflict of ingredient(position)!.conflicts; track conflict.type + '-' + conflict.id) {
+                              <span
+                                [class.preventable]="conflictVariantNames(position, conflict.id)?.length"
+                                [class.unavoidable]="conflictVariantNames(position, conflict.id)?.length === 0"
+                                [class.unclassified]="conflictVariantNames(position, conflict.id) === null"
+                                [title]="conflictTitle(position, conflict.id, conflict.name)">{{ conflict.name }}</span>
+                            }
+                          </div>
+                        }
+                        @if (ingredientReference(position)?.availableUpdate; as update) {
+                          <button matButton type="button" class="ingredient-update"
+                            (click)="adoptIngredientUpdate(position, update)" [disabled]="disabled()">
+                            Auf Revision {{ update.revisionNumber }} aktualisieren
+                          </button>
+                        }
+                      </div>
                       <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Gruppe</mat-label>
                         <mat-select [name]="'position-group-' + position.id" [ngModel]="position.groupId"
                           (ngModelChange)="movePositionToGroup(position, $event)" [disabled]="disabled()">
@@ -223,8 +248,28 @@ interface IngredientSection {
         </section>
 
         <div class="recipe-actions">
+          @if (publicationIssues().length) {
+            <div class="publication-validation" role="alert">
+              <strong>{{ publicationHasErrors() ? 'Das Rezept kann noch nicht veröffentlicht werden.' :
+                'Bitte prüfe diese Hinweise vor der Veröffentlichung.' }}</strong>
+              <ul>
+                @for (issue of publicationIssues(); track issue.code + ($index)) {
+                  <li>{{ validationIssueText(issue) }}</li>
+                }
+              </ul>
+              @if (!publicationHasErrors()) {
+                <button matButton="filled" type="button" (click)="publish(true)" [disabled]="publishing()">
+                  Hinweise bestätigen und veröffentlichen
+                </button>
+              }
+            </div>
+          }
           <button matButton="filled" type="submit" [disabled]="disabled() || saving() || !changed()">
             <scp-action-icon name="save"/>Speichern</button>
+          <button matButton type="button" (click)="publish(false)"
+            [disabled]="disabled() || saving() || publishing() || changed() || draft.status === 2">
+            {{ draft.status === 1 ? 'Neue Revision veröffentlichen' : 'Veröffentlichen' }}
+          </button>
         </div>
       </form>
     } @else {
@@ -260,7 +305,14 @@ interface IngredientSection {
     .group-heading > div:first-child { display: grid; gap: .15rem; }
     .group-name { width: min(24rem, 100%); }
     .position-card { display: grid; grid-template-columns: minmax(10rem, 1.5fr) minmax(9rem, 1fr) minmax(7rem, .7fr) minmax(9rem, 1fr) auto; gap: .7rem; align-items: center; padding: .7rem; border-radius: .65rem; background: #f1f6f3; }
-    .position-name { display: grid; gap: .15rem; } .picker-fields { display: grid; grid-template-columns: 2fr 1fr; gap: .7rem; }
+    .position-name { display: grid; gap: .25rem; }
+    .conflict-list, .conflict-legend { display: flex; flex-wrap: wrap; gap: .3rem; }
+    .conflict-list span, .conflict-legend span { padding: .15rem .45rem; border-radius: 999px; font-size: .76rem; }
+    .conflict-list .preventable, .conflict-legend .preventable { color: #72500b; background: #fff0b8; }
+    .conflict-list .unavoidable, .conflict-legend .unavoidable { color: #8b2525; background: #ffe2df; }
+    .conflict-list .unclassified { color: #4f5d55; background: #e8eeea; }
+    .ingredient-update { justify-self: start; margin-left: -.75rem; }
+    .picker-fields { display: grid; grid-template-columns: 2fr 1fr; gap: .7rem; }
     .candidate-list { display: flex; flex-wrap: wrap; gap: .5rem; }
     .candidate-list button span { display: grid; text-align: left; }
     .nutrition-section h5 { margin: 0; }
@@ -268,6 +320,9 @@ interface IngredientSection {
     .nutrition-state.complete { color: #205b3b; background: #edf8f1; }
     .nutrition-state.incomplete { color: #7b5414; background: #fff7e8; }
     .nutrition-hint, .nutrition-missing { color: #657269; }
+    .publication-validation { flex: 1 1 100%; padding: .8rem 1rem; border: 1px solid #e2bc70; border-radius: .65rem; background: #fff8e8; }
+    .publication-validation ul { margin: .5rem 0; padding-left: 1.25rem; }
+    .recipe-actions { flex-wrap: wrap; }
     .nutrition-grid { display: grid; grid-template-columns: repeat(4, minmax(8rem, 1fr)); gap: .6rem; }
     .nutrition-grid span { display: grid; gap: .15rem; padding: .65rem; border-radius: .6rem; background: #f1f6f3; }
     .nutrition-grid small { display: block; }
@@ -295,6 +350,9 @@ export class RecipeEditorComponent {
   readonly nutrition = signal<RecipeNutritionCalculation | null>(null);
   readonly nutritionLoading = signal(false);
   readonly nutritionMessage = signal('');
+  readonly publishing = signal(false);
+  readonly publicationIssues = signal<RecipeValidationIssue[]>([]);
+  readonly publicationHasErrors = computed(() => this.publicationIssues().some(issue => issue.severity === 0));
   private snapshot = '';
 
   readonly ingredientCandidates = computed(() => {
@@ -346,8 +404,42 @@ export class RecipeEditorComponent {
   }
 
   ingredient(position: RecipeEditorIngredientPosition) {
-    return this.ingredients().find(value => value.revisionId === position.ingredientRevisionId) ??
-      this.selected()?.ingredientReferences.find(value => value.revisionId === position.ingredientRevisionId);
+    return this.ingredientReference(position) ??
+      this.ingredients().find(value => value.revisionId === position.ingredientRevisionId);
+  }
+
+  ingredientReference(position: RecipeEditorIngredientPosition) {
+    return this.selected()?.ingredientReferences.find(value => value.revisionId === position.ingredientRevisionId);
+  }
+
+  adoptIngredientUpdate(position: RecipeEditorIngredientPosition, update: RecipeEditorIngredientUpdate) {
+    const draft = this.selected();
+    if (!draft) return;
+    const duplicate = draft.content.ingredientPositions.some(value => value.id !== position.id &&
+      value.groupId === position.groupId && value.ingredientRevisionId === update.revisionId);
+    if (duplicate) {
+      this.error.set('Die aktuelle Revision dieser Zutat ist in der Gruppe bereits vorhanden.');
+      return;
+    }
+    position.ingredientRevisionId = update.revisionId;
+    if (!update.units.some(unit => unit.unitId === position.unitId))
+      position.unitId = update.units[0]?.unitId ?? null;
+    this.error.set('');
+    this.markContentChanged();
+  }
+
+  conflictVariantNames(position: RecipeEditorIngredientPosition, conflictId: string): string[] | null {
+    const reference = this.ingredientReference(position);
+    if (!reference) return null;
+    return reference.conflicts.find(conflict => conflict.id === conflictId)?.preventableByVariants ?? [];
+  }
+
+  conflictTitle(position: RecipeEditorIngredientPosition, conflictId: string, conflictName: string) {
+    const variants = this.conflictVariantNames(position, conflictId);
+    if (variants === null) return `${conflictName}: Variantenprüfung nach dem Speichern verfügbar.`;
+    return variants.length
+      ? `${conflictName}: vermeidbar durch ${variants.join(', ')}.`
+      : `${conflictName}: durch keine aktive Variante vermeidbar.`;
   }
 
   orderedGroups() {
@@ -468,6 +560,41 @@ export class RecipeEditorComponent {
     } });
   }
 
+  publish(acknowledgeWarnings: boolean) {
+    const draft = this.selected();
+    if (!draft || this.changed() || this.publishing()) return;
+    this.publishing.set(true); this.error.set(''); this.notice.set('');
+    this.api.publish(this.campId(), draft, acknowledgeWarnings).subscribe({
+      next: result => {
+        this.publicationIssues.set([]);
+        this.api.get(this.campId(), draft.id).subscribe({
+          next: current => {
+            this.publishing.set(false); this.setDraft(current);
+            this.notice.set(`Das Rezept wurde als Revision ${result.revisionNumber} veröffentlicht.`);
+            this.loadCatalogOnly();
+          },
+          error: () => {
+            this.publishing.set(false);
+            this.error.set('Das veröffentlichte Rezept konnte nicht neu geladen werden.');
+          }
+        });
+      },
+      error: (response: HttpErrorResponse) => {
+        this.publishing.set(false);
+        const result = response.error as RecipePublicationResponse | undefined;
+        if (result?.status === 4 || result?.status === 5) {
+          this.publicationIssues.set(result.validation?.issues ?? []);
+          return;
+        }
+        this.publicationIssues.set([]);
+        this.error.set(response.status === 403 ? 'Du darfst Lagerrezepte nicht veröffentlichen.' :
+          result?.status === 3 ? 'Das Rezept wurde zwischenzeitlich geändert. Bitte öffne es erneut.' :
+          result?.status === 6 ? 'Ein archiviertes Rezept kann nicht veröffentlicht werden.' :
+          'Das Rezept konnte nicht veröffentlicht werden.');
+      }
+    });
+  }
+
   loadNutrition() {
     const draft = this.selected();
     if (!draft || this.changed() || this.nutritionLoading()) return;
@@ -501,9 +628,38 @@ export class RecipeEditorComponent {
   }
   statusLabel(status: number) { return status === 0 ? 'Entwurf' : status === 1 ? 'Aktiv' : 'Archiviert'; }
 
+  validationIssueText(issue: RecipeValidationIssue) {
+    const conflictName = issue.context?.['conflictName'];
+    if (conflictName) {
+      if (issue.code === 'recipe.conflict.unresolved')
+        return `Für „${conflictName}“ ist noch kein Ersatz definiert.`;
+      if (issue.code === 'recipe.replacement.conflict.remains')
+        return `Die Ersatzzutat enthält weiterhin „${conflictName}“ bzw. kann es enthalten.`;
+      if (issue.code === 'recipe.replacement.conflict.created')
+        return `Die Ersatzzutat bringt zusätzlich den Konflikt „${conflictName}“ mit.`;
+    }
+    const messages: Record<string, string> = {
+      'recipe.name.missing': 'Ein Rezeptname ist erforderlich.',
+      'recipe.reference.servings.invalid': 'Die Anzahl der Standardportionen muss größer als null sein.',
+      'recipe.positions.empty': 'Das Rezept benötigt mindestens eine Zutat.',
+      'recipe.group.name.missing': 'Jede Gruppe benötigt einen Namen.',
+      'recipe.group.empty': 'Leere Gruppen müssen entfernt oder mit Zutaten befüllt werden.',
+      'recipe.position.sort-order.invalid': 'Die Reihenfolge der Zutaten ist ungültig.',
+      'recipe.ingredient.missing': 'Eine verwendete Zutatenrevision ist nicht mehr verfügbar.',
+      'recipe.ingredient.scope.forbidden': 'Eine Zutat ist für dieses Lagerrezept nicht zulässig.',
+      'recipe.ingredient.quantity.invalid': 'Jede Zutat benötigt eine Menge größer als null.',
+      'recipe.ingredient.unit.invalid': 'Für jede Zutat muss eine gültige Einheit gewählt werden.',
+      'recipe.ingredient.duplicate': 'Eine Zutat darf innerhalb derselben Gruppe nur einmal vorkommen.',
+      'recipe.description.missing': 'Es fehlt eine Beschreibung oder Zubereitungsanleitung.',
+      'recipe.source.missing': 'Es fehlt eine Quellenangabe.',
+      'recipe.conflict.unresolved': 'Für einen bekannten Konflikt ist noch kein Ersatz definiert.',
+    };
+    return messages[issue.code] ?? `Prüfhinweis: ${issue.code}`;
+  }
+
   private setDraft(draft: RecipeEditorDraft) {
     this.selected.set(draft); this.targetGroupId.set(null); this.snapshot = JSON.stringify(draft.content);
-    this.nutrition.set(null); this.nutritionMessage.set(''); this.loadNutrition();
+    this.nutrition.set(null); this.nutritionMessage.set(''); this.publicationIssues.set([]); this.loadNutrition();
   }
   private positionsForGroup(groupId: string | null) {
     return [...(this.selected()?.content.ingredientPositions ?? [])]
