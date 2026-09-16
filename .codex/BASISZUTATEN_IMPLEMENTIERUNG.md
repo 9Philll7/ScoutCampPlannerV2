@@ -227,6 +227,13 @@ Die 14 EU-Hauptgruppen plus relevante Untertypen für:
 
 ### Unverträglichkeiten
 
+`LACTOSE`, `FRUCTOSE`, `SORBITOL`, `FRUCTANS`, `GALACTANS`, `MANNITOL`,
+`XYLITOL` und `OTHER_POLYOLS` werden gemäß ADR-026 quantitativ erfasst. Pro
+Zutatenrevision werden Stoffcode, Menge, Einheit, Bezugsmenge, Bezugseinheit,
+Quelle und Reviewstatus gespeichert. `HISTAMINE` bleibt vorerst qualitativ.
+Personenbezogene Toleranzen gehören in einen separaten Anforderungskatalog;
+medizinische Grenzwerte werden nicht im Zutatenmodell festgelegt.
+
 Initial:
 
 - LACTOSE

@@ -62,16 +62,16 @@ internal static class IngredientMasterDataSeed
             Allergen(29, "MACADAMIA_NUTS", "Macadamianüsse", false, treeNuts.Id));
 
         modelBuilder.Entity<IngredientIntoleranceDefinitionRecord>().HasData(
-            Intolerance(1, "LACTOSE", "Laktose"),
-            Intolerance(2, "FRUCTOSE", "Fruktose"),
-            Intolerance(3, "SORBITOL", "Sorbit"),
+            Intolerance(1, "LACTOSE", "Laktose", true),
+            Intolerance(2, "FRUCTOSE", "Fruktose", true),
+            Intolerance(3, "SORBITOL", "Sorbit", true),
             Intolerance(4, "HISTAMINE", "Histamin"),
             Intolerance(5, "GLUTEN", "Gluten"),
-            Intolerance(6, "FRUCTANS", "Fruktane"),
-            Intolerance(7, "GALACTANS", "Galaktane"),
-            Intolerance(8, "MANNITOL", "Mannit"),
-            Intolerance(9, "XYLITOL", "Xylit"),
-            Intolerance(10, "OTHER_POLYOLS", "Andere Polyole"));
+            Intolerance(6, "FRUCTANS", "Fruktane", true),
+            Intolerance(7, "GALACTANS", "Galaktane", true),
+            Intolerance(8, "MANNITOL", "Mannit", true),
+            Intolerance(9, "XYLITOL", "Xylit", true),
+            Intolerance(10, "OTHER_POLYOLS", "Andere Polyole", true));
 
         modelBuilder.Entity<IngredientOriginPropertyRecord>().HasData(
             Origin(1, "PLANT", "Pflanzlich", false),
@@ -119,12 +119,12 @@ internal static class IngredientMasterDataSeed
             Status = Active,
         };
 
-    private static IngredientIntoleranceDefinitionRecord Intolerance(int number, string code, string name) => new()
+    private static IngredientIntoleranceDefinitionRecord Intolerance(int number, string code, string name, bool isQuantityDependent = false) => new()
     {
         Id = Id("31111111", number),
         Code = code,
         Name = name,
-        IsQuantityDependent = false,
+        IsQuantityDependent = isQuantityDependent,
         Status = Active,
     };
 

@@ -66,6 +66,12 @@ CREATE TYPE conversion_precision AS ENUM (
     'estimated'
 );
 
+CREATE TYPE substance_content_source_type AS ENUM (
+    'manufacturer',
+    'official_database',
+    'manual_estimate'
+);
+
 -- =========================================================
 -- EINHEITEN
 -- =========================================================
@@ -165,6 +171,7 @@ CREATE TABLE ingredient_revision (
     allergen_review_state property_review_state NOT NULL DEFAULT 'unreviewed',
     intolerance_review_state property_review_state NOT NULL DEFAULT 'unreviewed',
     origin_review_state property_review_state NOT NULL DEFAULT 'unreviewed',
+    source_summary VARCHAR(2000) NOT NULL DEFAULT '',
 
     row_version BIGINT NOT NULL DEFAULT 1,
 
@@ -289,6 +296,22 @@ CREATE TABLE ingredient_revision_intolerance (
     PRIMARY KEY (ingredient_revision_id, intolerance_id)
 );
 
+-- Quantitative, unverträglichkeitsrelevante Inhaltsstoffe gemäß ADR-026.
+-- Personenbezogene Grenzwerte sind ausdrücklich nicht Teil dieser Tabelle.
+CREATE TABLE ingredient_revision_substance_content (
+    ingredient_revision_id UUID NOT NULL
+        REFERENCES ingredient_revision(id) ON DELETE CASCADE,
+    substance_id UUID NOT NULL REFERENCES intolerance_trigger(id),
+    amount NUMERIC(18, 6) NOT NULL CHECK (amount >= 0),
+    amount_unit_id UUID NOT NULL REFERENCES unit(id),
+    reference_quantity NUMERIC(18, 6) NOT NULL CHECK (reference_quantity > 0),
+    reference_unit_id UUID NOT NULL REFERENCES unit(id),
+    source_type substance_content_source_type NOT NULL,
+    source_reference VARCHAR(500) NOT NULL,
+    review_state property_review_state NOT NULL,
+    PRIMARY KEY (ingredient_revision_id, substance_id)
+);
+
 -- =========================================================
 -- HERKUNFTSMERKMALE
 -- =========================================================
@@ -381,6 +404,20 @@ CREATE TABLE ingredient_variant_intolerance_override (
     PRIMARY KEY (variant_revision_id, intolerance_id)
 );
 
+CREATE TABLE ingredient_variant_substance_content_override (
+    variant_revision_id UUID NOT NULL
+        REFERENCES ingredient_variant_revision(id) ON DELETE CASCADE,
+    substance_id UUID NOT NULL REFERENCES intolerance_trigger(id),
+    amount NUMERIC(18, 6) NOT NULL CHECK (amount >= 0),
+    amount_unit_id UUID NOT NULL REFERENCES unit(id),
+    reference_quantity NUMERIC(18, 6) NOT NULL CHECK (reference_quantity > 0),
+    reference_unit_id UUID NOT NULL REFERENCES unit(id),
+    source_type substance_content_source_type NOT NULL,
+    source_reference VARCHAR(500) NOT NULL,
+    review_state property_review_state NOT NULL,
+    PRIMARY KEY (variant_revision_id, substance_id)
+);
+
 CREATE TABLE ingredient_variant_origin_override (
     variant_revision_id UUID NOT NULL
         REFERENCES ingredient_variant_revision(id) ON DELETE CASCADE,
@@ -423,6 +460,7 @@ BEGIN
         END IF;
     ELSIF TG_TABLE_NAME = 'ingredient_revision_allergen'
        OR TG_TABLE_NAME = 'ingredient_revision_intolerance'
+       OR TG_TABLE_NAME = 'ingredient_revision_substance_content'
        OR TG_TABLE_NAME = 'ingredient_revision_origin'
        OR TG_TABLE_NAME = 'ingredient_revision_unit_conversion' THEN
         IF TG_OP = 'INSERT' THEN
@@ -477,6 +515,10 @@ CREATE TRIGGER trg_protect_ingredient_revision_intolerance
 BEFORE INSERT OR UPDATE OR DELETE ON ingredient_revision_intolerance
 FOR EACH ROW EXECUTE FUNCTION prevent_published_revision_mutation();
 
+CREATE TRIGGER trg_protect_ingredient_revision_substance_content
+BEFORE INSERT OR UPDATE OR DELETE ON ingredient_revision_substance_content
+FOR EACH ROW EXECUTE FUNCTION prevent_published_revision_mutation();
+
 CREATE TRIGGER trg_protect_ingredient_revision_origin
 BEFORE INSERT OR UPDATE OR DELETE ON ingredient_revision_origin
 FOR EACH ROW EXECUTE FUNCTION prevent_published_revision_mutation();
@@ -495,6 +537,10 @@ FOR EACH ROW EXECUTE FUNCTION prevent_published_revision_mutation();
 
 CREATE TRIGGER trg_protect_ingredient_variant_intolerance_override
 BEFORE INSERT OR UPDATE OR DELETE ON ingredient_variant_intolerance_override
+FOR EACH ROW EXECUTE FUNCTION prevent_published_revision_mutation();
+
+CREATE TRIGGER trg_protect_ingredient_variant_substance_content_override
+BEFORE INSERT OR UPDATE OR DELETE ON ingredient_variant_substance_content_override
 FOR EACH ROW EXECUTE FUNCTION prevent_published_revision_mutation();
 
 CREATE TRIGGER trg_protect_ingredient_variant_origin_override

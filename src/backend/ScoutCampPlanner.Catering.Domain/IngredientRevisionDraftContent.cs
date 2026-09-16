@@ -15,7 +15,9 @@ public sealed record IngredientRevisionDraftContent
         IReadOnlyList<IngredientPropertyValue> origins,
         IReadOnlyList<IngredientRevisionUnitConversion> unitConversions,
         IReadOnlyList<IngredientVariantDraftContent>? variants,
-        IngredientNutritionProfile? nutritionProfile)
+        IngredientNutritionProfile? nutritionProfile,
+        IReadOnlyList<IngredientSubstanceContent> substanceContents,
+        string sourceSummary)
     {
         Name = name;
         NormalizedName = normalizedName;
@@ -30,6 +32,8 @@ public sealed record IngredientRevisionDraftContent
         UnitConversions = unitConversions;
         Variants = variants;
         NutritionProfile = nutritionProfile;
+        SubstanceContents = substanceContents;
+        SourceSummary = sourceSummary;
     }
 
     public string Name { get; }
@@ -45,6 +49,8 @@ public sealed record IngredientRevisionDraftContent
     public IReadOnlyList<IngredientRevisionUnitConversion> UnitConversions { get; }
     public IReadOnlyList<IngredientVariantDraftContent>? Variants { get; }
     public IngredientNutritionProfile? NutritionProfile { get; }
+    public IReadOnlyList<IngredientSubstanceContent> SubstanceContents { get; }
+    public string SourceSummary { get; }
 
     public static IngredientRevisionDraftContent Create(
         string name,
@@ -58,7 +64,9 @@ public sealed record IngredientRevisionDraftContent
         IEnumerable<IngredientPropertyValue>? origins = null,
         IEnumerable<IngredientRevisionUnitConversion>? unitConversions = null,
         IEnumerable<IngredientVariantDraftContent>? variants = null,
-        IngredientNutritionProfile? nutritionProfile = null)
+        IngredientNutritionProfile? nutritionProfile = null,
+        IEnumerable<IngredientSubstanceContent>? substanceContents = null,
+        string sourceSummary = "")
     {
         (string display, string normalized) = CatalogName.Normalize(name, nameof(name), 200);
         if (categoryId == Guid.Empty)
@@ -97,6 +105,11 @@ public sealed record IngredientRevisionDraftContent
                 "A variant can only override an existing ingredient conversion.",
                 nameof(variants));
 
+        IngredientSubstanceContent[] normalizedSubstances = NormalizeSubstances(
+            substanceContents, nameof(substanceContents));
+        string normalizedSourceSummary = sourceSummary?.Trim() ?? string.Empty;
+        if (normalizedSourceSummary.Length > 2000)
+            throw new ArgumentException("Source summary must not exceed 2000 characters.", nameof(sourceSummary));
         return new IngredientRevisionDraftContent(
             display,
             normalized,
@@ -110,7 +123,9 @@ public sealed record IngredientRevisionDraftContent
             NormalizeProperties(origins, nameof(origins)),
             normalizedConversions,
             normalizedVariants,
-            nutritionProfile);
+            nutritionProfile,
+            normalizedSubstances,
+            normalizedSourceSummary);
     }
 
     private static IReadOnlyList<IngredientPropertyValue> NormalizeProperties(
@@ -120,6 +135,16 @@ public sealed record IngredientRevisionDraftContent
         IngredientPropertyValue[] result = values?.OrderBy(value => value.PropertyId).ToArray() ?? [];
         if (result.Select(value => value.PropertyId).Distinct().Count() != result.Length)
             throw new ArgumentException("Property IDs must be unique.", parameterName);
+        return result;
+    }
+
+    internal static IngredientSubstanceContent[] NormalizeSubstances(
+        IEnumerable<IngredientSubstanceContent>? values,
+        string parameterName)
+    {
+        IngredientSubstanceContent[] result = values?.OrderBy(value => value.SubstanceId).ToArray() ?? [];
+        if (result.Select(value => value.SubstanceId).Distinct().Count() != result.Length)
+            throw new ArgumentException("Substance IDs must be unique.", parameterName);
         return result;
     }
 }
@@ -136,7 +161,8 @@ public sealed record IngredientVariantDraftContent
         IEnumerable<IngredientPropertyValue>? intoleranceOverrides = null,
         IEnumerable<IngredientPropertyValue>? originOverrides = null,
         IEnumerable<IngredientRevisionUnitConversion>? unitConversionOverrides = null,
-        IngredientNutritionProfile? nutritionProfile = null)
+        IngredientNutritionProfile? nutritionProfile = null,
+        IEnumerable<IngredientSubstanceContent>? substanceContentOverrides = null)
     {
         Id = id == Guid.Empty ? throw new ArgumentException("Variant ID is required.", nameof(id)) : id;
         VariantKey = IngredientVariantRevision.NormalizeKey(variantKey);
@@ -150,6 +176,8 @@ public sealed record IngredientVariantDraftContent
         OriginOverrides = NormalizeProperties(originOverrides, nameof(originOverrides));
         UnitConversionOverrides = unitConversionOverrides?.OrderBy(value => value.SourceUnitId).ToArray() ?? [];
         NutritionProfile = nutritionProfile;
+        SubstanceContentOverrides = IngredientRevisionDraftContent.NormalizeSubstances(
+            substanceContentOverrides, nameof(substanceContentOverrides));
         if (UnitConversionOverrides.Select(value => value.SourceUnitId).Distinct().Count() !=
             UnitConversionOverrides.Count)
             throw new ArgumentException("Conversion source unit IDs must be unique.", nameof(unitConversionOverrides));
@@ -166,6 +194,7 @@ public sealed record IngredientVariantDraftContent
     public IReadOnlyList<IngredientPropertyValue> OriginOverrides { get; }
     public IReadOnlyList<IngredientRevisionUnitConversion> UnitConversionOverrides { get; }
     public IngredientNutritionProfile? NutritionProfile { get; }
+    public IReadOnlyList<IngredientSubstanceContent> SubstanceContentOverrides { get; }
 
     private static IReadOnlyList<IngredientPropertyValue> NormalizeProperties(
         IEnumerable<IngredientPropertyValue>? values,

@@ -166,6 +166,7 @@ public sealed class CampPackageTests
                 AllergenReviewState = (int)IngredientPropertyReviewState.Reviewed,
                 IntoleranceReviewState = (int)IngredientPropertyReviewState.Reviewed,
                 OriginReviewState = (int)IngredientPropertyReviewState.Reviewed,
+                SourceSummary = "BLS 4.0, Testquelle",
                 RowVersion = 1, CreatedAtUtc = now, CreatedBy = userId, UpdatedAtUtc = now,
                 UpdatedBy = userId, PublishedAtUtc = now, PublishedBy = userId,
             },
@@ -233,7 +234,9 @@ public sealed class CampPackageTests
         Assert.Equal(recipeRevisionId, (await local.Catering.Set<CampRecipeEntryRecord>().SingleAsync()).UpstreamRecipeRevisionId);
         Assert.Equal("Porridge", (await local.Catering.Set<RecipeRevisionRecord>().SingleAsync()).SnapshotJson is { } json
             ? RecipeSnapshotBuilder.Deserialize(json).Name : null);
-        Assert.Equal(ingredientRevisionId, (await local.Catering.Set<IngredientRevisionRecord>().SingleAsync()).Id);
+        IngredientRevisionRecord importedIngredient = await local.Catering.Set<IngredientRevisionRecord>().SingleAsync();
+        Assert.Equal(ingredientRevisionId, importedIngredient.Id);
+        Assert.Equal("BLS 4.0, Testquelle", importedIngredient.SourceSummary);
         Assert.Equal(variantId, (await local.Catering.Set<IngredientVariantRevisionRecord>().SingleAsync()).Id);
         IngredientRevisionNutritionProfileRecord importedNutrition = await local.Catering
             .Set<IngredientRevisionNutritionProfileRecord>().SingleAsync();

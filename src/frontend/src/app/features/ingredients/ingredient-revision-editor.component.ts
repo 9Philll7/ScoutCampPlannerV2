@@ -20,6 +20,9 @@ import {
   IngredientNutritionProfileItem,
   IngredientNutritionReviewState,
   IngredientNutritionSourceType,
+  IngredientSubstanceContentItem,
+  IngredientSubstanceContentReviewState,
+  IngredientSubstanceContentSourceType,
   IngredientPropertyReviewState,
   IngredientPropertySource,
   IngredientPropertyState,
@@ -171,6 +174,20 @@ import { IngredientNutritionEditorComponent } from './ingredient-nutrition-edito
               </mat-optgroup>
             </mat-select>
           </mat-form-field>
+          <section class="ingredient-source-summary">
+            <div>
+              <h4>Quellen und Schätzgrundlage</h4>
+              <p>Eine gemeinsame Angabe für die gesamte Zutat. Referenzwerte bleiben Schätzungen, auch nachdem sie geprüft wurden.</p>
+            </div>
+            <mat-form-field appearance="outline" subscriptSizing="dynamic">
+              <mat-label>Quellenzusammenfassung</mat-label>
+              <textarea matInput rows="2" maxlength="2000" [(ngModel)]="revision.sourceSummary"
+                name="revisionSourceSummary" (ngModelChange)="synchronizeSourceSummary(revision)"
+                [disabled]="revision.state === publishedState || disabled()"
+                placeholder="z. B. BLS 4.0, Code …; Herstelleretikett vom …"></textarea>
+              <mat-hint>Erforderlich, sobald Nährwerte oder Stoffgehalte hinterlegt sind.</mat-hint>
+            </mat-form-field>
+          </section>
           <section class="unit-conversions">
             <div class="unit-conversion-heading">
               <div>
@@ -464,15 +481,15 @@ import { IngredientNutritionEditorComponent } from './ingredient-nutrition-edito
               </div>
             </details>
             <details class="property-group">
-              <summary><span>Unverträglichkeiten</span><small>{{ specifiedVisibleIntoleranceCount(revision) }} angegeben</small></summary>
+              <summary><span>Unverträglichkeiten und Inhaltsstoffe</span><small>{{ specifiedVisibleIntoleranceCount(revision) }} angegeben</small></summary>
               <div class="property-review">
                 <mat-checkbox [checked]="isReviewed(revision.intoleranceReviewState)"
                   (change)="setIntoleranceReviewState(revision, $event.checked)"
-                  [disabled]="revision.state === publishedState || disabled()">Unverträglichkeiten vollständig geprüft</mat-checkbox>
+                  [disabled]="revision.state === publishedState || disabled()">Qualitative Angaben vollständig geprüft</mat-checkbox>
               </div>
-              <p class="property-info">Gluten wird nicht doppelt erfasst, sondern über Allergen A ausgewertet. Laktose bleibt von der Milchallergie getrennt.</p>
+              <p class="property-info">Gluten wird über Allergen A ausgewertet. Dosisabhängige Stoffe werden als Gehalt erfasst; persönliche Grenzwerte gehören nicht zur Zutat.</p>
               <div class="property-grid">
-                @for (property of commonIntolerances(); track property.id) {
+                @for (property of qualitativeIntolerances(); track property.id) {
                   <div class="property-row">
                     <span>{{ intoleranceLabel(property.code, property.name) }}</span>
                     <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Zustand</mat-label>
@@ -488,26 +505,48 @@ import { IngredientNutritionEditorComponent } from './ingredient-nutrition-edito
                   </div>
                 }
               </div>
-              <details class="secondary-details">
-                <summary>Weitere Unverträglichkeiten</summary>
-                <div class="property-grid">
-                  @for (property of advancedIntolerances(); track property.id) {
+              <div class="property-grid">
+                @for (property of quantitativeSubstances(); track property.id) {
+                  <article class="property-card">
                     <div class="property-row">
-                      <span>{{ property.name }}</span>
-                      <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Zustand</mat-label>
-                        <mat-select [value]="propertyState(revision.intolerances, property.id)"
-                          (selectionChange)="setPropertyState(revision, 'intolerances', property.id, $event.value)"
-                          [disabled]="revision.state === publishedState || disabled()">
-                          <mat-option [value]="null">Nicht angegeben</mat-option>
-                          @for (state of propertyStates; track state.value) {
-                            <mat-option [value]="state.value">{{ state.label }}</mat-option>
-                          }
-                        </mat-select>
-                      </mat-form-field>
+                      <strong>{{ property.name }}</strong>
+                      @if (!substanceContent(revision, property.id)) {
+                        <button matButton type="button" (click)="addSubstanceContent(revision, property.id)"
+                          [disabled]="revision.state === publishedState || disabled()">Gehalt erfassen</button>
+                      } @else {
+                        <button matIconButton type="button" aria-label="Stoffgehalt entfernen"
+                          (click)="removeSubstanceContent(revision, property.id)"
+                          [disabled]="revision.state === publishedState || disabled()"><scp-action-icon name="remove"/></button>
+                      }
                     </div>
-                  }
-                </div>
-              </details>
+                    @if (substanceContent(revision, property.id); as content) {
+                      <div class="form-grid">
+                        <mat-form-field appearance="outline"><mat-label>Menge</mat-label>
+                          <input matInput type="number" min="0" step="0.001" [(ngModel)]="content.amount"
+                            [disabled]="revision.state === publishedState || disabled()">
+                        </mat-form-field>
+                        <mat-form-field appearance="outline"><mat-label>Einheit</mat-label>
+                          <mat-select [(ngModel)]="content.amountUnitId" [disabled]="revision.state === publishedState || disabled()">
+                            @for (unit of substanceAmountUnits(); track unit.id) { <mat-option [value]="unit.id">{{ unit.symbol }}</mat-option> }
+                          </mat-select>
+                        </mat-form-field>
+                        <mat-form-field appearance="outline"><mat-label>Bezugsmenge</mat-label>
+                          <input matInput type="number" min="0.001" step="0.001" [(ngModel)]="content.referenceQuantity"
+                            [disabled]="revision.state === publishedState || disabled()">
+                        </mat-form-field>
+                        <mat-form-field appearance="outline"><mat-label>Bezugseinheit</mat-label>
+                          <mat-select [(ngModel)]="content.referenceUnitId" [disabled]="revision.state === publishedState || disabled()">
+                            @for (unit of substanceReferenceUnits(revision); track unit.id) { <mat-option [value]="unit.id">{{ unit.symbol }}</mat-option> }
+                          </mat-select>
+                        </mat-form-field>
+                      </div>
+                      <mat-checkbox [checked]="content.reviewState === 1"
+                        (change)="content.reviewState = $event.checked ? 1 : 0"
+                        [disabled]="revision.state === publishedState || disabled()">Stoffgehalt geprüft</mat-checkbox>
+                    }
+                  </article>
+                }
+              </div>
             </details>
             <details class="property-group">
               <summary><span>Herkunft</span><small>{{ primaryOriginLabel(revision) }}</small></summary>
@@ -575,11 +614,11 @@ import { IngredientNutritionEditorComponent } from './ingredient-nutrition-edito
             <p class="revision-hint">„Geprüft“ bedeutet: Auch fehlende Einträge wurden bewusst kontrolliert.</p>
             <div class="revision-actions">
               <button matButton type="submit"
-                [disabled]="submitting() || disabled() || !isDirty(revision) || !unitConversionsValid(revision) || !nutritionProfilesValid(revision) || !variantsValid(revision)">
+                [disabled]="submitting() || disabled() || !isDirty(revision) || !unitConversionsValid(revision) || !nutritionProfilesValid(revision) || !substanceContentsValid(revision, false) || !variantsValid(revision)">
                 <scp-action-icon name="save"/>{{ pendingForkSourceRevisionId() ? 'Als Lageranpassung speichern' : 'Entwurf speichern' }}</button>
               @if (!pendingForkSourceRevisionId()) {
                 <button matButton="filled" type="button" (click)="publish()"
-                  [disabled]="submitting() || disabled() || isDirty(revision) || !allReviewed(revision) || !unitConversionsValid(revision) || !nutritionProfilesValid(revision) || !variantsValid(revision)">Veröffentlichen</button>
+                  [disabled]="submitting() || disabled() || isDirty(revision) || !allReviewed(revision) || !unitConversionsValid(revision) || !nutritionProfilesValid(revision) || !substanceContentsValid(revision, true) || !variantsValid(revision)">Veröffentlichen</button>
               }
             </div>
             @if (isDirty(revision) && allReviewed(revision)) {
@@ -617,13 +656,18 @@ import { IngredientNutritionEditorComponent } from './ingredient-nutrition-edito
     .revision-list-item span:first-child { display: grid; gap: .15rem; } .revision-list-item small { color: #667168; }
     .revision-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; padding: 1rem;
       border: 1px solid #cddbcc; border-radius: .8rem; background: #f5faf4; }
-    .revision-form h4, .revision-form .revision-editor-heading, .unit-conversions, .nutrition-profile, .ingredient-variants, .property-groups, .revision-hint, .revision-actions { grid-column: 1 / -1; }
+    .revision-form h4, .revision-form .revision-editor-heading, .ingredient-source-summary, .unit-conversions, .nutrition-profile, .ingredient-variants, .property-groups, .revision-hint, .revision-actions { grid-column: 1 / -1; }
     .revision-form mat-form-field:first-of-type { grid-column: 1 / -1; }
     .property-groups { display: grid; gap: .65rem; }
     .unit-conversions { display: grid; gap: .65rem; padding: .85rem; border: 1px solid #d7e1d5;
       border-radius: .65rem; background: #fff; }
     .nutrition-profile { display: grid; gap: .75rem; padding: .85rem; border: 1px solid #d7e1d5;
       border-radius: .65rem; background: #fff; }
+    .ingredient-source-summary { display: grid; grid-template-columns: minmax(13rem, .7fr) minmax(18rem, 1.3fr);
+      gap: .8rem; align-items: start; padding: .85rem; border: 1px solid #d7e1d5;
+      border-radius: .65rem; background: #fff; }
+    .ingredient-source-summary h4, .ingredient-source-summary p { margin: 0; }
+    .ingredient-source-summary p { margin-top: .2rem; color: #667168; font-size: .85rem; }
     .ingredient-variants { display: grid; gap: .65rem; padding: .85rem; border: 1px solid #d7e1d5;
       border-radius: .65rem; background: #fff; }
     .unit-conversion-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
@@ -743,7 +787,7 @@ export class IngredientRevisionEditorComponent {
     MILK: 'G', TREE_NUTS: 'H', CELERY: 'L', MUSTARD: 'M', SESAME: 'N',
     SULPHUR_DIOXIDE_AND_SULPHITES: 'O', LUPIN: 'P', MOLLUSCS: 'R'
   };
-  private readonly commonIntoleranceCodes = ['LACTOSE', 'FRUCTOSE', 'HISTAMINE'];
+  private readonly qualitativeIntoleranceCodes = ['HISTAMINE'];
   private readonly primaryOriginCodes = [
     'PLANT', 'FUNGI', 'MICROBIAL', 'MINERAL', 'SYNTHETIC',
     'MEAT', 'POULTRY', 'FISH', 'CRUSTACEAN', 'MOLLUSC', 'DAIRY', 'EGG', 'HONEY', 'INSECT',
@@ -803,21 +847,48 @@ export class IngredientRevisionEditorComponent {
     return this.mainAllergens().filter(value => this.propertyState(revision.allergens, value.id) !== null).length;
   }
   specifiedVisibleIntoleranceCount(revision: IngredientRevisionDetails) {
-    const visibleIds = new Set([...this.commonIntolerances(), ...this.advancedIntolerances()].map(value => value.id));
-    return revision.intolerances.filter(value => visibleIds.has(value.propertyId)).length;
+    const qualitativeIds = new Set(this.qualitativeIntolerances().map(value => value.id));
+    return revision.substanceContents.length +
+      revision.intolerances.filter(value => qualitativeIds.has(value.propertyId)).length;
   }
-  commonIntolerances() {
+  qualitativeIntolerances() {
     return (this.referenceData()?.intolerances ?? [])
-      .filter(value => this.commonIntoleranceCodes.includes(value.code))
-      .sort((left, right) => this.commonIntoleranceCodes.indexOf(left.code) - this.commonIntoleranceCodes.indexOf(right.code));
+      .filter(value => this.qualitativeIntoleranceCodes.includes(value.code));
   }
-  advancedIntolerances() {
+  quantitativeSubstances() {
     return (this.referenceData()?.intolerances ?? [])
-      .filter(value => value.code !== 'GLUTEN' && !this.commonIntoleranceCodes.includes(value.code));
+      .filter(value => value.isQuantityDependent)
+      .sort((left, right) => left.name.localeCompare(right.name));
   }
-  visibleIntolerances() { return [...this.commonIntolerances(), ...this.advancedIntolerances()]; }
+  visibleIntolerances() { return this.qualitativeIntolerances(); }
   intoleranceLabel(code: string, name: string) {
     return code === 'LACTOSE' ? `${name} (nicht Milchallergie)` : name;
+  }
+  substanceContent(revision: IngredientRevisionDetails, substanceId: string) {
+    return revision.substanceContents.find(value => value.substanceId === substanceId) ?? null;
+  }
+  substanceAmountUnits() {
+    return (this.referenceData()?.units ?? []).filter(value => value.dimension === 0);
+  }
+  substanceReferenceUnits(revision: IngredientRevisionDetails) {
+    const dimension = this.unitDimension(revision.baseUnitId);
+    return (this.referenceData()?.units ?? []).filter(value => value.dimension === dimension);
+  }
+  addSubstanceContent(revision: IngredientRevisionDetails, substanceId: string) {
+    if (this.substanceContent(revision, substanceId)) return;
+    const amountUnit = this.substanceAmountUnits().find(value => value.symbol === 'g') ?? this.substanceAmountUnits()[0];
+    const referenceUnit = this.substanceReferenceUnits(revision)
+      .find(value => value.symbol === (this.unitDimension(revision.baseUnitId) === 1 ? 'ml' : 'g')) ??
+      this.substanceReferenceUnits(revision)[0];
+    if (!amountUnit || !referenceUnit) return;
+    revision.substanceContents.push({
+      substanceId, amount: 0, amountUnitId: amountUnit.id, referenceQuantity: 100,
+      referenceUnitId: referenceUnit.id, sourceType: IngredientSubstanceContentSourceType.ManualEstimate,
+      sourceReference: revision.sourceSummary.slice(0, 500), reviewState: IngredientSubstanceContentReviewState.Unreviewed
+    });
+  }
+  removeSubstanceContent(revision: IngredientRevisionDetails, substanceId: string) {
+    revision.substanceContents = revision.substanceContents.filter(value => value.substanceId !== substanceId);
   }
   primaryOrigins() {
     return (this.referenceData()?.origins ?? [])
@@ -881,6 +952,7 @@ export class IngredientRevisionEditorComponent {
 
   setNutritionEnabled(revision: IngredientRevisionDetails, enabled: boolean) {
     revision.nutritionProfile = enabled ? this.newNutritionProfile(revision.baseUnitId) : null;
+    this.synchronizeSourceSummary(revision);
   }
 
   setVariantNutritionEnabled(
@@ -895,6 +967,28 @@ export class IngredientRevisionEditorComponent {
     variant.nutritionProfile = revision.nutritionProfile
       ? { ...revision.nutritionProfile, reviewState: IngredientNutritionReviewState.Unreviewed }
       : this.newNutritionProfile(revision.baseUnitId);
+    this.synchronizeSourceSummary(revision);
+  }
+
+  synchronizeSourceSummary(revision: IngredientRevisionDetails) {
+    const technicalReference = (revision.sourceSummary ?? '').trim().slice(0, 500);
+    const apply = (profile: IngredientNutritionProfileItem | null) => {
+      if (!profile) return;
+      profile.sourceType = IngredientNutritionSourceType.ManualEstimate;
+      profile.sourceReference = technicalReference;
+    };
+    apply(revision.nutritionProfile);
+    for (const content of revision.substanceContents) {
+      content.sourceType = IngredientSubstanceContentSourceType.ManualEstimate;
+      content.sourceReference = technicalReference;
+    }
+    for (const variant of revision.variants) {
+      apply(variant.nutritionProfile);
+      for (const content of variant.substanceContentOverrides) {
+        content.sourceType = IngredientSubstanceContentSourceType.ManualEstimate;
+        content.sourceReference = technicalReference;
+      }
+    }
   }
 
   setVariantPropertyState(
@@ -1052,6 +1146,17 @@ export class IngredientRevisionEditorComponent {
         value.nutritionProfile, revision.baseUnitId));
   }
 
+  substanceContentsValid(revision: IngredientRevisionDetails, requireReviewed: boolean) {
+    const values = revision.substanceContents.concat(
+      revision.variants.flatMap(value => value.substanceContentOverrides));
+    return values.every(value => Number.isFinite(value.amount) && value.amount >= 0 &&
+      Number.isFinite(value.referenceQuantity) && value.referenceQuantity > 0 &&
+      this.unitDimension(value.amountUnitId) === 0 &&
+      this.unitDimension(value.referenceUnitId) === this.unitDimension(revision.baseUnitId) &&
+      !!value.sourceReference.trim() && value.sourceReference.trim().length <= 500 &&
+      (!requireReviewed || value.reviewState === IngredientSubstanceContentReviewState.Reviewed));
+  }
+
   private nutritionProfileValid(profile: IngredientNutritionProfileItem | null, baseUnitId: string) {
     if (!profile) return true;
     const numbers = [profile.energyKilojoules, profile.fatGrams, profile.saturatedFatGrams,
@@ -1090,6 +1195,7 @@ export class IngredientRevisionEditorComponent {
       sortOrder: Math.max(-1, ...revision.variants.map(value => value.sortOrder)) + 1,
       allergenOverrides: [],
       intoleranceOverrides: [],
+      substanceContentOverrides: [],
       originOverrides: [],
       unitConversionOverrides: [],
       nutritionProfile: null,
@@ -1135,7 +1241,7 @@ export class IngredientRevisionEditorComponent {
       proteinGrams: null,
       saltGrams: null,
       fiberGrams: null,
-      sourceType: IngredientNutritionSourceType.Manufacturer,
+      sourceType: IngredientNutritionSourceType.ManualEstimate,
       sourceReference: '',
       reviewState: IngredientNutritionReviewState.Unreviewed,
       referenceDate: null
@@ -1196,15 +1302,10 @@ export class IngredientRevisionEditorComponent {
 
   setIntoleranceReviewState(revision: IngredientRevisionDetails, reviewed: boolean) {
     if (reviewed) {
-      for (const property of this.commonIntolerances()) {
+      for (const property of this.qualitativeIntolerances()) {
         if (this.propertyState(revision.intolerances, property.id) === null)
           this.setPropertyValue(revision.intolerances, property.id,
             IngredientPropertyState.Unknown, IngredientPropertySource.Derived);
-      }
-      for (const property of this.advancedIntolerances()) {
-        if (this.propertyState(revision.intolerances, property.id) === null)
-          this.setPropertyValue(revision.intolerances, property.id,
-            IngredientPropertyState.DoesNotContain, IngredientPropertySource.Derived);
       }
     }
     revision.intoleranceReviewState = this.reviewState(reviewed);
@@ -1260,7 +1361,7 @@ export class IngredientRevisionEditorComponent {
       this.selectedSnapshot = this.snapshot(value);
       if (value.state === this.draftState) {
         this.normalizeAllergenDetails(value);
-        this.normalizeCommonIntolerances(value);
+        this.normalizeQualitativeIntolerances(value);
         this.normalizePrimaryOrigin(value);
       }
       this.selected.set(value); },
@@ -1290,10 +1391,12 @@ export class IngredientRevisionEditorComponent {
   save() {
     const revision = this.selected(); if (!revision || revision.state !== this.draftState) return;
     this.submitting.set(true); this.error.set(''); this.notice.set('');
+    this.synchronizeSourceSummary(revision);
     const payload = { name: revision.name, categoryId: revision.categoryId, baseUnitId: revision.baseUnitId,
       allergenReviewState: revision.allergenReviewState, intoleranceReviewState: revision.intoleranceReviewState,
-      originReviewState: revision.originReviewState,
+      originReviewState: revision.originReviewState, sourceSummary: revision.sourceSummary,
       allergens: revision.allergens, intolerances: revision.intolerances, origins: revision.origins,
+      substanceContents: revision.substanceContents,
       nutritionProfile: revision.nutritionProfile,
       unitConversions: revision.unitConversions.map(value => ({
         sourceUnitId: value.sourceUnitId,
@@ -1307,6 +1410,7 @@ export class IngredientRevisionEditorComponent {
         sortOrder: value.sortOrder,
         allergenOverrides: value.allergenOverrides,
         intoleranceOverrides: value.intoleranceOverrides,
+        substanceContentOverrides: value.substanceContentOverrides,
         originOverrides: value.originOverrides,
         nutritionProfile: value.nutritionProfile,
         unitConversionOverrides: value.unitConversionOverrides.map(conversion => ({
@@ -1351,6 +1455,7 @@ export class IngredientRevisionEditorComponent {
     const revision = this.selected();
     if (!revision || this.isDirty(revision) || !this.allReviewed(revision) ||
         !this.unitConversionsValid(revision) || !this.nutritionProfilesValid(revision) ||
+        !this.substanceContentsValid(revision, true) ||
         !this.variantsValid(revision)) return;
     if (this.scope() !== 'central') {
       this.submitting.set(true); this.error.set(''); this.notice.set('');
@@ -1386,6 +1491,7 @@ export class IngredientRevisionEditorComponent {
     const revision = this.selected();
     if (!revision || this.isDirty(revision) || !this.allReviewed(revision) ||
         !this.unitConversionsValid(revision) || !this.nutritionProfilesValid(revision) ||
+        !this.substanceContentsValid(revision, true) ||
         !this.variantsValid(revision)) return;
     this.submitting.set(true); this.error.set(''); this.notice.set('');
     this.api.publish(revision.id, revision.rowVersion).subscribe({
@@ -1538,6 +1644,7 @@ export class IngredientRevisionEditorComponent {
       allergenReviewState: value.allergenReviewState, intoleranceReviewState: value.intoleranceReviewState,
       originReviewState: value.originReviewState,
       nutritionProfile: value.nutritionProfile,
+      substanceContents: [...(value.substanceContents ?? [])].sort((a, b) => a.substanceId.localeCompare(b.substanceId)),
       allergens: this.sortedProperties(value.allergens), intolerances: this.sortedProperties(value.intolerances),
       origins: this.sortedProperties(value.origins),
       unitConversions: this.sortedUnitConversions(value.unitConversions),
@@ -1545,6 +1652,8 @@ export class IngredientRevisionEditorComponent {
         name: variant.name.trim(), isActive: variant.isActive, sortOrder: variant.sortOrder,
         allergenOverrides: this.sortedProperties(variant.allergenOverrides),
         intoleranceOverrides: this.sortedProperties(variant.intoleranceOverrides),
+        substanceContentOverrides: [...(variant.substanceContentOverrides ?? [])]
+          .sort((a, b) => a.substanceId.localeCompare(b.substanceId)),
         originOverrides: this.sortedProperties(variant.originOverrides),
         nutritionProfile: variant.nutritionProfile,
         unitConversionOverrides: this.sortedUnitConversions(variant.unitConversionOverrides) })) });
@@ -1573,8 +1682,21 @@ export class IngredientRevisionEditorComponent {
 
   private initializeNutritionProfiles(revision: IngredientRevisionDetails) {
     revision.nutritionProfile ??= null;
+    revision.substanceContents ??= [];
+    revision.sourceSummary ??= '';
     for (const variant of revision.variants)
+    {
       variant.nutritionProfile ??= null;
+      variant.substanceContentOverrides ??= [];
+    }
+    if (!revision.sourceSummary) {
+      const references = [revision.nutritionProfile?.sourceReference,
+        ...revision.substanceContents.map(value => value.sourceReference),
+        ...revision.variants.flatMap(value => [value.nutritionProfile?.sourceReference,
+          ...value.substanceContentOverrides.map(content => content.sourceReference)])]
+        .filter((value): value is string => !!value?.trim());
+      revision.sourceSummary = [...new Set(references)].join('; ');
+    }
   }
 
   private uniqueVariantKey(
@@ -1610,9 +1732,9 @@ export class IngredientRevisionEditorComponent {
     if (changed) revision.allergenReviewState = IngredientPropertyReviewState.Unreviewed;
   }
 
-  private normalizeCommonIntolerances(revision: IngredientRevisionDetails) {
+  private normalizeQualitativeIntolerances(revision: IngredientRevisionDetails) {
     let changed = false;
-    for (const property of this.commonIntolerances()) {
+    for (const property of this.qualitativeIntolerances()) {
       if (this.propertyState(revision.intolerances, property.id) !== null) continue;
       this.setPropertyValue(revision.intolerances, property.id,
         IngredientPropertyState.Unknown, IngredientPropertySource.Derived);

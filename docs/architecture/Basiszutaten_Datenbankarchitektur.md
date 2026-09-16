@@ -12,6 +12,7 @@ Dieses Schema modelliert ausschließlich:
 - zutatenspezifische Umrechnungen
 - Allergene
 - Unverträglichkeitsauslöser
+- quantitative Gehalte unverträglichkeitsrelevanter Stoffe
 - Herkunftsmerkmale
 - Zutatenvarianten und Overrides
 - revisionsgebundene Nährwertprofile
@@ -32,12 +33,14 @@ ingredient
 └── ingredient_revision
     ├── ingredient_revision_allergen
     ├── ingredient_revision_intolerance
+    ├── ingredient_revision_substance_content
     ├── ingredient_revision_origin
     ├── ingredient_revision_unit_conversion
     ├── ingredient_revision_nutrition_profile
     └── ingredient_variant_revision
         ├── ingredient_variant_allergen_override
         ├── ingredient_variant_intolerance_override
+        ├── ingredient_variant_substance_content_override
         ├── ingredient_variant_origin_override
         ├── ingredient_variant_unit_conversion_override
         └── ingredient_variant_nutrition_profile
@@ -51,6 +54,13 @@ innerhalb der Zutatenrevision für die spätere Verpflegungsplanung.
 Eigenschaftsgruppen besitzen einen Reviewstatus, damit fehlende Angaben nicht
 versehentlich als unbedenklich ausgewertet werden.
 
+`ingredient_revision_intolerance` bleibt für qualitative Angaben wie Histamin
+und für bestehende Legacy-Daten erhalten. Dosisabhängige Stoffe werden gemäß
+[ADR-026](../decisions/adr-026-quantitative-intolerance-substances.md) in
+`IngredientRevisionSubstanceContents` gespeichert. Menge und Bezugsmenge nutzen
+`decimal(18,6)`; Mengen- und Bezugseinheit verweisen auf den Einheitenkatalog.
+Die Varianten-Tabelle speichert jeweils einen vollständigen Ersatzwert.
+
 ## Nährwertpersistenz
 
 ADR-024 ergänzt je Zutatenrevision höchstens ein optionales Nährwertprofil und
@@ -61,9 +71,23 @@ für PostgreSQL und SQLite liegen vor.
 
 Das Revisionsprofil enthält Bezugsmenge, Referenzeinheit, Energie in kJ, die
 sechs verpflichtenden Mengenfelder des ersten Umfangs, optionale
-Ballaststoffe, Quellenart, Quellenangabe und Prüfstatus. Das Variantenprofil
-besitzt dieselbe fachliche Struktur. Einzelne Variantenfelder werden nicht als
-Overrides persistiert.
+Ballaststoffe und Prüfstatus. Quellen werden gemäß ADR-025 revisionsweit
+zusammengefasst und nicht fachlich an jedem einzelnen Zahlenfeld geführt. Das
+Variantenprofil besitzt dieselbe fachliche Struktur. Einzelne Variantenfelder
+werden nicht als Overrides persistiert.
+
+Externe Referenzdaten sind kein Bestandteil dieser Tabellen. Die vollständige
+BLS-Liste beziehungsweise ein kompakter Suchindex wird read-only außerhalb der
+fachlichen Produktdatenbank bereitgestellt. Open Food Facts wird ausschließlich
+über einen optionalen Infrastructure-Adapter abgefragt. Aus beiden Quellen
+werden nur bewusst übernommene Schätzwerte und ihre revisionsweite
+Quellenzusammenfassung persistiert.
+
+Die bestehenden `SourceType`- und `SourceReference`-Spalten der Nährwert- und
+Stoffgehaltstabellen bleiben vorerst als kompatible technische Spiegel erhalten.
+Der Editor pflegt sie nicht mehr einzeln; beim Speichern werden sie aus der
+revisionsweiten Zusammenfassung abgeleitet. Ihre spätere Entfernung erfolgt erst
+mit einem eigenen, aufwärtskompatiblen Bereinigungsinkrement.
 
 Referenzeinheiten verweisen auf den bestehenden Einheitenkatalog und müssen mit
 der Basiseinheit der zugehörigen Zutatenrevision kompatibel sein. Bestehende

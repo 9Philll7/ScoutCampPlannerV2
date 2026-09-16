@@ -7,7 +7,6 @@ import { MatSelectModule } from '@angular/material/select';
 import {
   IngredientNutritionProfileItem,
   IngredientNutritionReviewState,
-  IngredientNutritionSourceType,
   MeasurementUnitReference
 } from './ingredient-revision-api.service';
 
@@ -65,19 +64,6 @@ import {
       </mat-form-field>
     </div>
     <div class="nutrition-source">
-      <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Quelle</mat-label>
-        <mat-select [ngModel]="profile().sourceType" (ngModelChange)="setSourceType($event)"
-          [ngModelOptions]="{ standalone: true }" [disabled]="disabled()">
-          @for (source of sourceTypes; track source.value) {
-            <mat-option [value]="source.value">{{ source.label }}</mat-option>
-          }
-        </mat-select>
-      </mat-form-field>
-      <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Quellenangabe</mat-label>
-        <input matInput [ngModel]="profile().sourceReference" (ngModelChange)="setSourceReference($event)"
-          [ngModelOptions]="{ standalone: true }"
-          maxlength="500" [disabled]="disabled()" placeholder="z. B. Herstelleretikett">
-      </mat-form-field>
       <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Stand der Angaben</mat-label>
         <input matInput type="date" [ngModel]="profile().referenceDate" (ngModelChange)="setReferenceDate($event)"
           [ngModelOptions]="{ standalone: true }"
@@ -94,7 +80,7 @@ import {
     } @else if (!coreValuesComplete()) {
       <p class="nutrition-info">Fehlende Werte bleiben unbekannt. Für den Prüfstatus müssen alle Kernwerte ausgefüllt sein.</p>
     } @else if (!profile().sourceReference.trim()) {
-      <p class="nutrition-info">Bitte eine nachvollziehbare Quellenangabe ergänzen.</p>
+      <p class="nutrition-info">Bitte die gemeinsame Quellenangabe der Zutat ergänzen.</p>
     }
   `,
   styles: `
@@ -102,7 +88,7 @@ import {
     .nutrition-reference { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4rem .8rem; }
     .nutrition-reference span, .nutrition-info { color: #667168; font-size: .84rem; }
     .nutrition-values { display: grid; grid-template-columns: repeat(4, minmax(8rem, 1fr)); gap: .6rem; }
-    .nutrition-source { display: grid; grid-template-columns: minmax(10rem, .8fr) minmax(14rem, 1.5fr) minmax(10rem, .8fr); gap: .6rem; }
+    .nutrition-source { display: grid; grid-template-columns: minmax(10rem, 16rem); gap: .6rem; }
     p { margin: 0; }
     .nutrition-warning { color: #8b2525; font-size: .84rem; }
     @media (max-width: 900px) { .nutrition-values { grid-template-columns: repeat(2, minmax(8rem, 1fr)); }
@@ -116,11 +102,6 @@ export class IngredientNutritionEditorComponent {
   readonly disabled = input(false);
   readonly reviewedState = IngredientNutritionReviewState.Reviewed;
   readonly unreviewedState = IngredientNutritionReviewState.Unreviewed;
-  readonly sourceTypes = [
-    { value: IngredientNutritionSourceType.Manufacturer, label: 'Herstellerangabe' },
-    { value: IngredientNutritionSourceType.OfficialDatabase, label: 'Offizielle Lebensmitteldatenbank' },
-    { value: IngredientNutritionSourceType.ManualEstimate, label: 'Manuelle Schätzung' }
-  ] as const;
 
   unitSymbol() {
     return this.units().find(value => value.id === this.profile().referenceUnitId)?.symbol ?? '?';
@@ -144,18 +125,6 @@ export class IngredientNutritionEditorComponent {
     const parsed = this.numberOrNull(value);
     if (this.profile()[field] === parsed) return;
     this.profile()[field] = parsed;
-    this.markUnreviewed();
-  }
-
-  setSourceType(value: IngredientNutritionSourceType) {
-    if (this.profile().sourceType === value) return;
-    this.profile().sourceType = value;
-    this.markUnreviewed();
-  }
-
-  setSourceReference(value: string) {
-    if (this.profile().sourceReference === value) return;
-    this.profile().sourceReference = value;
     this.markUnreviewed();
   }
 

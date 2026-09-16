@@ -20,7 +20,9 @@ public sealed record SaveIngredientRevisionDraftRequest(
     IReadOnlyList<IngredientRevisionPropertyItem>? Origins = null,
     IReadOnlyList<IngredientRevisionUnitConversionItem>? UnitConversions = null,
     IReadOnlyList<IngredientVariantDraftItem>? Variants = null,
-    IngredientNutritionProfileItem? NutritionProfile = null);
+    IngredientNutritionProfileItem? NutritionProfile = null,
+    IReadOnlyList<IngredientSubstanceContentItem>? SubstanceContents = null,
+    string SourceSummary = "");
 
 public sealed record PublishIngredientRevisionRequest(long ExpectedRowVersion);
 
@@ -37,7 +39,9 @@ public sealed record CreateIngredientForkRequest(
     IReadOnlyList<IngredientRevisionPropertyItem>? Origins = null,
     IReadOnlyList<IngredientRevisionUnitConversionItem>? UnitConversions = null,
     IReadOnlyList<IngredientVariantDraftItem>? Variants = null,
-    IngredientNutritionProfileItem? NutritionProfile = null);
+    IngredientNutritionProfileItem? NutritionProfile = null,
+    IReadOnlyList<IngredientSubstanceContentItem>? SubstanceContents = null,
+    string SourceSummary = "");
 
 public sealed record IngredientRevisionPropertyItem(
     Guid PropertyId,
@@ -65,6 +69,16 @@ public sealed record IngredientNutritionProfileItem(
     IngredientNutritionReviewState ReviewState,
     DateOnly? ReferenceDate = null);
 
+public sealed record IngredientSubstanceContentItem(
+    Guid SubstanceId,
+    decimal Amount,
+    Guid AmountUnitId,
+    decimal ReferenceQuantity,
+    Guid ReferenceUnitId,
+    IngredientSubstanceContentSourceType SourceType,
+    string SourceReference,
+    IngredientSubstanceContentReviewState ReviewState);
+
 public sealed record IngredientVariantDraftItem(
     Guid Id,
     string VariantKey,
@@ -75,7 +89,8 @@ public sealed record IngredientVariantDraftItem(
     IReadOnlyList<IngredientRevisionPropertyItem>? IntoleranceOverrides = null,
     IReadOnlyList<IngredientRevisionPropertyItem>? OriginOverrides = null,
     IReadOnlyList<IngredientRevisionUnitConversionItem>? UnitConversionOverrides = null,
-    IngredientNutritionProfileItem? NutritionProfile = null);
+    IngredientNutritionProfileItem? NutritionProfile = null,
+    IReadOnlyList<IngredientSubstanceContentItem>? SubstanceContentOverrides = null);
 
 public sealed record IngredientVariantRevisionItem(
     Guid Id,
@@ -87,7 +102,8 @@ public sealed record IngredientVariantRevisionItem(
     IReadOnlyList<IngredientRevisionPropertyItem> IntoleranceOverrides,
     IReadOnlyList<IngredientRevisionPropertyItem> OriginOverrides,
     IReadOnlyList<IngredientRevisionUnitConversionItem> UnitConversionOverrides,
-    IngredientNutritionProfileItem? NutritionProfile = null);
+    IngredientNutritionProfileItem? NutritionProfile = null,
+    IReadOnlyList<IngredientSubstanceContentItem>? SubstanceContentOverrides = null);
 
 public sealed record IngredientRevisionDraftDetails(
     Guid Id,
@@ -109,7 +125,9 @@ public sealed record IngredientRevisionDraftDetails(
     IReadOnlyList<IngredientRevisionPropertyItem> Origins,
     IReadOnlyList<IngredientRevisionUnitConversionItem> UnitConversions,
     IReadOnlyList<IngredientVariantRevisionItem> Variants,
-    IngredientNutritionProfileItem? NutritionProfile = null);
+    IngredientNutritionProfileItem? NutritionProfile = null,
+    IReadOnlyList<IngredientSubstanceContentItem>? SubstanceContents = null,
+    string SourceSummary = "");
 
 public enum IngredientRevisionQueryStatus
 {
@@ -358,7 +376,9 @@ public sealed class IngredientRevisionWorkflowService(
                 ToPropertyValues(request.Origins),
                 ToUnitConversions(request.UnitConversions),
                 ToVariants(request.Variants),
-                ToNutritionProfile(request.NutritionProfile));
+                ToNutritionProfile(request.NutritionProfile),
+                ToSubstanceContents(request.SubstanceContents),
+                request.SourceSummary);
         }
         catch (ArgumentException)
         {
@@ -412,7 +432,9 @@ public sealed class IngredientRevisionWorkflowService(
                 ToPropertyValues(request.Allergens), ToPropertyValues(request.Intolerances),
                 ToPropertyValues(request.Origins), ToUnitConversions(request.UnitConversions),
                 ToVariants(request.Variants),
-                ToNutritionProfile(request.NutritionProfile));
+                ToNutritionProfile(request.NutritionProfile),
+                ToSubstanceContents(request.SubstanceContents),
+                request.SourceSummary);
         }
         catch (ArgumentException)
         {
@@ -567,19 +589,28 @@ public sealed class IngredientRevisionWorkflowService(
             ToPropertyValues(value.IntoleranceOverrides),
             ToPropertyValues(value.OriginOverrides),
             ToUnitConversions(value.UnitConversionOverrides),
-            ToNutritionProfile(value.NutritionProfile)));
+            ToNutritionProfile(value.NutritionProfile),
+            ToSubstanceContents(value.SubstanceContentOverrides)));
+
+    private static IEnumerable<IngredientSubstanceContent> ToSubstanceContents(
+        IReadOnlyList<IngredientSubstanceContentItem>? values) =>
+        values?.Select(value => new IngredientSubstanceContent(
+            value.SubstanceId, value.Amount, value.AmountUnitId, value.ReferenceQuantity,
+            value.ReferenceUnitId, value.SourceType, value.SourceReference, value.ReviewState)) ?? [];
 
     private static bool ContentEquals(
         IngredientRevisionDraftDetails source,
         IngredientRevisionDraftContent content) =>
         source.Name == content.Name && source.CategoryId == content.CategoryId &&
         source.BaseUnitId == content.BaseUnitId &&
+        source.SourceSummary == content.SourceSummary &&
         source.AllergenReviewState == content.AllergenReviewState &&
         source.IntoleranceReviewState == content.IntoleranceReviewState &&
         source.OriginReviewState == content.OriginReviewState &&
         NutritionEquals(source.NutritionProfile, content.NutritionProfile) &&
         PropertiesEqual(source.Allergens, content.Allergens) &&
         PropertiesEqual(source.Intolerances, content.Intolerances) &&
+        SubstanceContentsEqual(source.SubstanceContents ?? [], content.SubstanceContents) &&
         PropertiesEqual(source.Origins, content.Origins) &&
         ConversionsEqual(source.UnitConversions, content.UnitConversions) &&
         VariantsEqual(source.Variants, content.Variants ?? []);
@@ -611,11 +642,22 @@ public sealed class IngredientRevisionWorkflowService(
             pair.First.Name == pair.Second.Name && pair.First.IsActive == pair.Second.IsActive &&
             pair.First.SortOrder == pair.Second.SortOrder &&
             NutritionEquals(pair.First.NutritionProfile, pair.Second.NutritionProfile) &&
+            SubstanceContentsEqual(pair.First.SubstanceContentOverrides ?? [], pair.Second.SubstanceContentOverrides) &&
             PropertiesEqual(pair.First.AllergenOverrides, pair.Second.AllergenOverrides) &&
             PropertiesEqual(pair.First.IntoleranceOverrides, pair.Second.IntoleranceOverrides) &&
             PropertiesEqual(pair.First.OriginOverrides, pair.Second.OriginOverrides) &&
             ConversionsEqual(pair.First.UnitConversionOverrides, pair.Second.UnitConversionOverrides));
     }
+
+    private static bool SubstanceContentsEqual(
+        IEnumerable<IngredientSubstanceContentItem> left,
+        IEnumerable<IngredientSubstanceContent> right) =>
+        left.OrderBy(value => value.SubstanceId)
+            .Select(value => (value.SubstanceId, value.Amount, value.AmountUnitId, value.ReferenceQuantity,
+                value.ReferenceUnitId, value.SourceType, value.SourceReference, value.ReviewState))
+            .SequenceEqual(right.OrderBy(value => value.SubstanceId)
+                .Select(value => (value.SubstanceId, value.Amount, value.AmountUnitId, value.ReferenceQuantity,
+                    value.ReferenceUnitId, value.SourceType, value.SourceReference, value.ReviewState)));
 
     private static bool NutritionEquals(
         IngredientNutritionProfileItem? left,

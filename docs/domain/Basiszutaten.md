@@ -195,7 +195,7 @@ Für die technische Umsetzung ist optimistische Nebenläufigkeitskontrolle vorge
 
 ### 4.4 Vollständigkeit und Review
 
-Die Eigenschaftsgruppen Allergene, Unverträglichkeitsauslöser und Herkunft besitzen jeweils einen Reviewstatus:
+Die qualitativen Eigenschaftsgruppen Allergene, nicht quantitative Unverträglichkeitsangaben und Herkunft besitzen jeweils einen Reviewstatus:
 
 - `unreviewed`
 - `reviewed`
@@ -413,11 +413,19 @@ Varianten erben das vollständige Profil. Falls eine Variante abweichende
 Nährwerte benötigt, ersetzt sie das Profil vollständig; einzelne Felder werden
 nicht mit einer anderen Quelle gemischt.
 
+Externe Datenquellen erzeugen keine Zutaten. BLS 4.0 und optional Open Food
+Facts dienen im Editor ausschließlich als Vorschlagshilfe für einen bereits
+bewusst angelegten Entwurf. Werte werden selektiv übernommen, bleiben als
+Schätzung erkennbar und gelten nicht automatisch als geprüft. Quellen werden
+für die gesamte Zutatenrevision zusammengefasst, nicht je Zahlenfeld
+wiederholt. Details regelt
+[ADR-025](../decisions/adr-025-ingredient-data-suggestions.md).
+
 ---
 
-## 8. Eigenschaftsmodell
+## 8. Eigenschafts- und Inhaltsstoffmodell
 
-Allergene, Unverträglichkeitsauslöser und Herkunftsmerkmale werden getrennt gespeichert.
+Allergene, qualitative Unverträglichkeitsangaben, quantitative Inhaltsstoffgehalte und Herkunftsmerkmale werden getrennt gespeichert.
 
 Zustände:
 
@@ -440,6 +448,13 @@ Wichtige Regel:
 Bei sicherheitsrelevanten Prüfungen gilt:
 
 > `unknown` ist nicht gleich `compatible`.
+
+Das Zustandsmodell gilt nicht für dosisabhängige Inhaltsstoffe. Dort werden
+Menge, Mengeneinheit, Bezugsmenge, Bezugseinheit und Reviewstatus gespeichert.
+Die zugehörige Quelle ist Teil der gemeinsamen Quellenzusammenfassung der
+Zutatenrevision. Eine fehlende Gehaltsangabe ist unbekannt und niemals
+automatisch null. Die Unverträglichkeit einer Person ist begrifflich und
+technisch von den Inhaltsstoffen einer Zutat getrennt.
 
 ---
 
@@ -505,20 +520,16 @@ Spurenhinweise sind nicht Bestandteil der Basiszutat, da sie typischerweise vom 
 
 ---
 
-## 10. Katalog der Unverträglichkeitsauslöser
+## 10. Unverträglichkeiten und relevante Inhaltsstoffe
 
 Es gibt keine mit den EU-Hauptallergenen vergleichbare abschließende amtliche Gesamtliste.
 
 Der Katalog ist daher fachlich gepflegt und erweiterbar.
 
-Direkt im Editor angeboten:
+Quantitativ im Editor angeboten:
 
 - `LACTOSE`
 - `FRUCTOSE`
-- `HISTAMINE`
-
-Als erweiterte Auswahl angeboten:
-
 - `SORBITOL`
 - `FRUCTANS`
 - `GALACTANS`
@@ -526,23 +537,31 @@ Als erweiterte Auswahl angeboten:
 - `XYLITOL`
 - `OTHER_POLYOLS`
 
+Jeder Wert beschreibt beispielsweise `4,8 g LACTOSE pro 100 ml` und trägt einen
+eigenen Reviewstatus. Die Quellen werden gemeinsam an der Zutatenrevision
+dokumentiert. Grenzwerte oder individuelle Toleranzen werden niemals an der
+Zutat gespeichert.
+
+Qualitativ angeboten:
+
+- `HISTAMINE`
+
+Für Histamin wird vorerst kein universeller fester Grenzwert angenommen.
+
 Der bereits vorhandene Katalogcode `GLUTEN` bleibt ausschließlich für die
 Kompatibilität bestehender Daten erhalten. Er wird nicht mehr neu erfasst und
 nicht für die Berechnung von Glutenfreiheit verwendet. Glutenfreiheit wird
 allein aus der offiziellen Allergen-Hauptgruppe `A` (`GLUTEN_CEREALS`) und
 ihren Untertypen abgeleitet.
 
-Neue Entwürfe führen die direkt sichtbaren Einträge `LACTOSE`, `FRUCTOSE` und
-`HISTAMINE` zunächst als `unknown`. Noch nicht gesetzte Einträge der erweiterten
-Auswahl werden erst beim bewussten Bestätigen des Reviewstatus automatisch als
-`does_not_contain` mit Quelle `derived` übernommen. Vor dieser Bestätigung darf
-aus fehlenden Angaben keine positive Verträglichkeit abgeleitet werden.
-
-Einige Unverträglichkeiten sind mengen-, verarbeitungs- oder produktspezifisch. In solchen Fällen darf die Basiszutat `unknown` oder `article_dependent` verwenden.
+Neue Entwürfe führen Histamin zunächst als `unknown`. Bei dosisabhängigen
+Stoffen wird kein `does_not_contain` abgeleitet; auch ein Gehalt von null muss
+eine belastbare Quelle besitzen. Bestehende qualitative Einträge bleiben als
+Legacy-Daten erhalten und werden nicht in erfundene Mengen umgerechnet.
 
 Milch und Laktose müssen getrennt bleiben:
 
-- laktosefreie Butter kann `LACTOSE = does_not_contain` haben,
+- laktosefreie Butter kann einen geprüften Laktosegehalt besitzen,
 - das Allergen `MILK` bleibt dennoch `contains`.
 
 ---
@@ -638,6 +657,7 @@ Varianten können gezielt überschreiben:
 
 - Allergenzustände
 - Unverträglichkeitszustände
+- quantitative Inhaltsstoffgehalte als vollständiger Ersatzwert
 - Herkunftsmerkmale
 - zutatenspezifische Umrechnungen
 - das vollständige Nährwertprofil
@@ -707,9 +727,11 @@ Untertypen wirken auf ihre Obergruppe.
 
 ### 13.3 Unverträglichkeiten
 
-Grundsätzlich dieselbe Zustandslogik wie bei Allergenen.
-
-Mengenabhängige Schwellenwerte können später ergänzt werden.
+Für qualitative Angaben wie Histamin gilt weiterhin die vorsichtige
+Zustandslogik. Dosisabhängige Stoffe werden aus dem Gehalt und der tatsächlich
+verwendeten Portionsmenge berechnet. Das Ergebnis wird erst danach mit einem
+separaten Anforderungs- oder Toleranzwert verglichen. Der Zutatenkatalog enthält
+keine personenbezogenen Grenzwerte und definiert keine medizinischen Schwellen.
 
 ### 13.4 Vegan
 
@@ -775,11 +797,11 @@ Standardmäßig erlaubt:
 - EGG
 - HONEY
 
-### 13.7 Laktosefrei
+### 13.7 Laktosebewertung
 
-- `LACTOSE = contains` → `incompatible`
-- `LACTOSE = does_not_contain` → hinsichtlich Laktose `compatible`
-- `LACTOSE = unknown/may_contain` → `unknown`
+Der Laktosegehalt wird auf die tatsächlich verwendete Menge skaliert. Ohne
+Gehaltsangabe oder ohne passende personenbezogene Anforderung ist keine
+abschließende Verträglichkeitsaussage möglich.
 
 `MILK` allein entscheidet nicht über Laktosefreiheit.
 

@@ -21,6 +21,22 @@ Die Repository-Dokumentation hat Vorrang vor dieser Übergabe und vor früheren 
 
 ## Aktueller Implementierungsstand
 
+### Externe Vorschläge für Zutaten, als Nächstes
+
+- ADR-025 verwirft den begonnenen BLS-Katalogimport.
+- BLS 4.0 wird als vollständige read-only Suchquelle außerhalb der fachlichen
+  Datenbank angebunden.
+- Open Food Facts wird später als optionale, gedrosselte Online-Produktsuche
+  ergänzt; ODbL-Attribution und Share-Alike sind vor Produktivfreigabe zu
+  verifizieren.
+- Beide Quellen machen nur Vorschläge für einen bereits angelegten Entwurf.
+- Die Person übernimmt Treffer und einzelne Werte bewusst. Vorschläge bleiben
+  Schätzungen und lösen weder Review noch Veröffentlichung aus.
+- Quellen werden für die gesamte Zutatenrevision zusammengefasst und nicht an
+  jedem Nährwert- oder Inhaltsstofffeld wiederholt.
+- Nächster technischer Schritt: revisionsweite Quellenmetadaten, danach der
+  providerunabhängige Suggestion-Contract und zuerst der lokale BLS-Adapter.
+
 ### Aktuelles Integrationsinkrement, noch zu committen
 
 - Veröffentlichte Mandanten- und Lagerrevisionen können direkt zur zentralen
@@ -389,7 +405,20 @@ Umgesetzt:
 
 Noch offen:
 
-- Ersatzregeln und Unterrezepte in der Oberfläche
+- Unterrezepte und Ersatzrezepte in der Oberfläche
+- Positionsbezogene Ersatzzutaten sind im Lager-Rezepteditor umgesetzt:
+  - die Suche verwendet dieselbe Priorität Lager, Mandant, Zentral wie die
+    reguläre Zutatensuche
+  - Menge und Einheit werden je Ersatzregel explizit gespeichert
+  - eine Regel wird einem oder mehreren konkreten Konflikten der
+    Ausgangszutat zugeordnet
+  - derselbe Konflikt kann an einer Position nicht gleichzeitig mehreren
+    Ersatzregeln zugeordnet werden
+  - Konflikte der Ersatzzutat werden bereits im Editor sichtbar gemacht;
+    ihre abschließende Bewertung erfolgt weiterhin durch die
+    Publikationsvalidierung
+  - Varianten bleiben von Ersatzregeln getrennt und werden nicht im Rezept
+    ausgewählt
 - Publikationsworkflow und Validierungsanzeige im Rezepteditor – umgesetzt:
   - eigene Lagerberechtigung `recipes.publish`
   - strukturierte Fehler blockieren die Veröffentlichung

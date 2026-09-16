@@ -1017,7 +1017,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         {
                             Id = new Guid("31111111-1111-1111-1111-000000000001"),
                             Code = "LACTOSE",
-                            IsQuantityDependent = false,
+                            IsQuantityDependent = true,
                             Name = "Laktose",
                             Status = 0
                         },
@@ -1025,7 +1025,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         {
                             Id = new Guid("31111111-1111-1111-1111-000000000002"),
                             Code = "FRUCTOSE",
-                            IsQuantityDependent = false,
+                            IsQuantityDependent = true,
                             Name = "Fruktose",
                             Status = 0
                         },
@@ -1033,7 +1033,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         {
                             Id = new Guid("31111111-1111-1111-1111-000000000003"),
                             Code = "SORBITOL",
-                            IsQuantityDependent = false,
+                            IsQuantityDependent = true,
                             Name = "Sorbit",
                             Status = 0
                         },
@@ -1057,7 +1057,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         {
                             Id = new Guid("31111111-1111-1111-1111-000000000006"),
                             Code = "FRUCTANS",
-                            IsQuantityDependent = false,
+                            IsQuantityDependent = true,
                             Name = "Fruktane",
                             Status = 0
                         },
@@ -1065,7 +1065,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         {
                             Id = new Guid("31111111-1111-1111-1111-000000000007"),
                             Code = "GALACTANS",
-                            IsQuantityDependent = false,
+                            IsQuantityDependent = true,
                             Name = "Galaktane",
                             Status = 0
                         },
@@ -1073,7 +1073,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         {
                             Id = new Guid("31111111-1111-1111-1111-000000000008"),
                             Code = "MANNITOL",
-                            IsQuantityDependent = false,
+                            IsQuantityDependent = true,
                             Name = "Mannit",
                             Status = 0
                         },
@@ -1081,7 +1081,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         {
                             Id = new Guid("31111111-1111-1111-1111-000000000009"),
                             Code = "XYLITOL",
-                            IsQuantityDependent = false,
+                            IsQuantityDependent = true,
                             Name = "Xylit",
                             Status = 0
                         },
@@ -1089,7 +1089,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         {
                             Id = new Guid("31111111-1111-1111-1111-000000000010"),
                             Code = "OTHER_POLYOLS",
-                            IsQuantityDependent = false,
+                            IsQuantityDependent = true,
                             Name = "Andere Polyole",
                             Status = 0
                         });
@@ -1471,6 +1471,11 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .IsConcurrencyToken()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("SourceSummary")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("State")
                         .HasColumnType("INTEGER");
 
@@ -1500,6 +1505,55 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.ToTable("IngredientRevisions", null, t =>
                         {
                             t.HasCheckConstraint("CK_IngredientRevisions_Number_Positive", "\"RevisionNumber\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionSubstanceContentRecord", b =>
+                {
+                    b.Property<Guid>("IngredientRevisionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SubstanceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("AmountUnitId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("ReferenceQuantity")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ReferenceUnitId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ReviewState")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SourceReference")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SourceType")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("IngredientRevisionId", "SubstanceId");
+
+                    b.HasIndex("AmountUnitId");
+
+                    b.HasIndex("ReferenceUnitId");
+
+                    b.HasIndex("SubstanceId");
+
+                    b.ToTable("IngredientRevisionSubstanceContents", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_IngredientRevisionSubstanceContents_Amount_NonNegative", "\"Amount\" >= 0");
+
+                            t.HasCheckConstraint("CK_IngredientRevisionSubstanceContents_ReferenceQuantity_Positive", "\"ReferenceQuantity\" > 0");
                         });
                 });
 
@@ -1700,6 +1754,55 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .IsUnique();
 
                     b.ToTable("IngredientVariantRevisions", (string)null);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientVariantSubstanceContentOverrideRecord", b =>
+                {
+                    b.Property<Guid>("VariantRevisionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SubstanceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("AmountUnitId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("ReferenceQuantity")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ReferenceUnitId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ReviewState")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SourceReference")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SourceType")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("VariantRevisionId", "SubstanceId");
+
+                    b.HasIndex("AmountUnitId");
+
+                    b.HasIndex("ReferenceUnitId");
+
+                    b.HasIndex("SubstanceId");
+
+                    b.ToTable("IngredientVariantSubstanceContentOverrides", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_IngredientVariantSubstanceContentOverrides_Amount_NonNegative", "\"Amount\" >= 0");
+
+                            t.HasCheckConstraint("CK_IngredientVariantSubstanceContentOverrides_ReferenceQuantity_Positive", "\"ReferenceQuantity\" > 0");
+                        });
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientVariantUnitConversionOverrideRecord", b =>
@@ -2679,6 +2782,33 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionSubstanceContentRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.MeasurementUnit", null)
+                        .WithMany()
+                        .HasForeignKey("AmountUnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("IngredientRevisionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.MeasurementUnit", null)
+                        .WithMany()
+                        .HasForeignKey("ReferenceUnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientIntoleranceDefinitionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("SubstanceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionUnitConversionRecord", b =>
                 {
                     b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionRecord", null)
@@ -2759,6 +2889,33 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientRevisionRecord", null)
                         .WithMany()
                         .HasForeignKey("IngredientRevisionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientVariantSubstanceContentOverrideRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.MeasurementUnit", null)
+                        .WithMany()
+                        .HasForeignKey("AmountUnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.MeasurementUnit", null)
+                        .WithMany()
+                        .HasForeignKey("ReferenceUnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientIntoleranceDefinitionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("SubstanceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientVariantRevisionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("VariantRevisionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

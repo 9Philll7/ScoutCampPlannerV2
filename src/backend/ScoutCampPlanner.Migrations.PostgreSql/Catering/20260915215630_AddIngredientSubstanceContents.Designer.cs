@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ScoutCampPlanner.Catering.Infrastructure;
@@ -11,9 +12,11 @@ using ScoutCampPlanner.Catering.Infrastructure;
 namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
 {
     [DbContext(typeof(CateringDbContext))]
-    partial class CateringDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260915215630_AddIngredientSubstanceContents")]
+    partial class AddIngredientSubstanceContents
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1476,11 +1479,6 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                     b.Property<long>("RowVersion")
                         .IsConcurrencyToken()
                         .HasColumnType("bigint");
-
-                    b.Property<string>("SourceSummary")
-                        .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
 
                     b.Property<int>("State")
                         .HasColumnType("integer");

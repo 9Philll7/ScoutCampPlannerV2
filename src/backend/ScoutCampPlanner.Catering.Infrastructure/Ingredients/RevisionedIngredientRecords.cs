@@ -43,6 +43,7 @@ internal sealed class IngredientRevisionRecord
     public int AllergenReviewState { get; set; }
     public int IntoleranceReviewState { get; set; }
     public int OriginReviewState { get; set; }
+    public string SourceSummary { get; set; } = string.Empty;
     public long RowVersion { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; }
     public Guid CreatedBy { get; set; }
@@ -125,6 +126,19 @@ internal sealed class IngredientRevisionIntoleranceRecord
     public int Source { get; set; }
 }
 
+internal sealed class IngredientRevisionSubstanceContentRecord
+{
+    public Guid IngredientRevisionId { get; set; }
+    public Guid SubstanceId { get; set; }
+    public decimal Amount { get; set; }
+    public Guid AmountUnitId { get; set; }
+    public decimal ReferenceQuantity { get; set; }
+    public Guid ReferenceUnitId { get; set; }
+    public int SourceType { get; set; }
+    public string SourceReference { get; set; } = string.Empty;
+    public int ReviewState { get; set; }
+}
+
 internal sealed class IngredientRevisionOriginRecord
 {
     public Guid IngredientRevisionId { get; set; }
@@ -185,6 +199,19 @@ internal sealed class IngredientVariantIntoleranceOverrideRecord
     public Guid IntoleranceId { get; set; }
     public int State { get; set; }
     public int Source { get; set; }
+}
+
+internal sealed class IngredientVariantSubstanceContentOverrideRecord
+{
+    public Guid VariantRevisionId { get; set; }
+    public Guid SubstanceId { get; set; }
+    public decimal Amount { get; set; }
+    public Guid AmountUnitId { get; set; }
+    public decimal ReferenceQuantity { get; set; }
+    public Guid ReferenceUnitId { get; set; }
+    public int SourceType { get; set; }
+    public string SourceReference { get; set; } = string.Empty;
+    public int ReviewState { get; set; }
 }
 
 internal sealed class IngredientVariantOriginOverrideRecord

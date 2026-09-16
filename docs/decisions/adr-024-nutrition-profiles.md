@@ -63,22 +63,25 @@ Fettwert und Zucker darf den Kohlenhydratwert nicht überschreiten.
 
 ### Herkunft und Verlässlichkeit
 
-Ein Profil hält mindestens die Art der Quelle, eine lesbare Quellenangabe und
-den Prüfstatus fest. Als Quellenarten werden zunächst Herstellerangabe,
-offizielle Lebensmitteldatenbank und manuelle Schätzung unterschieden. Ein
-optionales Bezugs- oder Prüfdatum darf ergänzt werden.
+Der Prüfstatus bleibt am Profil. Quellen werden dagegen für die gesamte
+Zutatenrevision zusammengefasst, damit dieselbe Quellenangabe nicht an jedem
+Nährwert- oder Inhaltsstofffeld wiederholt werden muss. Ein optionales Bezugs-
+oder Prüfdatum darf ergänzt werden.
 
-Importe aus externen Nährwertdatenbanken erfolgen nicht automatisch. Vor einem
-späteren Import müssen Datenqualität, Versionierung und Lizenzbedingungen der
-konkreten Quelle geprüft werden.
+Externe Nährwertdatenbanken werden nicht in den Zutatenstamm importiert. BLS
+4.0 und optional Open Food Facts dürfen im Editor Vorschläge für einen bewusst
+angelegten Entwurf liefern. Jede Übernahme ist selektiv, wird als Schätzung
+gekennzeichnet und veröffentlicht nichts automatisch. Den Workflow und die
+Lizenzgrenzen regelt
+[ADR-025](adr-025-ingredient-data-suggestions.md).
 
 ### Varianten
 
 Eine Zutatenvariante erbt das vollständige Nährwertprofil ihrer
 Zutatenrevision. Falls ihre Werte fachlich abweichen, ersetzt ein vollständiges
 eigenes Variantenprofil das geerbte Profil. Einzelne Nährwertfelder werden nicht
-isoliert überschrieben, damit keine rechnerische Mischung aus unterschiedlichen
-Quellen entsteht.
+isoliert überschrieben. Abweichende Datenquellen werden in der gemeinsamen
+Quellenzusammenfassung der Revision ergänzt.
 
 Die Auswahl einer Variante bleibt gemäß ADR-023 Aufgabe der späteren
 Verpflegungsplanung. Dort muss eine gewählte Variante auch die berechneten

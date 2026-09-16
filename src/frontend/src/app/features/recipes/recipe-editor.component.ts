@@ -12,7 +12,8 @@ import { MatSelectModule } from '@angular/material/select';
 import { IngredientCatalogEntry } from '../camp/camp-api.service';
 import { ActionIconComponent } from '../../shared/action-icon.component';
 import { RecipeCatalogEntry, RecipeEditorApiService, RecipeEditorContent,
-  RecipeEditorDraft, RecipeEditorGroup, RecipeEditorIngredientPosition,
+  RecipeEditorDraft, RecipeEditorGroup, RecipeEditorIngredientPosition, RecipeEditorIngredientReplacement,
+  RecipeEditorIngredientReference, RecipeEditorConflict,
   RecipeNutritionCalculation, RecipeNutritionValues, RecipePublicationResponse,
   RecipeValidationIssue, RecipeEditorIngredientUpdate } from './recipe-editor-api.service';
 
@@ -21,6 +22,8 @@ interface IngredientSection {
   group: RecipeEditorGroup | null;
   positions: RecipeEditorIngredientPosition[];
 }
+
+interface EditorConflictOption extends RecipeEditorConflict { name: string; }
 
 @Component({
   selector: 'scp-recipe-editor',
@@ -157,6 +160,89 @@ interface IngredientSection {
                           [disabled]="disabled() || last"><scp-action-icon name="down"/></button>
                         <button matIconButton type="button" aria-label="Zutat entfernen" title="Zutat entfernen"
                           (click)="removePosition(position.id)" [disabled]="disabled()"><scp-action-icon name="remove"/></button>
+                      </div>
+                      <div class="replacement-section">
+                        <div class="replacement-heading">
+                          <div><strong>Ersatzzutaten</strong><small>Gelten nur für die ausgewählten Konflikte dieser Position.</small></div>
+                          @if (!disabled() && unassignedConflicts(position).length) {
+                            <button matButton type="button" (click)="toggleReplacementPicker(position.id)">
+                              <scp-action-icon name="add"/>Ersatzzutat
+                            </button>
+                          }
+                        </div>
+                        @for (replacement of position.replacements; track replacement.id) {
+                          <div class="replacement-card">
+                            <div class="position-name">
+                              <strong>{{ replacementIngredient(replacement)?.name ?? 'Unbekannte Ersatzzutat' }}</strong>
+                              <small>{{ scopeLabel(replacementIngredient(replacement)?.scope) }}</small>
+                              @if ((replacementIngredient(replacement)?.conflicts ?? []).length) {
+                                <div class="conflict-list" aria-label="Konflikte der Ersatzzutat">
+                                  @for (conflict of replacementIngredient(replacement)!.conflicts;
+                                    track conflict.type + '-' + conflict.id) {
+                                    <span
+                                      [class.preventable]="replacementConflictVariantNames(replacement, conflict.id)?.length"
+                                      [class.unavoidable]="replacementConflictVariantNames(replacement, conflict.id)?.length === 0"
+                                      [class.unclassified]="replacementConflictVariantNames(replacement, conflict.id) === null"
+                                      [title]="replacementConflictTitle(replacement, conflict.id, conflict.name)">
+                                      {{ conflict.name }}
+                                    </span>
+                                  }
+                                </div>
+                              }
+                            </div>
+                            <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Ersatzmenge</mat-label>
+                              <input matInput type="number" min="0.000001" step="any"
+                                [name]="'replacement-quantity-' + replacement.id"
+                                [(ngModel)]="replacement.quantity" [disabled]="disabled()">
+                            </mat-form-field>
+                            <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Einheit</mat-label>
+                              <mat-select [name]="'replacement-unit-' + replacement.id"
+                                [(ngModel)]="replacement.unitId" [disabled]="disabled()">
+                                @for (unit of replacementIngredient(replacement)?.units ?? []; track unit.unitId) {
+                                  <mat-option [value]="unit.unitId">{{ unit.name }} ({{ unit.symbol }})</mat-option>
+                                }
+                              </mat-select>
+                            </mat-form-field>
+                            <button matIconButton type="button" aria-label="Ersatzzutat entfernen"
+                              title="Ersatzzutat entfernen" (click)="removeReplacement(position, replacement.id)"
+                              [disabled]="disabled()"><scp-action-icon name="remove"/></button>
+                            <div class="replacement-conflicts">
+                              <span>Ersetzt bei:</span>
+                              @for (conflict of positionConflicts(position); track conflict.type + '-' + conflict.id) {
+                                <mat-checkbox
+                                  [name]="'replacement-conflict-' + replacement.id + '-' + conflict.type + '-' + conflict.id"
+                                  [ngModel]="replacementHasConflict(replacement, conflict)"
+                                  (ngModelChange)="setReplacementConflict(position, replacement, conflict, $event)"
+                                  [disabled]="disabled() || conflictAssignedToOtherReplacement(position, replacement.id, conflict)">
+                                  {{ conflict.name }}
+                                </mat-checkbox>
+                              } @empty {
+                                <small>Die Ausgangszutat weist keine Konflikte auf.</small>
+                              }
+                            </div>
+                          </div>
+                        } @empty {
+                          <p class="empty">Noch keine Ersatzzutat definiert.</p>
+                        }
+                        @if (activeReplacementPicker() === position.id) {
+                          <div class="replacement-picker">
+                            <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                              <mat-label>Ersatzzutat suchen</mat-label>
+                              <input matInput [name]="'replacement-search-' + position.id"
+                                [ngModel]="replacementSearch(position.id)"
+                                (ngModelChange)="setReplacementSearch(position.id, $event)" autocomplete="off">
+                            </mat-form-field>
+                            @if (replacementSearch(position.id).trim()) {
+                              <div class="candidate-list">
+                                @for (candidate of replacementCandidates(position); track candidate.revisionId) {
+                                  <button matButton type="button" (click)="addReplacement(position, candidate)">
+                                    <scp-action-icon name="add"/><span>{{ candidate.name }}<small>{{ scopeLabel(candidate.scope) }}</small></span>
+                                  </button>
+                                } @empty { <p class="empty">Keine passende Ersatzzutat gefunden.</p> }
+                              </div>
+                            }
+                          </div>
+                        }
                       </div>
                     </div>
                   } @empty { <p class="empty">Noch keine Zutaten in dieser Gruppe.</p> }
@@ -306,6 +392,13 @@ interface IngredientSection {
     .group-name { width: min(24rem, 100%); }
     .position-card { display: grid; grid-template-columns: minmax(10rem, 1.5fr) minmax(9rem, 1fr) minmax(7rem, .7fr) minmax(9rem, 1fr) auto; gap: .7rem; align-items: center; padding: .7rem; border-radius: .65rem; background: #f1f6f3; }
     .position-name { display: grid; gap: .25rem; }
+    .replacement-section { grid-column: 1 / -1; display: grid; gap: .6rem; padding-top: .65rem; border-top: 1px solid #d7e1da; }
+    .replacement-heading { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
+    .replacement-heading > div { display: grid; gap: .15rem; }
+    .replacement-card { display: grid; grid-template-columns: minmax(10rem, 1.5fr) minmax(7rem, .7fr) minmax(9rem, 1fr) auto; gap: .7rem; align-items: center; padding: .65rem; border: 1px solid #d7e1da; border-radius: .6rem; background: #fff; }
+    .replacement-conflicts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .8rem; }
+    .replacement-conflicts > span { color: #526158; font-size: .84rem; font-weight: 600; }
+    .replacement-picker { display: grid; gap: .5rem; padding: .65rem; border-radius: .6rem; background: #e9f1ec; }
     .conflict-list, .conflict-legend { display: flex; flex-wrap: wrap; gap: .3rem; }
     .conflict-list span, .conflict-legend span { padding: .15rem .45rem; border-radius: 999px; font-size: .76rem; }
     .conflict-list .preventable, .conflict-legend .preventable { color: #72500b; background: #fff0b8; }
@@ -330,8 +423,8 @@ interface IngredientSection {
     .nutrition-total summary { cursor: pointer; color: #315d48; font-weight: 600; }
     .nutrition-missing { margin: 0; padding-left: 1.25rem; }
     .recipe-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: .8rem; }
-    @media (max-width: 900px) { .position-card, .nutrition-grid { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 720px) { .field-grid, .picker-fields, .position-card, .nutrition-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 900px) { .position-card, .replacement-card, .nutrition-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 720px) { .field-grid, .picker-fields, .position-card, .replacement-card, .nutrition-grid { grid-template-columns: 1fr; } }
   `
 })
 export class RecipeEditorComponent {
@@ -343,6 +436,8 @@ export class RecipeEditorComponent {
   readonly selected = signal<RecipeEditorDraft | null>(null);
   readonly ingredientSearch = signal('');
   readonly targetGroupId = signal<string | null>(null);
+  readonly activeReplacementPicker = signal<string | null>(null);
+  readonly replacementSearches = signal<Record<string, string>>({});
   readonly loading = signal(false);
   readonly saving = signal(false);
   readonly error = signal('');
@@ -400,7 +495,8 @@ export class RecipeEditorComponent {
   }
 
   closeEditor() {
-    this.selected.set(null); this.ingredientSearch.set(''); this.targetGroupId.set(null); this.notice.set(''); this.load();
+    this.selected.set(null); this.ingredientSearch.set(''); this.targetGroupId.set(null);
+    this.activeReplacementPicker.set(null); this.replacementSearches.set({}); this.notice.set(''); this.load();
   }
 
   ingredient(position: RecipeEditorIngredientPosition) {
@@ -410,6 +506,102 @@ export class RecipeEditorComponent {
 
   ingredientReference(position: RecipeEditorIngredientPosition) {
     return this.selected()?.ingredientReferences.find(value => value.revisionId === position.ingredientRevisionId);
+  }
+
+  replacementIngredient(replacement: RecipeEditorIngredientReplacement):
+    RecipeEditorIngredientReference | IngredientCatalogEntry | undefined {
+    return this.selected()?.ingredientReferences.find(value => value.revisionId === replacement.ingredientRevisionId) ??
+      this.ingredients().find(value => value.revisionId === replacement.ingredientRevisionId);
+  }
+
+  replacementConflictVariantNames(replacement: RecipeEditorIngredientReplacement, conflictId: string): string[] | null {
+    const reference = this.selected()?.ingredientReferences
+      .find(value => value.revisionId === replacement.ingredientRevisionId);
+    if (!reference) return null;
+    return reference.conflicts.find(conflict => conflict.id === conflictId)?.preventableByVariants ?? [];
+  }
+
+  replacementConflictTitle(
+    replacement: RecipeEditorIngredientReplacement, conflictId: string, conflictName: string) {
+    const variants = this.replacementConflictVariantNames(replacement, conflictId);
+    if (variants === null) return `${conflictName}: Variantenprüfung nach dem Speichern verfügbar.`;
+    return variants.length
+      ? `${conflictName}: vermeidbar durch ${variants.join(', ')}.`
+      : `${conflictName}: durch keine aktive Variante vermeidbar.`;
+  }
+
+  positionConflicts(position: RecipeEditorIngredientPosition): EditorConflictOption[] {
+    const reference = this.ingredientReference(position);
+    if (reference) return reference.conflicts.map(value => ({ type: value.type, id: value.id, name: value.name }));
+    return (this.ingredients().find(value => value.revisionId === position.ingredientRevisionId)?.conflicts ?? [])
+      .map(value => ({ type: this.conflictType(value.type), id: value.id, name: value.name }));
+  }
+
+  unassignedConflicts(position: RecipeEditorIngredientPosition) {
+    return this.positionConflicts(position).filter(conflict =>
+      !position.replacements.some(replacement => this.replacementHasConflict(replacement, conflict)));
+  }
+
+  replacementHasConflict(replacement: RecipeEditorIngredientReplacement, conflict: RecipeEditorConflict) {
+    return replacement.conflicts.some(value => value.type === conflict.type && value.id === conflict.id);
+  }
+
+  conflictAssignedToOtherReplacement(
+    position: RecipeEditorIngredientPosition, replacementId: string, conflict: RecipeEditorConflict) {
+    return position.replacements.some(replacement => replacement.id !== replacementId &&
+      this.replacementHasConflict(replacement, conflict));
+  }
+
+  setReplacementConflict(position: RecipeEditorIngredientPosition, replacement: RecipeEditorIngredientReplacement,
+    conflict: RecipeEditorConflict, selected: boolean) {
+    if (selected && this.conflictAssignedToOtherReplacement(position, replacement.id, conflict)) return;
+    replacement.conflicts = selected
+      ? [...replacement.conflicts.filter(value => value.type !== conflict.type || value.id !== conflict.id),
+          { type: conflict.type, id: conflict.id }]
+      : replacement.conflicts.filter(value => value.type !== conflict.type || value.id !== conflict.id);
+    this.markContentChanged();
+  }
+
+  toggleReplacementPicker(positionId: string) {
+    this.activeReplacementPicker.set(this.activeReplacementPicker() === positionId ? null : positionId);
+  }
+
+  replacementSearch(positionId: string) { return this.replacementSearches()[positionId] ?? ''; }
+
+  setReplacementSearch(positionId: string, value: string) {
+    this.replacementSearches.update(searches => ({ ...searches, [positionId]: value }));
+  }
+
+  replacementCandidates(position: RecipeEditorIngredientPosition) {
+    const search = this.replacementSearch(position.id).trim().toLocaleLowerCase('de');
+    if (!search) return [];
+    const used = new Set(position.replacements.map(value => value.ingredientRevisionId));
+    const originalIngredientId = this.ingredientReference(position)?.ingredientId ??
+      this.ingredients().find(value => value.revisionId === position.ingredientRevisionId)?.id;
+    const matches = this.ingredients().filter(value => value.revisionId && value.id !== originalIngredientId &&
+      !used.has(value.revisionId) && value.name.toLocaleLowerCase('de').includes(search));
+    const camp = matches.filter(value => value.scope === 'Camp');
+    if (camp.length) return camp;
+    const tenant = matches.filter(value => value.scope === 'Tenant');
+    return tenant.length ? tenant : matches.filter(value => value.scope === 'Central');
+  }
+
+  addReplacement(position: RecipeEditorIngredientPosition, ingredient: IngredientCatalogEntry) {
+    if (!ingredient.revisionId || !ingredient.units.length) return;
+    const remaining = this.unassignedConflicts(position);
+    position.replacements.push({
+      id: crypto.randomUUID(), ingredientRevisionId: ingredient.revisionId,
+      quantity: position.quantity ?? 1, unitId: ingredient.units[0].unitId,
+      conflicts: remaining.length === 1 ? [{ type: remaining[0].type, id: remaining[0].id }] : [],
+    });
+    this.activeReplacementPicker.set(null);
+    this.setReplacementSearch(position.id, '');
+    this.markContentChanged();
+  }
+
+  removeReplacement(position: RecipeEditorIngredientPosition, replacementId: string) {
+    position.replacements = position.replacements.filter(value => value.id !== replacementId);
+    this.markContentChanged();
   }
 
   adoptIngredientUpdate(position: RecipeEditorIngredientPosition, update: RecipeEditorIngredientUpdate) {
@@ -650,6 +842,11 @@ export class RecipeEditorComponent {
       'recipe.ingredient.quantity.invalid': 'Jede Zutat benötigt eine Menge größer als null.',
       'recipe.ingredient.unit.invalid': 'Für jede Zutat muss eine gültige Einheit gewählt werden.',
       'recipe.ingredient.duplicate': 'Eine Zutat darf innerhalb derselben Gruppe nur einmal vorkommen.',
+      'recipe.ingredient-replacement.ingredient.missing': 'Eine Ersatzzutat ist nicht mehr verfügbar.',
+      'recipe.ingredient-replacement.quantity.invalid': 'Jede Ersatzzutat benötigt eine Menge größer als null.',
+      'recipe.ingredient-replacement.unit.invalid': 'Für jede Ersatzzutat muss eine gültige Einheit gewählt werden.',
+      'recipe.replacement.conflicts.empty': 'Jede Ersatzzutat muss mindestens einem Konflikt zugeordnet sein.',
+      'recipe.replacement.conflict.duplicate': 'Ein Konflikt darf an dieser Position nur einer Ersatzzutat zugeordnet sein.',
       'recipe.description.missing': 'Es fehlt eine Beschreibung oder Zubereitungsanleitung.',
       'recipe.source.missing': 'Es fehlt eine Quellenangabe.',
       'recipe.conflict.unresolved': 'Für einen bekannten Konflikt ist noch kein Ersatz definiert.',
@@ -659,6 +856,7 @@ export class RecipeEditorComponent {
 
   private setDraft(draft: RecipeEditorDraft) {
     this.selected.set(draft); this.targetGroupId.set(null); this.snapshot = JSON.stringify(draft.content);
+    this.activeReplacementPicker.set(null); this.replacementSearches.set({});
     this.nutrition.set(null); this.nutritionMessage.set(''); this.publicationIssues.set([]); this.loadNutrition();
   }
   private positionsForGroup(groupId: string | null) {
@@ -695,5 +893,8 @@ export class RecipeEditorComponent {
   private loadCatalogOnly() { this.api.list(this.campId()).subscribe({ next: values => this.recipes.set(values) }); }
   private formatNumber(value: number, maximumFractionDigits: number) {
     return new Intl.NumberFormat('de-DE', { maximumFractionDigits }).format(value);
+  }
+  private conflictType(value: IngredientCatalogEntry['conflicts'][number]['type']) {
+    return value === 'Allergen' ? 0 : value === 'Intolerance' ? 1 : 2;
   }
 }

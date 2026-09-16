@@ -141,6 +141,7 @@ internal static class RevisionedIngredientPersistenceConfiguration
             entity.HasKey(value => value.Id);
             entity.Property(value => value.Name).HasMaxLength(200);
             entity.Property(value => value.NormalizedName).HasMaxLength(200);
+            entity.Property(value => value.SourceSummary).HasMaxLength(2000);
             entity.Property(value => value.RowVersion).IsConcurrencyToken();
             entity.HasIndex(value => new { value.IngredientId, value.RevisionNumber }).IsUnique();
             entity.HasIndex(value => value.IngredientId).IsUnique().HasFilter("\"State\" = 0");
@@ -194,6 +195,24 @@ internal static class RevisionedIngredientPersistenceConfiguration
             entity.HasOne<IngredientRevisionRecord>().WithMany().HasForeignKey(value => value.IngredientRevisionId)
                 .OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<IngredientIntoleranceDefinitionRecord>().WithMany().HasForeignKey(value => value.IntoleranceId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<IngredientRevisionSubstanceContentRecord>(entity =>
+        {
+            entity.ToTable("IngredientRevisionSubstanceContents", table =>
+            {
+                table.HasCheckConstraint("CK_IngredientRevisionSubstanceContents_Amount_NonNegative", "\"Amount\" >= 0");
+                table.HasCheckConstraint("CK_IngredientRevisionSubstanceContents_ReferenceQuantity_Positive", "\"ReferenceQuantity\" > 0");
+            });
+            entity.HasKey(value => new { value.IngredientRevisionId, value.SubstanceId });
+            ConfigureSubstanceContentProperties(entity);
+            entity.HasOne<IngredientRevisionRecord>().WithMany().HasForeignKey(value => value.IngredientRevisionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<IngredientIntoleranceDefinitionRecord>().WithMany().HasForeignKey(value => value.SubstanceId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<MeasurementUnit>().WithMany().HasForeignKey(value => value.AmountUnitId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<MeasurementUnit>().WithMany().HasForeignKey(value => value.ReferenceUnitId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<IngredientRevisionOriginRecord>(entity =>
@@ -250,6 +269,24 @@ internal static class RevisionedIngredientPersistenceConfiguration
             entity.HasOne<IngredientIntoleranceDefinitionRecord>().WithMany().HasForeignKey(value => value.IntoleranceId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
+        modelBuilder.Entity<IngredientVariantSubstanceContentOverrideRecord>(entity =>
+        {
+            entity.ToTable("IngredientVariantSubstanceContentOverrides", table =>
+            {
+                table.HasCheckConstraint("CK_IngredientVariantSubstanceContentOverrides_Amount_NonNegative", "\"Amount\" >= 0");
+                table.HasCheckConstraint("CK_IngredientVariantSubstanceContentOverrides_ReferenceQuantity_Positive", "\"ReferenceQuantity\" > 0");
+            });
+            entity.HasKey(value => new { value.VariantRevisionId, value.SubstanceId });
+            ConfigureSubstanceContentProperties(entity);
+            entity.HasOne<IngredientVariantRevisionRecord>().WithMany().HasForeignKey(value => value.VariantRevisionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<IngredientIntoleranceDefinitionRecord>().WithMany().HasForeignKey(value => value.SubstanceId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<MeasurementUnit>().WithMany().HasForeignKey(value => value.AmountUnitId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<MeasurementUnit>().WithMany().HasForeignKey(value => value.ReferenceUnitId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
         modelBuilder.Entity<IngredientVariantOriginOverrideRecord>(entity =>
         {
             entity.ToTable("IngredientVariantOriginOverrides");
@@ -270,5 +307,14 @@ internal static class RevisionedIngredientPersistenceConfiguration
             entity.HasOne<MeasurementUnit>().WithMany().HasForeignKey(value => value.SourceUnitId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
+    }
+
+    private static void ConfigureSubstanceContentProperties<TEntity>(
+        Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<TEntity> entity)
+        where TEntity : class
+    {
+        entity.Property("Amount").HasPrecision(18, 6);
+        entity.Property("ReferenceQuantity").HasPrecision(18, 6);
+        entity.Property<string>("SourceReference").HasMaxLength(500);
     }
 }

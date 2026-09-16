@@ -600,7 +600,8 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
                     variantId, "canned", "Dose", true, 0,
                     nutritionProfile: variantProfile),
             ],
-            nutritionProfile: revisionProfile);
+            nutritionProfile: revisionProfile,
+            sourceSummary: "BLS 4.0, Testdatensatz Linsen");
 
         IngredientRevisionMutationResult saved = await store.SaveDraftAsync(
             seed.RevisionId, content, 1, seed.ActorId, DateTimeOffset.UtcNow,
@@ -611,6 +612,7 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
             await store.GetAsync(seed.RevisionId, TestContext.Current.CancellationToken));
         Assert.Equal(1_000m, stored.NutritionProfile?.EnergyKilojoules);
         Assert.Equal(800m, Assert.Single(stored.Variants).NutritionProfile?.EnergyKilojoules);
+        Assert.Equal("BLS 4.0, Testdatensatz Linsen", stored.SourceSummary);
 
         IngredientRevisionMutationResult published = await store.PublishAsync(
             seed.RevisionId, saved.RowVersion!.Value, seed.ActorId, DateTimeOffset.UtcNow,
@@ -626,6 +628,7 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
             await store.GetAsync(copyId, TestContext.Current.CancellationToken));
         Assert.Equal(1_000m, copy.NutritionProfile?.EnergyKilojoules);
         Assert.Equal(800m, Assert.Single(copy.Variants).NutritionProfile?.EnergyKilojoules);
+        Assert.Equal("BLS 4.0, Testdatensatz Linsen", copy.SourceSummary);
     }
 
     [Fact]
@@ -649,6 +652,45 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
             TestContext.Current.CancellationToken);
 
         Assert.Equal(IngredientRevisionMutationStatus.Invalid, result.Status);
+    }
+
+    [Fact]
+    public async Task Quantitative_substance_content_roundtrips_and_is_copied_to_follow_up_draft()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Seed seed = await fixture.SeedDraftAsync(reviewed: true);
+        var store = new IngredientRevisionWorkflowStore(fixture.Database);
+        Guid lactoseId = Guid.Parse("31111111-1111-1111-1111-000000000001");
+        var lactose = new IngredientSubstanceContent(
+            lactoseId, 4.8m, seed.UnitId, 100m, seed.UnitId,
+            IngredientSubstanceContentSourceType.OfficialDatabase, "Prüfquelle",
+            IngredientSubstanceContentReviewState.Reviewed);
+        IngredientRevisionDraftContent content = IngredientRevisionDraftContent.Create(
+            "Linsen", seed.CategoryId, seed.UnitId,
+            IngredientPropertyReviewState.Reviewed, IngredientPropertyReviewState.Reviewed,
+            IngredientPropertyReviewState.Reviewed, substanceContents: [lactose]);
+
+        IngredientRevisionMutationResult saved = await store.SaveDraftAsync(
+            seed.RevisionId, content, 1, seed.ActorId, DateTimeOffset.UtcNow,
+            TestContext.Current.CancellationToken);
+        IngredientRevisionDraftDetails stored = Assert.IsType<IngredientRevisionDraftDetails>(
+            await store.GetAsync(seed.RevisionId, TestContext.Current.CancellationToken));
+
+        Assert.Equal(IngredientRevisionMutationStatus.Saved, saved.Status);
+        IngredientSubstanceContentItem storedLactose = Assert.Single(stored.SubstanceContents!);
+        Assert.Equal(4.8m, storedLactose.Amount);
+        Assert.Equal("Prüfquelle", storedLactose.SourceReference);
+
+        Assert.Equal(IngredientRevisionMutationStatus.Published, (await store.PublishAsync(
+            seed.RevisionId, saved.RowVersion!.Value, seed.ActorId, DateTimeOffset.UtcNow,
+            TestContext.Current.CancellationToken)).Status);
+        Guid copyId = Guid.NewGuid();
+        Assert.Equal(IngredientRevisionMutationStatus.Created, (await store.CreateDraftFromPublishedAsync(
+            seed.RevisionId, copyId, seed.ActorId, DateTimeOffset.UtcNow,
+            TestContext.Current.CancellationToken)).Status);
+        IngredientRevisionDraftDetails copy = Assert.IsType<IngredientRevisionDraftDetails>(
+            await store.GetAsync(copyId, TestContext.Current.CancellationToken));
+        Assert.Equal(4.8m, Assert.Single(copy.SubstanceContents!).Amount);
     }
 
     private static IngredientNutritionProfile Nutrition(Guid unitId, decimal energyKilojoules) => new(

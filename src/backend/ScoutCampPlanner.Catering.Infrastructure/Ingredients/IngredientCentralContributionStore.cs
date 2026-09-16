@@ -177,6 +177,7 @@ public sealed class IngredientCentralContributionStore(CateringDbContext databas
             AllergenReviewState = (int)IngredientPropertyReviewState.Unreviewed,
             IntoleranceReviewState = (int)IngredientPropertyReviewState.Unreviewed,
             OriginReviewState = (int)IngredientPropertyReviewState.Unreviewed,
+            SourceSummary = source.SourceSummary,
             RowVersion = 1,
             CreatedAtUtc = reviewedAtUtc,
             CreatedBy = actorUserId,
@@ -273,6 +274,10 @@ public sealed class IngredientCentralContributionStore(CateringDbContext databas
         IngredientRevisionIntoleranceRecord[] intolerances = await database.Set<IngredientRevisionIntoleranceRecord>()
             .AsNoTracking().Where(value => value.IngredientRevisionId == sourceRevisionId)
             .ToArrayAsync(cancellationToken);
+        IngredientRevisionSubstanceContentRecord[] substanceContents = await database
+            .Set<IngredientRevisionSubstanceContentRecord>().AsNoTracking()
+            .Where(value => value.IngredientRevisionId == sourceRevisionId)
+            .ToArrayAsync(cancellationToken);
         IngredientRevisionOriginRecord[] origins = await database.Set<IngredientRevisionOriginRecord>()
             .AsNoTracking().Where(value => value.IngredientRevisionId == sourceRevisionId)
             .ToArrayAsync(cancellationToken);
@@ -283,6 +288,14 @@ public sealed class IngredientCentralContributionStore(CateringDbContext databas
             { IngredientRevisionId = targetRevisionId, AllergenId = value.AllergenId, State = value.State, Source = value.Source }));
         database.AddRange(intolerances.Select(value => new IngredientRevisionIntoleranceRecord
             { IngredientRevisionId = targetRevisionId, IntoleranceId = value.IntoleranceId, State = value.State, Source = value.Source }));
+        database.AddRange(substanceContents.Select(value => new IngredientRevisionSubstanceContentRecord
+        {
+            IngredientRevisionId = targetRevisionId, SubstanceId = value.SubstanceId,
+            Amount = value.Amount, AmountUnitId = value.AmountUnitId,
+            ReferenceQuantity = value.ReferenceQuantity, ReferenceUnitId = value.ReferenceUnitId,
+            SourceType = value.SourceType, SourceReference = value.SourceReference,
+            ReviewState = (int)IngredientSubstanceContentReviewState.Unreviewed,
+        }));
         database.AddRange(origins.Select(value => new IngredientRevisionOriginRecord
             { IngredientRevisionId = targetRevisionId, OriginPropertyId = value.OriginPropertyId, State = value.State, Source = value.Source }));
         database.AddRange(conversions.Select(value => new IngredientRevisionUnitConversionRecord
@@ -307,6 +320,8 @@ public sealed class IngredientCentralContributionStore(CateringDbContext databas
         var allergenOverrides = await database.Set<IngredientVariantAllergenOverrideRecord>().AsNoTracking()
             .Where(value => ids.Contains(value.VariantRevisionId)).ToArrayAsync(cancellationToken);
         var intoleranceOverrides = await database.Set<IngredientVariantIntoleranceOverrideRecord>().AsNoTracking()
+            .Where(value => ids.Contains(value.VariantRevisionId)).ToArrayAsync(cancellationToken);
+        var substanceContentOverrides = await database.Set<IngredientVariantSubstanceContentOverrideRecord>().AsNoTracking()
             .Where(value => ids.Contains(value.VariantRevisionId)).ToArrayAsync(cancellationToken);
         var originOverrides = await database.Set<IngredientVariantOriginOverrideRecord>().AsNoTracking()
             .Where(value => ids.Contains(value.VariantRevisionId)).ToArrayAsync(cancellationToken);
@@ -339,6 +354,15 @@ public sealed class IngredientCentralContributionStore(CateringDbContext databas
             database.AddRange(intoleranceOverrides.Where(value => value.VariantRevisionId == variant.Id)
                 .Select(value => new IngredientVariantIntoleranceOverrideRecord
                     { VariantRevisionId = id, IntoleranceId = value.IntoleranceId, State = value.State, Source = value.Source }));
+            database.AddRange(substanceContentOverrides.Where(value => value.VariantRevisionId == variant.Id)
+                .Select(value => new IngredientVariantSubstanceContentOverrideRecord
+                {
+                    VariantRevisionId = id, SubstanceId = value.SubstanceId,
+                    Amount = value.Amount, AmountUnitId = value.AmountUnitId,
+                    ReferenceQuantity = value.ReferenceQuantity, ReferenceUnitId = value.ReferenceUnitId,
+                    SourceType = value.SourceType, SourceReference = value.SourceReference,
+                    ReviewState = (int)IngredientSubstanceContentReviewState.Unreviewed,
+                }));
             database.AddRange(originOverrides.Where(value => value.VariantRevisionId == variant.Id)
                 .Select(value => new IngredientVariantOriginOverrideRecord
                     { VariantRevisionId = id, OriginPropertyId = value.OriginPropertyId, State = value.State, Source = value.Source }));

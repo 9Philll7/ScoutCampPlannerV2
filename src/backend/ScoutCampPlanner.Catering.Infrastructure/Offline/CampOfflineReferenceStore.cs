@@ -13,11 +13,11 @@ namespace ScoutCampPlanner.Catering.Infrastructure.Offline;
 /// </summary>
 public sealed class CampOfflineReferenceStore(CateringDbContext database)
 {
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public static JsonElement CreateEmptyPackageData() => JsonSerializer.SerializeToElement(new Payload(
-        SchemaVersion, [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], []), JsonOptions);
+        SchemaVersion, [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], []), JsonOptions);
 
     public static void Validate(JsonElement json, Guid campId)
     {
@@ -52,15 +52,20 @@ public sealed class CampOfflineReferenceStore(CateringDbContext database)
             payload.Variants.Any(value => !ingredientRevisionIds.Contains(value.IngredientRevisionId)) ||
             payload.RevisionNutrition.Any(value => !ingredientRevisionIds.Contains(value.OwnerId) || !unitIds.Contains(value.ReferenceUnitId)) ||
             payload.VariantNutrition.Any(value => !variantIds.Contains(value.OwnerId) || !unitIds.Contains(value.ReferenceUnitId)) ||
+            payload.RevisionSubstanceContents.Concat(payload.VariantSubstanceContents).Any(value =>
+                !intoleranceIds.Contains(value.SubstanceId) || !unitIds.Contains(value.AmountUnitId) ||
+                !unitIds.Contains(value.ReferenceUnitId)) ||
             payload.RevisionConversions.Concat(payload.VariantConversions).Any(value => !unitIds.Contains(value.DefinitionId)))
             throw new InvalidDataException("Catering reference data contains a missing identity reference.");
 
         if (payload.RevisionAllergens.Any(value => !ingredientRevisionIds.Contains(value.OwnerId) || !allergenIds.Contains(value.DefinitionId)) ||
             payload.RevisionIntolerances.Any(value => !ingredientRevisionIds.Contains(value.OwnerId) || !intoleranceIds.Contains(value.DefinitionId)) ||
+            payload.RevisionSubstanceContents.Any(value => !ingredientRevisionIds.Contains(value.OwnerId)) ||
             payload.RevisionOrigins.Any(value => !ingredientRevisionIds.Contains(value.OwnerId) || !originIds.Contains(value.DefinitionId)) ||
             payload.RevisionConversions.Any(value => !ingredientRevisionIds.Contains(value.OwnerId)) ||
             payload.VariantAllergens.Any(value => !variantIds.Contains(value.OwnerId) || !allergenIds.Contains(value.DefinitionId)) ||
             payload.VariantIntolerances.Any(value => !variantIds.Contains(value.OwnerId) || !intoleranceIds.Contains(value.DefinitionId)) ||
+            payload.VariantSubstanceContents.Any(value => !variantIds.Contains(value.OwnerId)) ||
             payload.VariantOrigins.Any(value => !variantIds.Contains(value.OwnerId) || !originIds.Contains(value.DefinitionId)) ||
             payload.VariantConversions.Any(value => !variantIds.Contains(value.OwnerId)))
             throw new InvalidDataException("Catering reference data contains an invalid detail reference.");
@@ -176,12 +181,14 @@ public sealed class CampOfflineReferenceStore(CateringDbContext database)
             (await database.Set<IngredientRevisionIntoleranceRecord>().AsNoTracking().Where(value => ingredientRevisionIds.Contains(value.IngredientRevisionId)).ToArrayAsync(cancellationToken)).Select(Map).ToArray(),
             (await database.Set<IngredientRevisionOriginRecord>().AsNoTracking().Where(value => ingredientRevisionIds.Contains(value.IngredientRevisionId)).ToArrayAsync(cancellationToken)).Select(Map).ToArray(),
             (await database.Set<IngredientRevisionUnitConversionRecord>().AsNoTracking().Where(value => ingredientRevisionIds.Contains(value.IngredientRevisionId)).ToArrayAsync(cancellationToken)).Select(Map).ToArray(),
+            (await database.Set<IngredientRevisionSubstanceContentRecord>().AsNoTracking().Where(value => ingredientRevisionIds.Contains(value.IngredientRevisionId)).ToArrayAsync(cancellationToken)).Select(Map).ToArray(),
             variants.Select(Map).ToArray(),
             (await database.Set<IngredientVariantNutritionProfileRecord>().AsNoTracking().Where(value => variantIds.Contains(value.VariantRevisionId)).ToArrayAsync(cancellationToken)).Select(Map).ToArray(),
             (await database.Set<IngredientVariantAllergenOverrideRecord>().AsNoTracking().Where(value => variantIds.Contains(value.VariantRevisionId)).ToArrayAsync(cancellationToken)).Select(Map).ToArray(),
             (await database.Set<IngredientVariantIntoleranceOverrideRecord>().AsNoTracking().Where(value => variantIds.Contains(value.VariantRevisionId)).ToArrayAsync(cancellationToken)).Select(Map).ToArray(),
             (await database.Set<IngredientVariantOriginOverrideRecord>().AsNoTracking().Where(value => variantIds.Contains(value.VariantRevisionId)).ToArrayAsync(cancellationToken)).Select(Map).ToArray(),
-            (await database.Set<IngredientVariantUnitConversionOverrideRecord>().AsNoTracking().Where(value => variantIds.Contains(value.VariantRevisionId)).ToArrayAsync(cancellationToken)).Select(Map).ToArray());
+            (await database.Set<IngredientVariantUnitConversionOverrideRecord>().AsNoTracking().Where(value => variantIds.Contains(value.VariantRevisionId)).ToArrayAsync(cancellationToken)).Select(Map).ToArray(),
+            (await database.Set<IngredientVariantSubstanceContentOverrideRecord>().AsNoTracking().Where(value => variantIds.Contains(value.VariantRevisionId)).ToArrayAsync(cancellationToken)).Select(Map).ToArray());
         return JsonSerializer.SerializeToElement(payload, JsonOptions);
     }
 
@@ -214,6 +221,7 @@ public sealed class CampOfflineReferenceStore(CateringDbContext database)
         database.AddRange(payload.RevisionIntolerances.Where(value => newRevisionIds.Contains(value.OwnerId)).Select(value => new IngredientRevisionIntoleranceRecord { IngredientRevisionId = value.OwnerId, IntoleranceId = value.DefinitionId, State = value.State, Source = value.Source }));
         database.AddRange(payload.RevisionOrigins.Where(value => newRevisionIds.Contains(value.OwnerId)).Select(value => new IngredientRevisionOriginRecord { IngredientRevisionId = value.OwnerId, OriginPropertyId = value.DefinitionId, State = value.State, Source = value.Source }));
         database.AddRange(payload.RevisionConversions.Where(value => newRevisionIds.Contains(value.OwnerId)).Select(value => new IngredientRevisionUnitConversionRecord { IngredientRevisionId = value.OwnerId, SourceUnitId = value.DefinitionId, FactorToBaseUnit = value.Factor, Precision = value.State }));
+        database.AddRange(payload.RevisionSubstanceContents.Where(value => newRevisionIds.Contains(value.OwnerId)).Select(MapRevisionSubstanceContent));
         HashSet<Guid> newVariantIds = payload.Variants.Where(value => newRevisionIds.Contains(value.IngredientRevisionId)).Select(value => value.Id).ToHashSet();
         database.AddRange(payload.Variants.Where(value => newVariantIds.Contains(value.Id)).Select(Map));
         database.AddRange(payload.VariantNutrition.Where(value => newVariantIds.Contains(value.OwnerId)).Select(MapVariantNutrition));
@@ -221,6 +229,7 @@ public sealed class CampOfflineReferenceStore(CateringDbContext database)
         database.AddRange(payload.VariantIntolerances.Where(value => newVariantIds.Contains(value.OwnerId)).Select(value => new IngredientVariantIntoleranceOverrideRecord { VariantRevisionId = value.OwnerId, IntoleranceId = value.DefinitionId, State = value.State, Source = value.Source }));
         database.AddRange(payload.VariantOrigins.Where(value => newVariantIds.Contains(value.OwnerId)).Select(value => new IngredientVariantOriginOverrideRecord { VariantRevisionId = value.OwnerId, OriginPropertyId = value.DefinitionId, State = value.State, Source = value.Source }));
         database.AddRange(payload.VariantConversions.Where(value => newVariantIds.Contains(value.OwnerId)).Select(value => new IngredientVariantUnitConversionOverrideRecord { VariantRevisionId = value.OwnerId, SourceUnitId = value.DefinitionId, FactorToBaseUnit = value.Factor, Precision = value.State }));
+        database.AddRange(payload.VariantSubstanceContents.Where(value => newVariantIds.Contains(value.OwnerId)).Select(MapVariantSubstanceContent));
         await AddMissingAsync(payload.Recipes, value => value.Id, Map, value => value.Id, cancellationToken);
         await AddMissingAsync(payload.RecipeRevisions, value => value.Id, Map, value => value.Id, cancellationToken);
         await AddMissingAsync(payload.Entries, value => value.Id, Map, value => value.Id, cancellationToken);
@@ -231,6 +240,21 @@ public sealed class CampOfflineReferenceStore(CateringDbContext database)
     {
         if (json.ValueKind != JsonValueKind.Object)
             throw new InvalidDataException("Catering reference data is missing.");
+        if (json.TryGetProperty("schemaVersion", out JsonElement schema) && schema.GetInt32() == 1)
+        {
+            LegacyPayload legacy = json.Deserialize<LegacyPayload>(JsonOptions)
+                ?? throw new InvalidDataException("Catering reference data is empty.");
+            if (typeof(LegacyPayload).GetProperties().Where(property => property.PropertyType != typeof(int))
+                .Any(property => property.GetValue(legacy) is null))
+                throw new InvalidDataException("Catering reference data is incomplete.");
+            return new Payload(SchemaVersion, legacy.Entries, legacy.Recipes, legacy.RecipeRevisions,
+                legacy.Units, legacy.Categories, legacy.Allergens, legacy.Intolerances, legacy.Origins,
+                legacy.Ingredients, legacy.IngredientRevisions, legacy.RevisionNutrition,
+                legacy.RevisionAllergens, legacy.RevisionIntolerances, legacy.RevisionOrigins,
+                legacy.RevisionConversions, [], legacy.Variants, legacy.VariantNutrition,
+                legacy.VariantAllergens, legacy.VariantIntolerances, legacy.VariantOrigins,
+                legacy.VariantConversions, []);
+        }
         Payload payload = json.Deserialize<Payload>(JsonOptions)
             ?? throw new InvalidDataException("Catering reference data is empty.");
         if (typeof(Payload).GetProperties().Where(property => property.PropertyType != typeof(int))
@@ -265,32 +289,38 @@ public sealed class CampOfflineReferenceStore(CateringDbContext database)
     private static MasterData Map(IngredientIntoleranceDefinitionRecord x) => new(x.Id,null,x.Code,x.Name,x.Name.Trim().ToUpperInvariant(),x.Status,x.IsQuantityDependent);
     private static MasterData Map(IngredientOriginPropertyRecord x) => new(x.Id,null,x.Code,x.Name,x.Name.Trim().ToUpperInvariant(),x.Status,x.IsAnimalOrigin);
     private static IngredientIdentityData Map(IngredientIdentityRecord x) => new(x.Id,x.ScopeType,x.ScopeId,x.CurrentPublishedRevisionId,x.Status);
-    private static IngredientRevisionData Map(IngredientRevisionRecord x) => new(x.Id,x.IngredientId,x.RevisionNumber,x.State,x.Name,x.NormalizedName,x.CategoryId,x.BaseUnitId,x.AllergenReviewState,x.IntoleranceReviewState,x.OriginReviewState,x.RowVersion,x.CreatedAtUtc,x.CreatedBy,x.UpdatedAtUtc,x.UpdatedBy,x.PublishedAtUtc,x.PublishedBy);
-    private static IngredientRevisionRecord Map(IngredientRevisionData x) => new() { Id=x.Id,IngredientId=x.IngredientId,RevisionNumber=x.RevisionNumber,State=x.State,Name=x.Name,NormalizedName=x.NormalizedName,CategoryId=x.CategoryId,BaseUnitId=x.BaseUnitId,AllergenReviewState=x.AllergenReviewState,IntoleranceReviewState=x.IntoleranceReviewState,OriginReviewState=x.OriginReviewState,RowVersion=x.RowVersion,CreatedAtUtc=x.CreatedAtUtc,CreatedBy=x.CreatedBy,UpdatedAtUtc=x.UpdatedAtUtc,UpdatedBy=x.UpdatedBy,PublishedAtUtc=x.PublishedAtUtc,PublishedBy=x.PublishedBy };
+    private static IngredientRevisionData Map(IngredientRevisionRecord x) => new(x.Id,x.IngredientId,x.RevisionNumber,x.State,x.Name,x.NormalizedName,x.CategoryId,x.BaseUnitId,x.AllergenReviewState,x.IntoleranceReviewState,x.OriginReviewState,x.RowVersion,x.CreatedAtUtc,x.CreatedBy,x.UpdatedAtUtc,x.UpdatedBy,x.PublishedAtUtc,x.PublishedBy,x.SourceSummary);
+    private static IngredientRevisionRecord Map(IngredientRevisionData x) => new() { Id=x.Id,IngredientId=x.IngredientId,RevisionNumber=x.RevisionNumber,State=x.State,Name=x.Name,NormalizedName=x.NormalizedName,CategoryId=x.CategoryId,BaseUnitId=x.BaseUnitId,AllergenReviewState=x.AllergenReviewState,IntoleranceReviewState=x.IntoleranceReviewState,OriginReviewState=x.OriginReviewState,SourceSummary=x.SourceSummary,RowVersion=x.RowVersion,CreatedAtUtc=x.CreatedAtUtc,CreatedBy=x.CreatedBy,UpdatedAtUtc=x.UpdatedAtUtc,UpdatedBy=x.UpdatedBy,PublishedAtUtc=x.PublishedAtUtc,PublishedBy=x.PublishedBy };
     private static PropertyData Map(IngredientRevisionAllergenRecord x)=>new(x.IngredientRevisionId,x.AllergenId,x.State,x.Source,0);
     private static PropertyData Map(IngredientRevisionIntoleranceRecord x)=>new(x.IngredientRevisionId,x.IntoleranceId,x.State,x.Source,0);
     private static PropertyData Map(IngredientRevisionOriginRecord x)=>new(x.IngredientRevisionId,x.OriginPropertyId,x.State,x.Source,0);
     private static PropertyData Map(IngredientRevisionUnitConversionRecord x)=>new(x.IngredientRevisionId,x.SourceUnitId,x.Precision,0,x.FactorToBaseUnit);
+    private static SubstanceContentData Map(IngredientRevisionSubstanceContentRecord x)=>new(x.IngredientRevisionId,x.SubstanceId,x.Amount,x.AmountUnitId,x.ReferenceQuantity,x.ReferenceUnitId,x.SourceType,x.SourceReference,x.ReviewState);
     private static VariantData Map(IngredientVariantRevisionRecord x)=>new(x.Id,x.IngredientRevisionId,x.VariantKey,x.Name,x.NormalizedName,x.Status,x.SortOrder);
     private static IngredientVariantRevisionRecord Map(VariantData x)=>new(){Id=x.Id,IngredientRevisionId=x.IngredientRevisionId,VariantKey=x.Key,Name=x.Name,NormalizedName=x.NormalizedName,Status=x.Status,SortOrder=x.SortOrder};
     private static PropertyData Map(IngredientVariantAllergenOverrideRecord x)=>new(x.VariantRevisionId,x.AllergenId,x.State,x.Source,0);
     private static PropertyData Map(IngredientVariantIntoleranceOverrideRecord x)=>new(x.VariantRevisionId,x.IntoleranceId,x.State,x.Source,0);
     private static PropertyData Map(IngredientVariantOriginOverrideRecord x)=>new(x.VariantRevisionId,x.OriginPropertyId,x.State,x.Source,0);
     private static PropertyData Map(IngredientVariantUnitConversionOverrideRecord x)=>new(x.VariantRevisionId,x.SourceUnitId,x.Precision,0,x.FactorToBaseUnit);
+    private static SubstanceContentData Map(IngredientVariantSubstanceContentOverrideRecord x)=>new(x.VariantRevisionId,x.SubstanceId,x.Amount,x.AmountUnitId,x.ReferenceQuantity,x.ReferenceUnitId,x.SourceType,x.SourceReference,x.ReviewState);
     private static NutritionData Map(IngredientRevisionNutritionProfileRecord x)=>new(x.IngredientRevisionId,x.ReferenceQuantity,x.ReferenceUnitId,x.EnergyKilojoules,x.FatGrams,x.SaturatedFatGrams,x.CarbohydrateGrams,x.SugarsGrams,x.ProteinGrams,x.SaltGrams,x.FiberGrams,x.SourceType,x.SourceReference,x.ReviewState,x.ReferenceDate);
     private static NutritionData Map(IngredientVariantNutritionProfileRecord x)=>new(x.VariantRevisionId,x.ReferenceQuantity,x.ReferenceUnitId,x.EnergyKilojoules,x.FatGrams,x.SaturatedFatGrams,x.CarbohydrateGrams,x.SugarsGrams,x.ProteinGrams,x.SaltGrams,x.FiberGrams,x.SourceType,x.SourceReference,x.ReviewState,x.ReferenceDate);
     private static IngredientRevisionNutritionProfileRecord MapRevisionNutrition(NutritionData x)=>new(){IngredientRevisionId=x.OwnerId,ReferenceQuantity=x.ReferenceQuantity,ReferenceUnitId=x.ReferenceUnitId,EnergyKilojoules=x.EnergyKilojoules,FatGrams=x.FatGrams,SaturatedFatGrams=x.SaturatedFatGrams,CarbohydrateGrams=x.CarbohydrateGrams,SugarsGrams=x.SugarsGrams,ProteinGrams=x.ProteinGrams,SaltGrams=x.SaltGrams,FiberGrams=x.FiberGrams,SourceType=x.SourceType,SourceReference=x.SourceReference,ReviewState=x.ReviewState,ReferenceDate=x.ReferenceDate};
     private static IngredientVariantNutritionProfileRecord MapVariantNutrition(NutritionData x)=>new(){VariantRevisionId=x.OwnerId,ReferenceQuantity=x.ReferenceQuantity,ReferenceUnitId=x.ReferenceUnitId,EnergyKilojoules=x.EnergyKilojoules,FatGrams=x.FatGrams,SaturatedFatGrams=x.SaturatedFatGrams,CarbohydrateGrams=x.CarbohydrateGrams,SugarsGrams=x.SugarsGrams,ProteinGrams=x.ProteinGrams,SaltGrams=x.SaltGrams,FiberGrams=x.FiberGrams,SourceType=x.SourceType,SourceReference=x.SourceReference,ReviewState=x.ReviewState,ReferenceDate=x.ReferenceDate};
+    private static IngredientRevisionSubstanceContentRecord MapRevisionSubstanceContent(SubstanceContentData x)=>new(){IngredientRevisionId=x.OwnerId,SubstanceId=x.SubstanceId,Amount=x.Amount,AmountUnitId=x.AmountUnitId,ReferenceQuantity=x.ReferenceQuantity,ReferenceUnitId=x.ReferenceUnitId,SourceType=x.SourceType,SourceReference=x.SourceReference,ReviewState=x.ReviewState};
+    private static IngredientVariantSubstanceContentOverrideRecord MapVariantSubstanceContent(SubstanceContentData x)=>new(){VariantRevisionId=x.OwnerId,SubstanceId=x.SubstanceId,Amount=x.Amount,AmountUnitId=x.AmountUnitId,ReferenceQuantity=x.ReferenceQuantity,ReferenceUnitId=x.ReferenceUnitId,SourceType=x.SourceType,SourceReference=x.SourceReference,ReviewState=x.ReviewState};
 
-    private sealed record Payload(int SchemaVersion,IReadOnlyList<CampEntryData> Entries,IReadOnlyList<RecipeData> Recipes,IReadOnlyList<RecipeRevisionData> RecipeRevisions,IReadOnlyList<UnitData> Units,IReadOnlyList<MasterData> Categories,IReadOnlyList<MasterData> Allergens,IReadOnlyList<MasterData> Intolerances,IReadOnlyList<MasterData> Origins,IReadOnlyList<IngredientIdentityData> Ingredients,IReadOnlyList<IngredientRevisionData> IngredientRevisions,IReadOnlyList<NutritionData> RevisionNutrition,IReadOnlyList<PropertyData> RevisionAllergens,IReadOnlyList<PropertyData> RevisionIntolerances,IReadOnlyList<PropertyData> RevisionOrigins,IReadOnlyList<PropertyData> RevisionConversions,IReadOnlyList<VariantData> Variants,IReadOnlyList<NutritionData> VariantNutrition,IReadOnlyList<PropertyData> VariantAllergens,IReadOnlyList<PropertyData> VariantIntolerances,IReadOnlyList<PropertyData> VariantOrigins,IReadOnlyList<PropertyData> VariantConversions);
+    private sealed record Payload(int SchemaVersion,IReadOnlyList<CampEntryData> Entries,IReadOnlyList<RecipeData> Recipes,IReadOnlyList<RecipeRevisionData> RecipeRevisions,IReadOnlyList<UnitData> Units,IReadOnlyList<MasterData> Categories,IReadOnlyList<MasterData> Allergens,IReadOnlyList<MasterData> Intolerances,IReadOnlyList<MasterData> Origins,IReadOnlyList<IngredientIdentityData> Ingredients,IReadOnlyList<IngredientRevisionData> IngredientRevisions,IReadOnlyList<NutritionData> RevisionNutrition,IReadOnlyList<PropertyData> RevisionAllergens,IReadOnlyList<PropertyData> RevisionIntolerances,IReadOnlyList<PropertyData> RevisionOrigins,IReadOnlyList<PropertyData> RevisionConversions,IReadOnlyList<SubstanceContentData> RevisionSubstanceContents,IReadOnlyList<VariantData> Variants,IReadOnlyList<NutritionData> VariantNutrition,IReadOnlyList<PropertyData> VariantAllergens,IReadOnlyList<PropertyData> VariantIntolerances,IReadOnlyList<PropertyData> VariantOrigins,IReadOnlyList<PropertyData> VariantConversions,IReadOnlyList<SubstanceContentData> VariantSubstanceContents);
+    private sealed record LegacyPayload(int SchemaVersion,IReadOnlyList<CampEntryData> Entries,IReadOnlyList<RecipeData> Recipes,IReadOnlyList<RecipeRevisionData> RecipeRevisions,IReadOnlyList<UnitData> Units,IReadOnlyList<MasterData> Categories,IReadOnlyList<MasterData> Allergens,IReadOnlyList<MasterData> Intolerances,IReadOnlyList<MasterData> Origins,IReadOnlyList<IngredientIdentityData> Ingredients,IReadOnlyList<IngredientRevisionData> IngredientRevisions,IReadOnlyList<NutritionData> RevisionNutrition,IReadOnlyList<PropertyData> RevisionAllergens,IReadOnlyList<PropertyData> RevisionIntolerances,IReadOnlyList<PropertyData> RevisionOrigins,IReadOnlyList<PropertyData> RevisionConversions,IReadOnlyList<VariantData> Variants,IReadOnlyList<NutritionData> VariantNutrition,IReadOnlyList<PropertyData> VariantAllergens,IReadOnlyList<PropertyData> VariantIntolerances,IReadOnlyList<PropertyData> VariantOrigins,IReadOnlyList<PropertyData> VariantConversions);
     private sealed record CampEntryData(Guid Id,Guid CampId,Guid RevisionId,Guid CreatedBy,DateTimeOffset CreatedAtUtc,Guid UpdatedBy,DateTimeOffset UpdatedAtUtc);
     private sealed record RecipeData(Guid Id,int ScopeType,Guid? ScopeId,string Name,string NormalizedName,int Status,int RecipeType,string? Description,string? Source,string? InternalNotes,decimal? ReferenceServings,Guid? AuthoringStageId,string? AuthoringStageName,decimal? AuthoringStageFactor,decimal? ReferenceQuantity,Guid? ReferenceUnitId,bool? DefaultAgeGroupScalingApplies,long DraftVersion,Guid CreatedBy,DateTimeOffset CreatedAtUtc,Guid UpdatedBy,DateTimeOffset UpdatedAtUtc);
     private sealed record RecipeRevisionData(Guid Id,Guid RecipeId,int RevisionNumber,DateTimeOffset PublishedAtUtc,Guid PublishedBy,string? ChangeNote,int SnapshotSchemaVersion,string SnapshotJson);
     private sealed record UnitData(Guid Id,string Name,string Symbol,int Dimension,decimal BaseUnitFactor);
     private sealed record MasterData(Guid Id,Guid? ParentId,string Code,string Name,string NormalizedName,int Status,bool Flag);
     private sealed record IngredientIdentityData(Guid Id,int ScopeType,Guid? ScopeId,Guid? CurrentPublishedRevisionId,int Status);
-    private sealed record IngredientRevisionData(Guid Id,Guid IngredientId,int RevisionNumber,int State,string Name,string NormalizedName,Guid CategoryId,Guid BaseUnitId,int AllergenReviewState,int IntoleranceReviewState,int OriginReviewState,long RowVersion,DateTimeOffset CreatedAtUtc,Guid CreatedBy,DateTimeOffset UpdatedAtUtc,Guid UpdatedBy,DateTimeOffset? PublishedAtUtc,Guid? PublishedBy);
+    private sealed record IngredientRevisionData(Guid Id,Guid IngredientId,int RevisionNumber,int State,string Name,string NormalizedName,Guid CategoryId,Guid BaseUnitId,int AllergenReviewState,int IntoleranceReviewState,int OriginReviewState,long RowVersion,DateTimeOffset CreatedAtUtc,Guid CreatedBy,DateTimeOffset UpdatedAtUtc,Guid UpdatedBy,DateTimeOffset? PublishedAtUtc,Guid? PublishedBy,string SourceSummary = "");
     private sealed record NutritionData(Guid OwnerId,decimal ReferenceQuantity,Guid ReferenceUnitId,decimal? EnergyKilojoules,decimal? FatGrams,decimal? SaturatedFatGrams,decimal? CarbohydrateGrams,decimal? SugarsGrams,decimal? ProteinGrams,decimal? SaltGrams,decimal? FiberGrams,int SourceType,string SourceReference,int ReviewState,DateOnly? ReferenceDate);
     private sealed record PropertyData(Guid OwnerId,Guid DefinitionId,int State,int Source,decimal Factor);
+    private sealed record SubstanceContentData(Guid OwnerId,Guid SubstanceId,decimal Amount,Guid AmountUnitId,decimal ReferenceQuantity,Guid ReferenceUnitId,int SourceType,string SourceReference,int ReviewState);
     private sealed record VariantData(Guid Id,Guid IngredientRevisionId,string Key,string Name,string NormalizedName,int Status,int SortOrder);
 }
