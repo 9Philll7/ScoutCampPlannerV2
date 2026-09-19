@@ -179,6 +179,39 @@ export interface IngredientRevisionMutationResponse {
   rowVersion: number;
 }
 
+export interface IngredientSuggestionNutrition {
+  energyKilojoules: number | null;
+  fatGrams: number | null;
+  saturatedFatGrams: number | null;
+  carbohydrateGrams: number | null;
+  sugarsGrams: number | null;
+  proteinGrams: number | null;
+  saltGrams: number | null;
+  fiberGrams: number | null;
+}
+
+export interface IngredientSuggestionSubstance {
+  code: string;
+  amountGrams: number;
+}
+
+export interface IngredientDataSuggestion {
+  provider: string;
+  sourceKey: string;
+  name: string;
+  referenceQuantity: number;
+  referenceUnitSymbol: string;
+  sourceSummary: string;
+  nutrition: IngredientSuggestionNutrition;
+  substanceContents: IngredientSuggestionSubstance[];
+}
+
+export interface IngredientSuggestionSearchResult {
+  isAvailable: boolean;
+  unavailableReason: string | null;
+  suggestions: IngredientDataSuggestion[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class IngredientRevisionApiService {
   private readonly http = inject(HttpClient);
@@ -188,6 +221,12 @@ export class IngredientRevisionApiService {
   getReferenceData() {
     return this.http.get<IngredientEditorReferenceData>(
       `${this.baseUrl}/api/ingredient-reference-data`, this.options);
+  }
+
+  searchSuggestions(provider: string, query: string) {
+    return this.http.get<IngredientSuggestionSearchResult>(
+      `${this.baseUrl}/api/ingredient-suggestions/${encodeURIComponent(provider)}`,
+      { ...this.options, params: { query } });
   }
 
   listCamp(campId: string) {

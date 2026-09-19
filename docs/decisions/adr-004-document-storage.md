@@ -1,5 +1,9 @@
 # ADR-004 Document Storage
 
+## Status
+
+Accepted
+
 ## Decision
 
 Attachments are not stored directly in ScoutCampPlanner.

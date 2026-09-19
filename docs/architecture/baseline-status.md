@@ -1,6 +1,8 @@
 # Architecture Baseline Status
 
-Evaluation date: 2026-08-08
+Architecture-spike evaluation: 2026-08-08
+
+Last product-status review: 2026-09-19
 
 ## Current state
 
@@ -45,7 +47,11 @@ The following decisions are required before the affected areas are production-re
 - retention, archival, deletion, and anonymisation rules for personal and health data
 - a stable API Problem Details contract
 - clean-machine installer/removal, normal desktop shutdown, minimum-hardware validation, and the Windows 10 compatibility smoke check defined by ADR-013
-- remediation of the recorded Angular development-server dependency advisory when a compatible patched release is available
+
+The earlier Angular development-server advisory recorded by the spike is no
+longer present in the installed dependency tree; `npm audit` reported no known
+vulnerabilities on 2026-09-19. Dependency auditing remains a recurring release
+check rather than a closed architectural guarantee.
 
 ADR-007 records the architecture risks and required validation without pre-deciding their solutions.
 
@@ -53,4 +59,8 @@ ADR-007 records the architecture risks and required validation without pre-decid
 
 Before implementing health data or other sensitive workflows, resolve the remaining security, authorization, and privacy decisions in ADR-007. Authentication modes are defined by ADR-009 and the production database migration strategy by ADR-008.
 
-Tenant authentication and the first basic Camp workflow are now implemented: an authorized tenant user can create a named and dated camp, explicitly assign at least one active tenant member as `CampAdmin`, see only camps granted through an active camp membership, and change name or period with `camp.edit`. The Camp structure is a neutral tree that supports both freely varying depth and an administrator-defined, named maximum depth while still allowing new nodes. Creating, constrained deletion, and rule-compliant movement of structure branches are implemented. Tenant stage templates, stable camp copies, anonymous `KiJu` and `Leiter` estimates per stage and leaf node, and derived planning totals are implemented. Catering owns tenant food factors, stable camp-specific copies, weighted food-planning totals, and a configurable daily meal schedule with deliberate activation per camp day. Recipes are not assigned yet. Personalized participant and health data remain out of scope. Cooking-unit assignment belongs to Catering and is not part of the Camp structure. Finance, Program, Material, and expanded participant/health functionality should follow as separate increments.
+Tenant authentication and the first basic Camp workflow are now implemented: an authorized tenant user can create a named and dated camp, explicitly assign at least one active tenant member as `CampAdmin`, see only camps granted through an active camp membership, and change name or period with `camp.edit`. The Camp structure is a neutral tree that supports both freely varying depth and an administrator-defined, named maximum depth while still allowing new nodes. Creating, constrained deletion, and rule-compliant movement of structure branches are implemented. Tenant stage templates, stable camp copies, anonymous `KiJu` and `Leiter` estimates per stage and leaf node, and derived planning totals are implemented. Catering owns tenant food factors, stable camp-specific copies, weighted food-planning totals, and a configurable daily meal schedule with deliberate activation per camp day.
+
+The recipe and ingredient foundation is also implemented: scoped recipe libraries, draft and publication workflows, immutable revisions, ingredient groups and positions, position-specific replacements, publication conflict feedback, revision updates, nutrition profiles and recipe nutrition estimates, revisioned central/tenant/camp ingredients, variants, conversions, central contribution/replacement workflows, and immutable recipe/ingredient reference closure in camp packages. The current uncommitted increment adds local BLS-4.0 suggestions for explicitly selected nutrition and quantitative substance estimates; Open Food Facts remains optional future work.
+
+The next functional gap is the actual meal-planning workflow: recipes are not yet assigned to dated camp meals, cooking units do not yet exist, and runtime selection of ingredient variants or replacement rules for concrete participant requirements is not implemented. Personalized participant and health data remain out of scope until the privacy and package-security decisions are production-ready. Finance, Program, Material, and expanded participant/health functionality remain later separate increments.

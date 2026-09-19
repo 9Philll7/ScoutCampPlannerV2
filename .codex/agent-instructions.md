@@ -30,6 +30,10 @@ docs/ - architecture/ - domain/ - decisions/
 
 Diese Dokumente haben Vorrang gegenüber Annahmen aus Chatverläufen.
 
+Für den kompakten Einstieg in eine neue Planungsphase dient
+`.codex/CHATGPT_PROJECT_BRIEF.md`. Diese Übergabe fasst den Arbeitsstand und
+offene Phasen zusammen, ersetzt aber keine ADR- oder Domänenentscheidung.
+
 Wenn eine neue Idee bestehenden Entscheidungen widerspricht:
 
 1.  Widerspruch benennen

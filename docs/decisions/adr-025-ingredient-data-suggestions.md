@@ -103,6 +103,37 @@ Die BLS-4.0-Daten werden vom Max Rubner-Institut unter CC BY 4.0 bereitgestellt.
 - Vor der Open-Food-Facts-Produktivfreigabe sind Lizenzdarstellung,
   Exporthinweise und Cache-Regeln gesondert zu verifizieren.
 
+## Umsetzungsstand
+
+Der erste lokale BLS-Schritt ist umgesetzt:
+
+- Ein Generator erzeugt aus der vollständigen BLS-4.0-CSV einen kompakten,
+  ignorierten JSON-Suchindex. Dieser Index ist kein Bestandteil der
+  fachlichen Datenbank und erzeugt keine Zutaten.
+- Die authentifizierte Suggestion-API greift über einen providerunabhängigen
+  Application-Contract auf den read-only BLS-Adapter zu.
+- Der Zutateneditor startet die Suche nur durch eine bewusste Aktion. Er
+  übernimmt Nährwerte und Stoffgehalte getrennt und ausschließlich in einen
+  Entwurf.
+- Vorhandene Werte werden nur durch tatsächlich gelieferte Werte ersetzt;
+  fehlende BLS-Werte bleiben unverändert beziehungsweise unbekannt.
+- Die BLS-Bezugsbasis `100 g` darf nur für Zutaten mit gewichtsbasierten
+  Basiseinheiten übernommen werden. Für Volumen und Stück wäre ohne Dichte
+  beziehungsweise Stückgewicht keine belastbare Umrechnung möglich.
+- Übernommene Werte werden ungeprüft und als Schätzung markiert. Die
+  revisionsweite Quellenzusammenfassung enthält BLS-Version, Institut und
+  BLS-Code.
+- Der Editor zeigt die Quellenzusammenfassung als erweiterbare Liste. Das
+  bestehende revisionsweite Textfeld bleibt das kompatible Persistenzformat;
+  die Listeneinträge werden darin zeilenweise gespeichert. Automatisch
+  ergänzte Quellen werden normalisiert verglichen und nicht mehrfach
+  eingetragen.
+- BLS 4.0 liefert in der verwendeten Datei Werte für Laktose, Fruktose,
+  Sorbit, Mannit und Xylit. Fehlende Fruktan-, Galaktan- oder sonstige
+  Polyolwerte werden nicht abgeleitet.
+
+Die optionale Open-Food-Facts-Suche ist noch nicht implementiert.
+
 ## Nicht entschieden
 
 - Medizinische Grenzwerte oder individuelle Toleranzen

@@ -13,7 +13,7 @@ It contains:
 - `payload.json`: manifest and module payloads
 - `payload.sha256`: uppercase hexadecimal SHA-256 checksum of the exact payload bytes
 
-The checksum detects accidental or malicious modification but does not authenticate the sender. Signing and encryption remain product decisions.
+The checksum detects accidental or malicious modification but does not authenticate the sender. Package version 1 is therefore unsuitable for sensitive data. ADR-012 defines and the security spike validates the protection direction for version 2, but productive encryption, signatures, serialization and migration are not implemented yet.
 
 ## Manifest
 

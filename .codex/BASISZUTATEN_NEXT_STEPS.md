@@ -1,5 +1,12 @@
 # Basiszutaten – Übergabe und nächste Schritte
 
+> **Historischer Implementierungsverlauf:** Diese Datei dokumentiert die
+> schrittweise Entstehung der revisionsfähigen Basiszutaten und enthält deshalb
+> inzwischen erledigte oder überholte „noch offen“-Punkte. Sie ist kein
+> aktueller Backlog. Für neue Planungsphasen ist
+> [`CHATGPT_PROJECT_BRIEF.md`](CHATGPT_PROJECT_BRIEF.md) maßgeblich; fachliche
+> Regeln stehen weiterhin in den verlinkten ADRs und Domänendokumenten.
+
 ## Zweck
 
 Diese Datei dient als Arbeitsübergabe für die weitere Implementierung auf einem anderen Gerät oder in einem neuen Codex-Chat.
@@ -21,7 +28,7 @@ Die Repository-Dokumentation hat Vorrang vor dieser Übergabe und vor früheren 
 
 ## Aktueller Implementierungsstand
 
-### Externe Vorschläge für Zutaten, als Nächstes
+### Externe Vorschläge für Zutaten
 
 - ADR-025 verwirft den begonnenen BLS-Katalogimport.
 - BLS 4.0 wird als vollständige read-only Suchquelle außerhalb der fachlichen
@@ -34,10 +41,20 @@ Die Repository-Dokumentation hat Vorrang vor dieser Übergabe und vor früheren 
   Schätzungen und lösen weder Review noch Veröffentlichung aus.
 - Quellen werden für die gesamte Zutatenrevision zusammengefasst und nicht an
   jedem Nährwert- oder Inhaltsstofffeld wiederholt.
-- Nächster technischer Schritt: revisionsweite Quellenmetadaten, danach der
-  providerunabhängige Suggestion-Contract und zuerst der lokale BLS-Adapter.
+- Revisionsweite Quellenmetadaten, providerunabhängiger Suggestion-Contract,
+  lokaler BLS-Adapter, explizite Suche im Zutateneditor sowie die getrennte
+  Übernahme von Nährwerten und Stoffgehalten sind umgesetzt.
+- Der BLS-Suchindex wird mit `tools/New-BlsSuggestionIndex.ps1` lokal aus der
+  offiziellen CSV erzeugt und nicht eingecheckt. Die API bleibt ohne Index
+  funktionsfähig.
+- BLS-Werte pro 100 g können nur auf gewichtsbasierten Zutaten übernommen
+  werden. Fehlende Werte werden nicht erfunden; alle Übernahmen sind
+  ungeprüfte Schätzungen.
+- Als nächster externer Quellenbaustein bleibt Open Food Facts offen. Vorher
+  müssen ODbL-Attribution, Share-Alike, Cache-Regeln und die dokumentierten
+  API-Limits verbindlich umgesetzt werden.
 
-### Aktuelles Integrationsinkrement, noch zu committen
+### Historisches Integrationsinkrement (inzwischen umgesetzt)
 
 - Veröffentlichte Mandanten- und Lagerrevisionen können direkt zur zentralen
   Prüfung eingereicht werden.
@@ -57,7 +74,10 @@ Die Repository-Dokumentation hat Vorrang vor dieser Übergabe und vor früheren 
   unveränderte lokale Ausgangsidentität automatisch abgelöst. Neuere lokale
   Revisionen oder Entwürfe verhindern diese automatische Archivierung.
 - SQLite- und PostgreSQL-Migrationen sowie Persistenztests sind enthalten.
-- Noch offen bleibt der Transport revisionsfähiger Zutaten im Lagerpaket.
+- Veröffentlichte, von Lagerrezepten transitiv benötigte Zutatenrevisionen
+  werden inzwischen als unveränderliche Referenzdaten im Lagerpaket
+  transportiert. Veränderliche lagerlokale Rezept- und Zutatenarbeitsstände
+  bleiben ein getrenntes Paketinkrement.
 
 ### Bereits committet
 
@@ -115,7 +135,7 @@ ff827d5 feat: Revisionsmodell für Basiszutaten einführen
 6fd2d5e feat: Eigenschaften und Varianten für Zutatenrevisionen ergänzen
 ```
 
-### Derzeit im Working Tree, noch zu committen
+### Historisches drittes Domain-Inkrement (inzwischen umgesetzt)
 
 Das dritte Domain-Inkrement enthält:
 
@@ -144,7 +164,7 @@ Empfohlene Commit-Message:
 feat: Eignungsprüfung und Publish-Validierung für Basiszutaten ergänzen
 ```
 
-## Nächste Arbeitsschritte
+## Historischer Implementierungsplan
 
 ### Herkunftseingabe im Revisionseditor
 
@@ -205,7 +225,7 @@ Alle drei Eigenschaftsgruppen müssen vor Publish als `Reviewed` markiert sein. 
 
 ### 3. Zentrale Updates und Drei-Wege-Merge
 
-Teilweise umgesetzt:
+Umgesetzt, mit möglichen späteren Verfeinerungen:
 
 - zuletzt berücksichtigte zentrale Revision je lokalem Stand über `MergedCentralRevisionId`
 - Erkennung einer neueren zentralen veröffentlichten Revision
@@ -214,9 +234,8 @@ Teilweise umgesetzt:
 - Konfliktpfade bei überlappenden Änderungen
 - veröffentlichte lokale Revision wird nicht verändert
 
-Noch offen:
+Mögliche spätere Verfeinerungen:
 
-- Umrechnungen in Diff und Merge aufnehmen, sobald sie revisionsgebunden modelliert sind
 - Workflow für einen bereits vorhandenen lokalen Draft festlegen; aktuell wird nur von einer veröffentlichten lokalen Revision in einen neuen Draft gemerged
 - Varianten werden derzeit auf Ebene des gesamten `variant_key` verglichen; bei Bedarf später feinere Konfliktpfade für Name und einzelne Overrides ergänzen
 
@@ -247,7 +266,7 @@ Providerunabhängiges Mapping umgesetzt:
 - Datenbankregel für höchstens einen Draft je Zutatenidentität
 - SQLite-Roundtrip-Test des vollständigen Graphen
 
-Noch offen:
+Status und offene Punkte:
 
 - unveränderliche Published-Graphen zusätzlich auf Persistenzebene schützen
 
@@ -321,11 +340,8 @@ flacher Grundkatalog mit 18 Zutatenkategorien und stabilen IDs/Codes wird für
 SQLite und PostgreSQL angelegt. Die optionale Elternbeziehung bleibt für eine
 spätere Hierarchisierung erhalten.
 
-Noch offen:
-
-- fachliche Festlegung, welche Unverträglichkeitsauslöser als
-  mengenabhängig markiert werden; bis dahin bleibt der dokumentierte
-  Schema-Standard `false`
+Die mengenabhängigen Unverträglichkeitsstoffe und ihre Trennung von
+qualitativen Angaben sind inzwischen durch ADR-026 festgelegt und umgesetzt.
 
 Seeds benötigen stabile, zwischen PostgreSQL, SQLite und Lagerpaketen identische IDs und Codes.
 
@@ -403,7 +419,7 @@ Umgesetzt:
 - Innerhalb einer Rezeptgruppe darf dieselbe Zutatenrevision nur einmal
   vorkommen.
 
-Noch offen:
+Status und offene Punkte:
 
 - Unterrezepte und Ersatzrezepte in der Oberfläche
 - Positionsbezogene Ersatzzutaten sind im Lager-Rezepteditor umgesetzt:
@@ -484,7 +500,7 @@ Keine medizinischen Bewertungen oder automatischen Ernährungsampeln einführen.
 - Rezeptpositionen referenzieren Zutatenrevisionen, aber keine Variante. Die
   Variantenauswahl ist gemäß ADR-023 Aufgabe der späteren Verpflegungsplanung.
 - `Guid.NewGuid()` wird derzeit beim Kopieren von Varianten in einen neuen Draft verwendet. Vor Persistenzintegration prüfen, ob IDs durch den Application Layer bereitgestellt werden sollen, damit Erzeugung und Tests vollständig deterministisch bleiben.
-- Der vollständige Drei-Wege-Merge und `merged_central_revision_id` sind noch nicht implementiert.
+- Der Drei-Wege-Merge und `MergedCentralRevisionId` sind inzwischen implementiert. Als mögliche spätere Verfeinerung bleiben feldgenauere Konfliktpfade innerhalb einzelner Varianten.
 - Allgemeine Einheiten, revisionsgebundene Zutatenumrechnungen sowie
   Eigenschafts- und Einheiten-Overrides von Varianten sind in das neue
   Revisionsmodell und den Editor überführt.

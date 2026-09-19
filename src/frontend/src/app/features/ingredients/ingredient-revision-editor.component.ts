@@ -17,6 +17,7 @@ import {
   CentralIngredientCandidate,
   IngredientCentralContribution,
   IngredientConversionPrecision,
+  IngredientDataSuggestion,
   IngredientNutritionProfileItem,
   IngredientNutritionReviewState,
   IngredientNutritionSourceType,
@@ -179,15 +180,104 @@ import { IngredientNutritionEditorComponent } from './ingredient-nutrition-edito
               <h4>Quellen und Schätzgrundlage</h4>
               <p>Eine gemeinsame Angabe für die gesamte Zutat. Referenzwerte bleiben Schätzungen, auch nachdem sie geprüft wurden.</p>
             </div>
-            <mat-form-field appearance="outline" subscriptSizing="dynamic">
-              <mat-label>Quellenzusammenfassung</mat-label>
-              <textarea matInput rows="2" maxlength="2000" [(ngModel)]="revision.sourceSummary"
-                name="revisionSourceSummary" (ngModelChange)="synchronizeSourceSummary(revision)"
-                [disabled]="revision.state === publishedState || disabled()"
-                placeholder="z. B. BLS 4.0, Code …; Herstelleretikett vom …"></textarea>
-              <mat-hint>Erforderlich, sobald Nährwerte oder Stoffgehalte hinterlegt sind.</mat-hint>
-            </mat-form-field>
+            <div class="source-entry-list">
+              @for (source of sourceEntries(); track $index; let index = $index) {
+                <div class="source-entry-row">
+                  <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                    <mat-label>Quelle {{ index + 1 }}</mat-label>
+                    <input matInput [ngModel]="source"
+                      (ngModelChange)="setSourceEntry(revision, index, $event)"
+                      [name]="'revisionSource' + index" maxlength="500"
+                      [disabled]="revision.state === publishedState || disabled()">
+                  </mat-form-field>
+                  @if (revision.state === draftState && !disabled()) {
+                    <button matIconButton type="button" aria-label="Quelle entfernen"
+                      (click)="removeSourceEntry(revision, index)">
+                      <scp-action-icon name="remove"/>
+                    </button>
+                  }
+                </div>
+              } @empty {
+                <p class="source-entry-empty">Noch keine Quelle erfasst.</p>
+              }
+              @if (revision.state === draftState && !disabled()) {
+                <div class="source-entry-add">
+                  <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                    <mat-label>Weitere Quelle</mat-label>
+                    <input matInput [ngModel]="newSourceEntry()"
+                      (ngModelChange)="newSourceEntry.set($event)" name="newRevisionSource"
+                      maxlength="500" placeholder="z. B. Herstelleretikett vom …"
+                      (keydown.enter)="$event.preventDefault(); addSourceEntry(revision)">
+                  </mat-form-field>
+                  <button matButton type="button" (click)="addSourceEntry(revision)"
+                    [disabled]="!newSourceEntry().trim()">
+                    <scp-action-icon name="add"/>Quelle ergänzen
+                  </button>
+                </div>
+              }
+              <small>Mindestens eine Quelle ist erforderlich, sobald Nährwerte oder Stoffgehalte hinterlegt sind.</small>
+            </div>
           </section>
+          @if (revision.state === draftState && !disabled()) {
+            <section class="ingredient-suggestions">
+              <div class="suggestion-heading">
+                <div>
+                  <h4>Referenzwerte vorschlagen</h4>
+                  <p>Suche bewusst im BLS 4.0. Treffer sind Schätzgrundlagen und werden erst nach deiner Auswahl in diesen Entwurf übernommen.</p>
+                </div>
+                <span class="suggestion-badge">BLS 4.0</span>
+              </div>
+              <div class="suggestion-search">
+                <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                  <mat-label>Lebensmittel suchen</mat-label>
+                  <input matInput [ngModel]="suggestionQuery()"
+                    (ngModelChange)="suggestionQuery.set($event)" name="ingredientSuggestionQuery"
+                    maxlength="100" autocomplete="off"
+                    (keydown.enter)="$event.preventDefault(); searchSuggestions()"
+                    placeholder="z. B. Vollmilch oder Reis">
+                </mat-form-field>
+                <button matButton="filled" type="button" (click)="searchSuggestions()"
+                  [disabled]="suggestionLoading() || suggestionQuery().trim().length < 2">
+                  Suchen
+                </button>
+              </div>
+              @if (!canApplyBlsSuggestion(revision)) {
+                <p class="suggestion-warning">BLS-Werte beziehen sich auf 100 g. Eine Übernahme ist daher nur bei einer Basiseinheit aus der Gewichtsklasse möglich.</p>
+              }
+              @if (suggestionLoading()) {
+                <div class="suggestion-loading"><mat-spinner diameter="22"/><span>Referenzwerte werden gesucht …</span></div>
+              }
+              @if (suggestionError()) {
+                <p class="suggestion-warning" role="alert">{{ suggestionError() }}</p>
+              }
+              @for (suggestion of suggestionResults(); track suggestion.sourceKey) {
+                <article class="suggestion-result">
+                  <div class="suggestion-result-heading">
+                    <div><strong>{{ suggestion.name }}</strong><small>BLS-Code {{ suggestion.sourceKey }} · Werte pro 100 g</small></div>
+                    <div class="suggestion-actions">
+                      <button matButton type="button" (click)="applySuggestionNutrition(revision, suggestion)"
+                        [disabled]="!canApplyBlsSuggestion(revision) || !hasSuggestedNutrition(suggestion)">
+                        Nährwerte übernehmen
+                      </button>
+                      <button matButton type="button" (click)="applySuggestionSubstances(revision, suggestion)"
+                        [disabled]="!canApplyBlsSuggestion(revision) || !suggestion.substanceContents.length">
+                        Stoffgehalte übernehmen
+                      </button>
+                    </div>
+                  </div>
+                  <p class="suggestion-values">{{ suggestionNutritionSummary(suggestion) }}</p>
+                  @if (suggestion.substanceContents.length) {
+                    <p class="suggestion-values">Inhaltsstoffe: {{ suggestionSubstanceSummary(suggestion) }}</p>
+                  }
+                </article>
+              } @empty {
+                @if (suggestionSearched() && !suggestionLoading() && !suggestionError()) {
+                  <p class="suggestion-empty">Keine passenden BLS-Einträge gefunden.</p>
+                }
+              }
+              <p class="suggestion-disclaimer">Die übernommenen Daten bleiben ungeprüfte Schätzwerte. Bezeichnung und Verarbeitung können vom konkreten Produkt abweichen.</p>
+            </section>
+          }
           <section class="unit-conversions">
             <div class="unit-conversion-heading">
               <div>
@@ -523,19 +613,23 @@ import { IngredientNutritionEditorComponent } from './ingredient-nutrition-edito
                       <div class="form-grid">
                         <mat-form-field appearance="outline"><mat-label>Menge</mat-label>
                           <input matInput type="number" min="0" step="0.001" [(ngModel)]="content.amount"
+                            [name]="'substanceAmount' + property.id"
                             [disabled]="revision.state === publishedState || disabled()">
                         </mat-form-field>
                         <mat-form-field appearance="outline"><mat-label>Einheit</mat-label>
-                          <mat-select [(ngModel)]="content.amountUnitId" [disabled]="revision.state === publishedState || disabled()">
+                          <mat-select [(ngModel)]="content.amountUnitId" [name]="'substanceAmountUnit' + property.id"
+                            [disabled]="revision.state === publishedState || disabled()">
                             @for (unit of substanceAmountUnits(); track unit.id) { <mat-option [value]="unit.id">{{ unit.symbol }}</mat-option> }
                           </mat-select>
                         </mat-form-field>
                         <mat-form-field appearance="outline"><mat-label>Bezugsmenge</mat-label>
                           <input matInput type="number" min="0.001" step="0.001" [(ngModel)]="content.referenceQuantity"
+                            [name]="'substanceReferenceQuantity' + property.id"
                             [disabled]="revision.state === publishedState || disabled()">
                         </mat-form-field>
                         <mat-form-field appearance="outline"><mat-label>Bezugseinheit</mat-label>
-                          <mat-select [(ngModel)]="content.referenceUnitId" [disabled]="revision.state === publishedState || disabled()">
+                          <mat-select [(ngModel)]="content.referenceUnitId" [name]="'substanceReferenceUnit' + property.id"
+                            [disabled]="revision.state === publishedState || disabled()">
                             @for (unit of substanceReferenceUnits(revision); track unit.id) { <mat-option [value]="unit.id">{{ unit.symbol }}</mat-option> }
                           </mat-select>
                         </mat-form-field>
@@ -656,7 +750,7 @@ import { IngredientNutritionEditorComponent } from './ingredient-nutrition-edito
     .revision-list-item span:first-child { display: grid; gap: .15rem; } .revision-list-item small { color: #667168; }
     .revision-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; padding: 1rem;
       border: 1px solid #cddbcc; border-radius: .8rem; background: #f5faf4; }
-    .revision-form h4, .revision-form .revision-editor-heading, .ingredient-source-summary, .unit-conversions, .nutrition-profile, .ingredient-variants, .property-groups, .revision-hint, .revision-actions { grid-column: 1 / -1; }
+    .revision-form h4, .revision-form .revision-editor-heading, .ingredient-source-summary, .ingredient-suggestions, .unit-conversions, .nutrition-profile, .ingredient-variants, .property-groups, .revision-hint, .revision-actions { grid-column: 1 / -1; }
     .revision-form mat-form-field:first-of-type { grid-column: 1 / -1; }
     .property-groups { display: grid; gap: .65rem; }
     .unit-conversions { display: grid; gap: .65rem; padding: .85rem; border: 1px solid #d7e1d5;
@@ -668,6 +762,28 @@ import { IngredientNutritionEditorComponent } from './ingredient-nutrition-edito
       border-radius: .65rem; background: #fff; }
     .ingredient-source-summary h4, .ingredient-source-summary p { margin: 0; }
     .ingredient-source-summary p { margin-top: .2rem; color: #667168; font-size: .85rem; }
+    .source-entry-list { display: grid; gap: .55rem; }
+    .source-entry-row, .source-entry-add { display: grid; grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center; gap: .4rem; }
+    .source-entry-empty, .source-entry-list small { color: #667168; font-size: .82rem; }
+    .ingredient-suggestions { display: grid; gap: .7rem; padding: .85rem; border: 1px solid #d7e1d5;
+      border-radius: .65rem; background: #fff; }
+    .suggestion-heading, .suggestion-result-heading { display: flex; align-items: flex-start;
+      justify-content: space-between; gap: 1rem; }
+    .suggestion-heading p, .suggestion-values, .suggestion-empty, .suggestion-disclaimer {
+      color: #667168; font-size: .84rem; }
+    .suggestion-badge { padding: .25rem .55rem; border-radius: 999px; background: #e8f1e7;
+      color: #31543a; font-size: .78rem; font-weight: 700; white-space: nowrap; }
+    .suggestion-search { display: grid; grid-template-columns: minmax(14rem, 1fr) auto; align-items: center; gap: .6rem; }
+    .suggestion-loading { display: flex; align-items: center; gap: .55rem; color: #667168; }
+    .suggestion-warning { padding: .55rem .7rem; border-radius: .5rem; background: #fff5df;
+      color: #725416; font-size: .84rem; }
+    .suggestion-result { display: grid; gap: .4rem; padding: .7rem; border: 1px solid #e0e7de;
+      border-radius: .6rem; background: #f8faf7; }
+    .suggestion-result-heading > div:first-child { display: grid; gap: .15rem; }
+    .suggestion-result-heading small { color: #667168; }
+    .suggestion-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .35rem; }
+    .suggestion-disclaimer { padding-top: .55rem; border-top: 1px solid #e1e8df; }
     .ingredient-variants { display: grid; gap: .65rem; padding: .85rem; border: 1px solid #d7e1d5;
       border-radius: .65rem; background: #fff; }
     .unit-conversion-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
@@ -747,6 +863,11 @@ import { IngredientNutritionEditorComponent } from './ingredient-nutrition-edito
       .variant-header mat-form-field, .variant-override-grid .property-row { grid-column: 1 / -1; }
       .variant-conversion-row { grid-template-columns: 1fr auto; }
       .variant-conversion-row mat-checkbox, .variant-conversion-row .variant-inherited-value { grid-column: 1 / -1; } }
+    @media (max-width: 560px) { .suggestion-search { grid-template-columns: 1fr; }
+      .suggestion-heading, .suggestion-result-heading { flex-direction: column; }
+      .suggestion-actions { justify-content: flex-start; }
+      .ingredient-source-summary { grid-template-columns: 1fr; }
+      .source-entry-add { grid-template-columns: 1fr; } }
     @media (max-width: 480px) { .property-row { grid-template-columns: 1fr; } }
   `
 })
@@ -768,6 +889,13 @@ export class IngredientRevisionEditorComponent {
   readonly centralCandidates = signal<CentralIngredientCandidate[]>([]);
   readonly contributions = signal<IngredientCentralContribution[]>([]);
   readonly contributionTargets = signal<Record<string, string>>({});
+  readonly suggestionQuery = signal('');
+  readonly suggestionResults = signal<IngredientDataSuggestion[]>([]);
+  readonly suggestionLoading = signal(false);
+  readonly suggestionSearched = signal(false);
+  readonly suggestionError = signal('');
+  readonly sourceEntries = signal<string[]>([]);
+  readonly newSourceEntry = signal('');
   readonly draftState = IngredientRevisionState.Draft;
   readonly publishedState = IngredientRevisionState.Published;
   readonly containsState = IngredientPropertyState.Contains;
@@ -989,6 +1117,186 @@ export class IngredientRevisionEditorComponent {
         content.sourceReference = technicalReference;
       }
     }
+  }
+
+  setSourceEntry(revision: IngredientRevisionDetails, index: number, value: string) {
+    const entries = [...this.sourceEntries()];
+    if (index < 0 || index >= entries.length) return;
+    entries[index] = value;
+    this.persistSourceEntries(revision, entries);
+  }
+
+  addSourceEntry(revision: IngredientRevisionDetails) {
+    const source = this.newSourceEntry().trim();
+    if (!source) return;
+    const entries = this.sourceEntries();
+    if (entries.some(value => this.normalizeSourceEntry(value) === this.normalizeSourceEntry(source))) {
+      this.notice.set('Diese Quelle ist bereits eingetragen.');
+      this.newSourceEntry.set('');
+      return;
+    }
+    if (this.persistSourceEntries(revision, [...entries, source]))
+      this.newSourceEntry.set('');
+  }
+
+  removeSourceEntry(revision: IngredientRevisionDetails, index: number) {
+    this.persistSourceEntries(revision, this.sourceEntries().filter((_, entryIndex) => entryIndex !== index));
+  }
+
+  searchSuggestions() {
+    const query = this.suggestionQuery().trim();
+    if (query.length < 2 || this.suggestionLoading()) return;
+    this.suggestionLoading.set(true);
+    this.suggestionSearched.set(true);
+    this.suggestionError.set('');
+    this.api.searchSuggestions('BLS', query).subscribe({
+      next: result => {
+        this.suggestionLoading.set(false);
+        this.suggestionResults.set(result.suggestions);
+        if (!result.isAvailable)
+          this.suggestionError.set('Der lokale BLS-Referenzindex ist noch nicht eingerichtet.');
+      },
+      error: () => {
+        this.suggestionLoading.set(false);
+        this.suggestionResults.set([]);
+        this.suggestionError.set('Die BLS-Referenzwerte konnten nicht geladen werden.');
+      }
+    });
+  }
+
+  canApplyBlsSuggestion(revision: IngredientRevisionDetails) {
+    return this.unitDimension(revision.baseUnitId) === 0;
+  }
+
+  hasSuggestedNutrition(suggestion: IngredientDataSuggestion) {
+    return Object.values(suggestion.nutrition).some(value => value !== null);
+  }
+
+  suggestionNutritionSummary(suggestion: IngredientDataSuggestion) {
+    const nutrition = suggestion.nutrition;
+    const values = [
+      ['Energie', nutrition.energyKilojoules, 'kJ'],
+      ['Fett', nutrition.fatGrams, 'g'],
+      ['gesättigt', nutrition.saturatedFatGrams, 'g'],
+      ['Kohlenhydrate', nutrition.carbohydrateGrams, 'g'],
+      ['Zucker', nutrition.sugarsGrams, 'g'],
+      ['Eiweiß', nutrition.proteinGrams, 'g'],
+      ['Salz', nutrition.saltGrams, 'g'],
+      ['Ballaststoffe', nutrition.fiberGrams, 'g']
+    ] as const;
+    const present = values
+      .filter(([, value]) => value !== null)
+      .map(([label, value, unit]) => `${label}: ${this.formatSuggestionValue(value!)} ${unit}`);
+    return present.length ? present.join(' · ') : 'Keine Nährwerte im Referenzeintrag verfügbar.';
+  }
+
+  suggestionSubstanceSummary(suggestion: IngredientDataSuggestion) {
+    return suggestion.substanceContents.map(value => {
+      const name = this.referenceData()?.intolerances.find(item => item.code === value.code)?.name ?? value.code;
+      return `${name}: ${this.formatSuggestionValue(value.amountGrams)} g`;
+    }).join(' · ');
+  }
+
+  applySuggestionNutrition(revision: IngredientRevisionDetails, suggestion: IngredientDataSuggestion) {
+    if (!this.canApplyBlsSuggestion(revision) || !this.hasSuggestedNutrition(suggestion)) return;
+    const gramUnit = this.referenceData()?.units.find(value => value.dimension === 0 && value.symbol === 'g');
+    if (!gramUnit) return;
+    const profile = revision.nutritionProfile ?? this.newNutritionProfile(revision.baseUnitId);
+    profile.referenceQuantity = suggestion.referenceQuantity;
+    profile.referenceUnitId = gramUnit.id;
+    const nutrition = suggestion.nutrition;
+    if (nutrition.energyKilojoules !== null) profile.energyKilojoules = nutrition.energyKilojoules;
+    if (nutrition.fatGrams !== null) profile.fatGrams = nutrition.fatGrams;
+    if (nutrition.saturatedFatGrams !== null) profile.saturatedFatGrams = nutrition.saturatedFatGrams;
+    if (nutrition.carbohydrateGrams !== null) profile.carbohydrateGrams = nutrition.carbohydrateGrams;
+    if (nutrition.sugarsGrams !== null) profile.sugarsGrams = nutrition.sugarsGrams;
+    if (nutrition.proteinGrams !== null) profile.proteinGrams = nutrition.proteinGrams;
+    if (nutrition.saltGrams !== null) profile.saltGrams = nutrition.saltGrams;
+    if (nutrition.fiberGrams !== null) profile.fiberGrams = nutrition.fiberGrams;
+    profile.reviewState = IngredientNutritionReviewState.Unreviewed;
+    profile.referenceDate = null;
+    revision.nutritionProfile = profile;
+    this.appendSuggestionSource(revision, suggestion.sourceSummary);
+    this.notice.set(`Nährwerte aus „${suggestion.name}“ wurden als ungeprüfte Schätzung übernommen.`);
+  }
+
+  applySuggestionSubstances(revision: IngredientRevisionDetails, suggestion: IngredientDataSuggestion) {
+    if (!this.canApplyBlsSuggestion(revision) || !suggestion.substanceContents.length) return;
+    const gramUnit = this.referenceData()?.units.find(value => value.dimension === 0 && value.symbol === 'g');
+    if (!gramUnit) return;
+    const definitions = new Map((this.referenceData()?.intolerances ?? [])
+      .filter(value => value.isQuantityDependent).map(value => [value.code, value]));
+    for (const suggested of suggestion.substanceContents) {
+      const definition = definitions.get(suggested.code);
+      if (!definition) continue;
+      let content = this.substanceContent(revision, definition.id);
+      if (!content) {
+        content = {
+          substanceId: definition.id,
+          amount: suggested.amountGrams,
+          amountUnitId: gramUnit.id,
+          referenceQuantity: suggestion.referenceQuantity,
+          referenceUnitId: gramUnit.id,
+          sourceType: IngredientSubstanceContentSourceType.ManualEstimate,
+          sourceReference: '',
+          reviewState: IngredientSubstanceContentReviewState.Unreviewed
+        };
+        revision.substanceContents.push(content);
+      } else {
+        content.amount = suggested.amountGrams;
+        content.amountUnitId = gramUnit.id;
+        content.referenceQuantity = suggestion.referenceQuantity;
+        content.referenceUnitId = gramUnit.id;
+        content.reviewState = IngredientSubstanceContentReviewState.Unreviewed;
+      }
+    }
+    this.appendSuggestionSource(revision, suggestion.sourceSummary);
+    this.notice.set(`Stoffgehalte aus „${suggestion.name}“ wurden als ungeprüfte Schätzung übernommen.`);
+  }
+
+  private appendSuggestionSource(revision: IngredientRevisionDetails, source: string) {
+    const entries = this.parseSourceEntries(revision.sourceSummary);
+    const key = this.normalizeSourceEntry(source);
+    if (!entries.some(value => this.normalizeSourceEntry(value) === key))
+      this.persistSourceEntries(revision, [...entries, source.trim()]);
+    else {
+      this.sourceEntries.set(entries);
+      this.synchronizeSourceSummary(revision);
+    }
+  }
+
+  private persistSourceEntries(revision: IngredientRevisionDetails, entries: string[]) {
+    const summary = entries.map(value => value.trim()).filter(Boolean).join('\n');
+    if (summary.length > 2000) {
+      this.error.set('Die Quellenangaben dürfen zusammen höchstens 2.000 Zeichen enthalten.');
+      return false;
+    }
+    this.sourceEntries.set(entries);
+    revision.sourceSummary = summary;
+    this.error.set('');
+    this.synchronizeSourceSummary(revision);
+    return true;
+  }
+
+  private parseSourceEntries(summary: string) {
+    const separator = summary.includes('\n') ? /\r?\n/ : /\s*;\s*/;
+    const result: string[] = [];
+    const keys = new Set<string>();
+    for (const value of summary.split(separator).map(item => item.trim()).filter(Boolean)) {
+      const key = this.normalizeSourceEntry(value);
+      if (keys.has(key)) continue;
+      keys.add(key);
+      result.push(value);
+    }
+    return result;
+  }
+
+  private normalizeSourceEntry(value: string) {
+    return value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('de');
+  }
+
+  private formatSuggestionValue(value: number) {
+    return new Intl.NumberFormat('de-DE', { maximumFractionDigits: 3 }).format(value);
   }
 
   setVariantPropertyState(
@@ -1364,7 +1672,10 @@ export class IngredientRevisionEditorComponent {
         this.normalizeQualitativeIntolerances(value);
         this.normalizePrimaryOrigin(value);
       }
-      this.selected.set(value); },
+      this.selected.set(value);
+      this.sourceEntries.set(this.parseSourceEntries(value.sourceSummary));
+      this.newSourceEntry.set('');
+      this.resetSuggestionSearch(value.name); },
       error: () => this.error.set('Die Zutatenrevision konnte nicht geladen werden.') });
   }
 
@@ -1379,6 +1690,9 @@ export class IngredientRevisionEditorComponent {
         this.selectedSnapshot = this.snapshot(value);
         this.pendingForkSourceRevisionId.set(sourceRevisionId);
         this.selected.set(value);
+        this.sourceEntries.set(this.parseSourceEntries(value.sourceSummary));
+        this.newSourceEntry.set('');
+        this.resetSuggestionSearch(value.name);
         this.submitting.set(false);
         this.notice.set('Die zentrale Zutat wurde zur Anpassung geöffnet. Noch wurde keine Lagerkopie angelegt.');
         this.host.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1386,6 +1700,13 @@ export class IngredientRevisionEditorComponent {
       error: () => { this.submitting.set(false);
         this.error.set('Die zentrale Zutat konnte nicht zur Anpassung geöffnet werden.'); }
     });
+  }
+
+  private resetSuggestionSearch(name: string) {
+    this.suggestionQuery.set(name);
+    this.suggestionResults.set([]);
+    this.suggestionSearched.set(false);
+    this.suggestionError.set('');
   }
 
   save() {

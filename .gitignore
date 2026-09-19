@@ -15,3 +15,4 @@ src/desktop/src-tauri/binaries/*.exe
 api-smoke*.log
 api-structure-test*.log
 audit-security/
+src/backend/ScoutCampPlanner.Api/reference-data/*.json

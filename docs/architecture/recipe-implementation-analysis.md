@@ -2,7 +2,7 @@
 
 ## Status
 
-Repository analysis completed before recipe implementation. This document records missing prerequisites and prevents temporary implementation choices from becoming implicit architecture decisions.
+Historical pre-implementation analysis. Its decisions and boundary checks remain useful, but its implementation-state statements are not a current backlog. The current status is summarized in [`baseline-status.md`](baseline-status.md) and [`.codex/CHATGPT_PROJECT_BRIEF.md`](../../.codex/CHATGPT_PROJECT_BRIEF.md); accepted architecture decisions remain authoritative.
 
 ## Existing foundations that can be reused
 

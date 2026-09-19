@@ -12,7 +12,7 @@ Tenant factors are defaults for future camps. Camp creation atomically copies th
 
 Catering owns the camp meal schedule. Every camp starts with the configurable meal labels `Frühstück`, `Mittagessen`, and `Abendessen`. Each configured label is active on every day of the camp period by default. Camp administrators may add, rename, remove, and reorder labels and may deactivate individual meals, for example on arrival and departure days.
 
-Adding a label creates an active meal for every current camp day. Removing it removes its daily entries. Changing the camp period removes entries outside the new period and creates active entries for newly added days. Recipes and cooking-unit assignments are separate later steps.
+Adding a label creates an active meal for every current camp day. Removing it removes its daily entries. Changing the camp period removes entries outside the new period and creates active entries for newly added days. Recipe catalogues and camp recipe editing are implemented independently; assigning a recipe revision and cooking units to a concrete dated meal remains a separate planning step.
 
 ## Ingredients
 

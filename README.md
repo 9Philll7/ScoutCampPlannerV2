@@ -70,3 +70,7 @@ src/desktop/src-tauri/target/release/bundle/nsis/
 ## Architecture status
 
 See the [architecture baseline](docs/architecture/baseline-status.md), [ADR-006](docs/decisions/adr-006-architecture-spike-validation.md), and the [spike report](docs/spike/results.md) for validated capabilities, open production decisions, remaining operational checks, and known limitations.
+
+For a compact handoff into a new ChatGPT planning phase, start with the
+[current project brief](.codex/CHATGPT_PROJECT_BRIEF.md) and then consult the
+linked architecture, domain, and ADR sources.

@@ -10,7 +10,7 @@ The first planning phase uses anonymous participant estimates only. It does not 
 
 Each tenant maintains an ordered stage template. `TenantOwner` and `TenantAdmin` may change it through the tenant-settings permission. The initial suggested entries are `Biber`, `WiWö`, `GuSp`, `CaEx`, `RaRo`, and `Mitarbeiter`, but names and ordering are tenant-configurable.
 
-Creating a camp copies the current tenant template into a stable camp-specific stage list. Later tenant-template changes apply to future camps only. A `CampAdmin` may adjust the camp-specific copy without changing the tenant template. This stable copy is also the future attachment point for stage-specific planning factors; those factors are not part of the first estimate increment.
+Creating a camp copies the current tenant template into a stable camp-specific stage list. Later tenant-template changes apply to future camps only. A `CampAdmin` may adjust the camp-specific copy without changing the tenant template. Catering uses this stable copy for camp-specific food factors; the factors are separate Catering data and do not add personal information to the estimates.
 
 For every eligible leaf structure node, the camp stores non-negative whole-number estimates per camp stage in two categories. In a free structure every leaf is eligible; in a fixed structure only leaves on the final configured level are eligible.
 

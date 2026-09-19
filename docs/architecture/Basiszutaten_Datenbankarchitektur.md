@@ -83,6 +83,21 @@ fachlichen Produktdatenbank bereitgestellt. Open Food Facts wird ausschließlich
 werden nur bewusst übernommene Schätzwerte und ihre revisionsweite
 Quellenzusammenfassung persistiert.
 
+Der lokale Index wird bei Bedarf aus der offiziellen BLS-4.0-CSV erzeugt:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\New-BlsSuggestionIndex.ps1 `
+  -CsvPath "C:\Pfad\BLS_4_0_Daten_2025_DE.csv"
+```
+
+Das Ergebnis liegt standardmäßig unter
+`src/backend/ScoutCampPlanner.Api/reference-data/bls-4.0-suggestions.json` und
+ist bewusst von Git ausgeschlossen. Der API-Pfad ist über
+`IngredientSuggestions:BlsIndexPath` konfigurierbar. Fehlt der Index, bleibt
+der Zutateneditor vollständig nutzbar und meldet nur die BLS-Suche als nicht
+eingerichtet. Der aktuelle Index enthält 7.140 BLS-Referenzeinträge; diese Zahl
+ist keine Anzahl von ScoutCampPlanner-Zutaten.
+
 Die bestehenden `SourceType`- und `SourceReference`-Spalten der Nährwert- und
 Stoffgehaltstabellen bleiben vorerst als kompatible technische Spiegel erhalten.
 Der Editor pflegt sie nicht mehr einzeln; beim Speichern werden sie aus der

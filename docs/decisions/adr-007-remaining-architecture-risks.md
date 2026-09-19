@@ -73,7 +73,7 @@ Without an explicit migration pipeline, a later package version could make exist
 
 - Package payloads are protected by a SHA-256 checksum.
 - Package version 1 is not encrypted or signed. The transfer-scoped encryption and signature candidate for version 2 is validated but not productively serialized or integrated.
-- Authentication behavior, operating-mode Argon2id profiles, and Unicode-scalar password-length counting are defined by ADR-009, password-strength handling without a separate denylist by ADR-014, identity and tenant isolation by ADR-010, roles and permissions by ADR-011, and security audit events, persistence, integrity model, technical retention defaults, access, recovery, and transfer binding by ADR-012. The focused password and audit security spikes are accepted; the Windows 10 compatibility benchmark, productive audit/package implementation, legal retention review, privacy retention, archival, and anonymisation remain open. A restrictive Tauri Content Security Policy is required before sensitive data is supported.
+- Authentication behavior, operating-mode Argon2id profiles, and Unicode-scalar password-length counting are defined by ADR-009, password-strength handling without a separate denylist by ADR-014, identity and tenant isolation by ADR-010, roles and permissions by ADR-011, and security audit events, persistence, integrity model, technical retention defaults, access, recovery, and transfer binding by ADR-012. The focused password and audit security spikes are accepted. Productive audit persistence, protected key loading, host initialization, append transactions and selected setup/authentication/Camp use-case integrations are implemented. The Windows 10 compatibility benchmark, remaining audit integrations, productive package-version-2 protection, legal retention review, privacy retention, archival, and anonymisation remain open. A restrictive Tauri Content Security Policy is required before sensitive data is supported.
 - The domain documentation identifies health data and a privacy lifecycle, but the complete workflow is not defined.
 
 ### To clarify
@@ -82,7 +82,7 @@ Without an explicit migration pipeline, a later package version could make exist
 - productive package-version-2 serialization, migration, transfer-key persistence, and compatibility fixtures for the validated authenticated-encryption and signature model
 - tenant-, camp-, role-, and possibly module-specific permissions
 - authorization for export, import, access to health data, and administrative operations
-- productive audit persistence, use-case integration, access enforcement, and organisational/legal retention confirmation
+- completion of audit use-case integration, audit access enforcement, and organisational/legal retention confirmation
 - retention periods, archival rules, deletion, and anonymisation
 - data minimisation for packages and local installations
 - secure cleanup of temporary files, local databases, exports, backups, and logs

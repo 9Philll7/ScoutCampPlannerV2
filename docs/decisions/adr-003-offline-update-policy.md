@@ -1,5 +1,9 @@
 # ADR-003 Offline and Update Policy
 
+## Status
+
+Accepted
+
 ## Decision
 
 During active camp operation:

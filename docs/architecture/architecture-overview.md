@@ -48,7 +48,7 @@ The validated module dependency direction is:
 
 `Platform → Camp → Catering`
 
-- Platform owns separate Domain, Application, and Infrastructure assemblies. Camp and Catering currently own separate Domain and Infrastructure assemblies; Application assemblies are introduced per module when the first product use cases require them.
+- Platform and Catering own separate Domain, Application, and Infrastructure assemblies. Camp currently owns Domain and Infrastructure assemblies; its use cases remain in the existing Camp boundary until a separate Application assembly provides concrete value.
 - Platform and Camp expose explicit contracts to downstream consumers.
 - Each module owns its data and EF Core context.
 - Domain assemblies remain independent of framework, persistence-provider, UI, and other module implementations.
@@ -103,7 +103,7 @@ The first productive cross-module case is now implemented: camp creation validat
 
 - database migrations are provider- and module-specific and SQLite pre-upgrade backups are automatic as defined by [ADR-008](../decisions/adr-008-database-migration-strategy.md); operational clean-machine restore validation remains open
 - camp-package schema migration and compatibility beyond version 1
-- package and sensitive-local-data encryption and signing, technical validation of the defined audit model, legal retention review, privacy retention, archival, and anonymisation
+- productive package-version-2 encryption and signing, legal retention review, privacy retention, archival, and anonymisation; the defined audit integrity and package-security candidates are technically validated, but package version 1 remains checksum-only
 - Windows 10 compatibility benchmarking of the defined single-device Argon2id profile, audit/package-security spike validation, and legal retention review; authentication and operating-mode Argon2id profiles, Unicode password-length counting, password strength, identity, authorization, the initial password-security libraries, and the audit transfer direction are defined by ADR-009 through ADR-012, ADR-014, and the focused security-library validation
 - stable API error contracts
 - release-readiness checks for packaged desktop installers on the ADR-013 platform matrix, including final desktop Argon2id calibration

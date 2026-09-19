@@ -139,6 +139,14 @@ builder.Services.AddScoped<IngredientRevisionWorkflowService>();
 builder.Services.AddScoped<IIngredientCentralContributionStore, IngredientCentralContributionStore>();
 builder.Services.AddScoped<IngredientCentralContributionService>();
 builder.Services.AddScoped<IIngredientEditorReferenceDataStore, IngredientEditorReferenceDataStore>();
+string configuredBlsIndexPath = builder.Configuration["IngredientSuggestions:BlsIndexPath"]
+    ?? "reference-data/bls-4.0-suggestions.json";
+builder.Services.Configure<BlsIngredientSuggestionOptions>(options =>
+    options.BlsIndexPath = Path.IsPathRooted(configuredBlsIndexPath)
+        ? configuredBlsIndexPath
+        : Path.GetFullPath(configuredBlsIndexPath, builder.Environment.ContentRootPath));
+builder.Services.AddSingleton<IIngredientSuggestionProvider, BlsIngredientSuggestionProvider>();
+builder.Services.AddSingleton<IngredientSuggestionService>();
 builder.Services.AddSingleton<IPasswordPolicy, PasswordPolicy>();
 builder.Services.AddSingleton<IPasswordVerifier>(
     _ => new Argon2idPasswordVerifier(Argon2idOperatingMode.Server));
@@ -697,6 +705,13 @@ app.MapGet("/api/ingredients/central/revisions", async (
         cancellationToken);
     return result.IsAuthorized ? Results.Ok(result.Revisions) : Results.Forbid();
 }).RequireAuthorization();
+app.MapGet("/api/ingredient-suggestions/{provider}", async (
+    string provider,
+    string query,
+    IngredientSuggestionService suggestions,
+    CancellationToken cancellationToken) =>
+    Results.Ok(await suggestions.SearchAsync(provider, query, cancellationToken)))
+    .RequireAuthorization();
 app.MapPost("/api/tenants/{tenantId:guid}/ingredient-revisions", async (
     Guid tenantId,
     CreateIngredientRevisionDraftRequest request,
