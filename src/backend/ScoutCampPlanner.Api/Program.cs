@@ -9,7 +9,9 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using ScoutCampPlanner.Api.Camps;
 using ScoutCampPlanner.Api.Catering;
+using ScoutCampPlanner.Camp.Contracts;
 using ScoutCampPlanner.Camp.Infrastructure;
+using ScoutCampPlanner.Catering.Application.MealPlanning;
 using ScoutCampPlanner.Catering.Infrastructure;
 using ScoutCampPlanner.Catering.Application.Recipes;
 using ScoutCampPlanner.Catering.Application.Ingredients;
@@ -20,6 +22,7 @@ using ScoutCampPlanner.Migrations.Sqlite;
 using ScoutCampPlanner.Package;
 using ScoutCampPlanner.Platform.Application.Authentication;
 using ScoutCampPlanner.Platform.Application.Auditing;
+using ScoutCampPlanner.Platform.Application.Authorization;
 using ScoutCampPlanner.Platform.Infrastructure;
 using ScoutCampPlanner.Platform.Infrastructure.Authentication;
 using ScoutCampPlanner.Platform.Infrastructure.Auditing;
@@ -87,9 +90,13 @@ builder.Services.AddScoped<DbConnection>(_ => provider.Equals("PostgreSql", Stri
 builder.Services.AddDbContext<PlatformDbContext>((services, options) => Configure(options, services.GetRequiredService<DbConnection>(), provider, "platform"));
 builder.Services.AddDbContext<CampDbContext>((services, options) => Configure(options, services.GetRequiredService<DbConnection>(), provider, "camp"));
 builder.Services.AddDbContext<CateringDbContext>((services, options) => Configure(options, services.GetRequiredService<DbConnection>(), provider, "catering"));
+builder.Services.AddScoped<ICampPlanningLookup>(services => services.GetRequiredService<CampDbContext>());
 builder.Services.AddScoped<CampPackageService>();
 builder.Services.AddScoped<CampManagementService>();
 builder.Services.AddScoped<CateringPlanningService>();
+builder.Services.AddScoped<MealPlanningStore>();
+builder.Services.AddScoped<IMealPlanningStore>(services => services.GetRequiredService<MealPlanningStore>());
+builder.Services.AddScoped<MealPlanningService>();
 builder.Services.AddScoped<RecipeDraftStore>();
 builder.Services.AddScoped<IRecipeDraftStore>(services => services.GetRequiredService<RecipeDraftStore>());
 builder.Services.AddScoped<EfRecipeReferences>();
@@ -609,6 +616,148 @@ app.MapPut("/api/camps/{campId:guid}/structure/{nodeId:guid}/parent", async (
 }).RequireAuthorization();
 app.MapGet("/api/camps", () => Results.BadRequest(new { code = "tenant_context_required" }))
     .RequireAuthorization();
+app.MapGet("/api/camps/{campId:guid}/meal-planning", async (
+    Guid campId, ClaimsPrincipal principal, CampManagementService camps, MealPlanningService planning,
+    CancellationToken cancellationToken) =>
+{
+    Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    if (!await camps.HasCampPermissionAsync(userId, campId, Permissions.Camp.View, cancellationToken))
+        return Results.NotFound();
+    MealPlanningOverview? result = await planning.GetOverviewAsync(campId, cancellationToken);
+    return result is null ? Results.NotFound() : Results.Ok(result);
+}).RequireAuthorization();
+app.MapGet("/api/camps/{campId:guid}/meal-plans/{mealPlanId:guid}", async (
+    Guid campId, Guid mealPlanId, ClaimsPrincipal principal, CampManagementService camps,
+    MealPlanningService planning, CancellationToken cancellationToken) =>
+{
+    Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    if (!await camps.HasCampPermissionAsync(userId, campId, Permissions.Camp.View, cancellationToken))
+        return Results.NotFound();
+    MealPlanDocument? result = await planning.GetMealPlanAsync(campId, mealPlanId, cancellationToken);
+    return result is null ? Results.NotFound() : Results.Ok(result);
+}).RequireAuthorization();
+app.MapPost("/api/camps/{campId:guid}/meal-plans", async (
+    Guid campId, CreateMealPlanRequest request, ClaimsPrincipal principal, CampManagementService camps,
+    MealPlanningService planning, CancellationToken cancellationToken) =>
+{
+    Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    IResult? denied = await RequireMealPlanningEditAsync(campId, userId, camps, cancellationToken);
+    if (denied is not null) return denied;
+    return ToMealPlanningResult(await planning.CreateMealPlanAsync(campId, request.Name, cancellationToken));
+}).RequireAuthorization();
+app.MapPut("/api/camps/{campId:guid}/meal-plans/order", async (
+    Guid campId, ReorderMealPlansRequest request, ClaimsPrincipal principal, CampManagementService camps,
+    MealPlanningService planning, CancellationToken cancellationToken) =>
+{
+    Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    IResult? denied = await RequireMealPlanningEditAsync(campId, userId, camps, cancellationToken);
+    if (denied is not null) return denied;
+    return ToMealPlanningResult(await planning.ReorderMealPlansAsync(
+        campId, request.MealPlanIds, cancellationToken));
+}).RequireAuthorization();
+app.MapPut("/api/camps/{campId:guid}/meal-plans/{mealPlanId:guid}", async (
+    Guid campId, Guid mealPlanId, SaveMealPlanRequest request, ClaimsPrincipal principal,
+    CampManagementService camps, MealPlanningService planning, CancellationToken cancellationToken) =>
+{
+    Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    IResult? denied = await RequireMealPlanningEditAsync(campId, userId, camps, cancellationToken);
+    if (denied is not null) return denied;
+    return ToMealPlanningResult(await planning.SaveMealPlanAsync(
+        campId, mealPlanId, userId, request, cancellationToken));
+}).RequireAuthorization();
+app.MapDelete("/api/camps/{campId:guid}/meal-plans/{mealPlanId:guid}", async (
+    Guid campId, Guid mealPlanId, ClaimsPrincipal principal, CampManagementService camps,
+    MealPlanningService planning, CancellationToken cancellationToken) =>
+{
+    Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    IResult? denied = await RequireMealPlanningEditAsync(campId, userId, camps, cancellationToken);
+    if (denied is not null) return denied;
+    return ToMealPlanningResult(await planning.DeleteMealPlanAsync(campId, mealPlanId, cancellationToken));
+}).RequireAuthorization();
+app.MapPost("/api/camps/{campId:guid}/cooking-unit-groups", async (
+    Guid campId, SaveCookingUnitGroupRequest request, ClaimsPrincipal principal, CampManagementService camps,
+    MealPlanningService planning, CancellationToken cancellationToken) =>
+{
+    Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    IResult? denied = await RequireMealPlanningEditAsync(campId, userId, camps, cancellationToken);
+    if (denied is not null) return denied;
+    return ToMealPlanningResult(await planning.SaveCookingUnitGroupAsync(campId, null, request, cancellationToken));
+}).RequireAuthorization();
+app.MapPut("/api/camps/{campId:guid}/cooking-unit-groups/{groupId:guid}", async (
+    Guid campId, Guid groupId, SaveCookingUnitGroupRequest request, ClaimsPrincipal principal,
+    CampManagementService camps, MealPlanningService planning, CancellationToken cancellationToken) =>
+{
+    Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    IResult? denied = await RequireMealPlanningEditAsync(campId, userId, camps, cancellationToken);
+    if (denied is not null) return denied;
+    return ToMealPlanningResult(await planning.SaveCookingUnitGroupAsync(campId, groupId, request, cancellationToken));
+}).RequireAuthorization();
+app.MapDelete("/api/camps/{campId:guid}/cooking-unit-groups/{groupId:guid}", async (
+    Guid campId, Guid groupId, ClaimsPrincipal principal, CampManagementService camps,
+    MealPlanningService planning, CancellationToken cancellationToken) =>
+{
+    Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    IResult? denied = await RequireMealPlanningEditAsync(campId, userId, camps, cancellationToken);
+    if (denied is not null) return denied;
+    return ToMealPlanningResult(await planning.DeleteCookingUnitGroupAsync(campId, groupId, cancellationToken));
+}).RequireAuthorization();
+app.MapPost("/api/camps/{campId:guid}/cooking-units", async (
+    Guid campId, SaveCookingUnitRequest request, ClaimsPrincipal principal, CampManagementService camps,
+    MealPlanningService planning, CancellationToken cancellationToken) =>
+{
+    Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    IResult? denied = await RequireMealPlanningEditAsync(campId, userId, camps, cancellationToken);
+    if (denied is not null) return denied;
+    return ToMealPlanningResult(await planning.SaveCookingUnitAsync(campId, null, request, cancellationToken));
+}).RequireAuthorization();
+app.MapPut("/api/camps/{campId:guid}/cooking-units/{cookingUnitId:guid}", async (
+    Guid campId, Guid cookingUnitId, SaveCookingUnitRequest request, ClaimsPrincipal principal,
+    CampManagementService camps, MealPlanningService planning, CancellationToken cancellationToken) =>
+{
+    Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    IResult? denied = await RequireMealPlanningEditAsync(campId, userId, camps, cancellationToken);
+    if (denied is not null) return denied;
+    return ToMealPlanningResult(await planning.SaveCookingUnitAsync(campId, cookingUnitId, request, cancellationToken));
+}).RequireAuthorization();
+app.MapDelete("/api/camps/{campId:guid}/cooking-units/{cookingUnitId:guid}", async (
+    Guid campId, Guid cookingUnitId, ClaimsPrincipal principal, CampManagementService camps,
+    MealPlanningService planning, CancellationToken cancellationToken) =>
+{
+    Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    IResult? denied = await RequireMealPlanningEditAsync(campId, userId, camps, cancellationToken);
+    if (denied is not null) return denied;
+    return ToMealPlanningResult(await planning.DeleteCookingUnitAsync(campId, cookingUnitId, cancellationToken));
+}).RequireAuthorization();
+app.MapPut("/api/camps/{campId:guid}/cooking-units/{cookingUnitId:guid}/meals/{mealId:guid}", async (
+    Guid campId, Guid cookingUnitId, Guid mealId, ConfigureCookingUnitMealRequest request,
+    ClaimsPrincipal principal, CampManagementService camps, MealPlanningService planning,
+    CancellationToken cancellationToken) =>
+{
+    Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    IResult? denied = await RequireMealPlanningEditAsync(campId, userId, camps, cancellationToken);
+    if (denied is not null) return denied;
+    return ToMealPlanningResult(await planning.ConfigureCookingUnitMealAsync(
+        campId, cookingUnitId, mealId, userId, request, cancellationToken));
+}).RequireAuthorization();
+app.MapDelete("/api/camps/{campId:guid}/cooking-units/{cookingUnitId:guid}/meals/{mealId:guid}/structure-override", async (
+    Guid campId, Guid cookingUnitId, Guid mealId, ClaimsPrincipal principal, CampManagementService camps,
+    MealPlanningService planning, CancellationToken cancellationToken) =>
+{
+    Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    IResult? denied = await RequireMealPlanningEditAsync(campId, userId, camps, cancellationToken);
+    if (denied is not null) return denied;
+    return ToMealPlanningResult(await planning.ResetStructureOverrideAsync(
+        campId, cookingUnitId, mealId, cancellationToken));
+}).RequireAuthorization();
+app.MapPost("/api/camps/{campId:guid}/cooking-units/{cookingUnitId:guid}/meals/{mealId:guid}/calculate", async (
+    Guid campId, Guid cookingUnitId, Guid mealId, ClaimsPrincipal principal, CampManagementService camps,
+    MealPlanningService planning, CancellationToken cancellationToken) =>
+{
+    Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    IResult? denied = await RequireMealPlanningEditAsync(campId, userId, camps, cancellationToken);
+    if (denied is not null) return denied;
+    return ToMealPlanningResult(await planning.CalculateAsync(campId, cookingUnitId, mealId, cancellationToken));
+}).RequireAuthorization();
 app.MapGet("/api/recipes/central", async (
     ClaimsPrincipal principal, RecipeCatalogService recipes, CancellationToken cancellationToken) =>
 {
@@ -631,6 +780,30 @@ app.MapGet("/api/camps/{campId:guid}/recipes", async (
     RecipeCatalogResult result = await recipes.ListCampAsync(
         campId, Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), cancellationToken);
     return result.IsAuthorized ? Results.Ok(result.Entries) : Results.Forbid();
+}).RequireAuthorization();
+app.MapDelete("/api/camps/{campId:guid}/recipe-library/{entryId:guid}", async (
+    Guid campId, Guid entryId, ClaimsPrincipal principal, CampManagementService camps,
+    RecipeLibraryService library, CancellationToken cancellationToken) =>
+{
+    Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    CampMealContext? context = await camps.GetCampMealContextAsync(userId, campId, cancellationToken);
+    if (context is null) return Results.NotFound();
+    if (!await camps.HasCampPermissionAsync(userId, campId, Permissions.Recipes.ManageLibrary, cancellationToken))
+        return Results.Forbid();
+    if (context.IsFrozen) return Results.Conflict(new { code = "camp_frozen" });
+    RecipeLibraryMutationResult result = await library.RemoveCampEntryAsync(campId, entryId, cancellationToken);
+    return result.Status switch
+    {
+        RecipeLibraryMutationStatus.Removed => Results.Ok(result),
+        RecipeLibraryMutationStatus.NotFound => Results.NotFound(),
+        RecipeLibraryMutationStatus.ReferenceBlocked => Results.Conflict(new
+        {
+            code = "recipe_library_entry_in_use",
+            message = "Die Rezeptrevision wird in der Mahlzeitenplanung verwendet.",
+            result.References,
+        }),
+        _ => Results.UnprocessableEntity(result),
+    };
 }).RequireAuthorization();
 app.MapGet("/api/camps/{campId:guid}/recipes/{recipeId:guid}/draft", async (
     Guid campId, Guid recipeId, ClaimsPrincipal principal, RecipeEditorService recipes,
@@ -1101,6 +1274,32 @@ static IResult ToCampRecipePublicationResult(CampRecipePublicationResult result)
     _ => Results.UnprocessableEntity(result),
 };
 
+static async Task<IResult?> RequireMealPlanningEditAsync(
+    Guid campId, Guid userId, CampManagementService camps, CancellationToken cancellationToken)
+{
+    CampMealContext? context = await camps.GetCampMealContextAsync(userId, campId, cancellationToken);
+    if (context is null) return Results.NotFound();
+    if (!await camps.HasCampPermissionAsync(
+            userId, campId, Permissions.Catering.EditMealPlanning, cancellationToken))
+        return Results.Forbid();
+    return context.IsFrozen ? Results.Conflict(new { code = "camp_frozen" }) : null;
+}
+
+static IResult ToMealPlanningResult(MealPlanningMutationResult result) => result.Status switch
+{
+    MealPlanningMutationStatus.Success => Results.Ok(new { result.Id, result.Version }),
+    MealPlanningMutationStatus.NotFound => Results.NotFound(),
+    MealPlanningMutationStatus.Conflict => Results.Conflict(new
+    {
+        result.Code, result.Message, result.Version,
+    }),
+    MealPlanningMutationStatus.Blocked => Results.Conflict(new
+    {
+        result.Code, result.Message, result.References,
+    }),
+    _ => Results.UnprocessableEntity(new { result.Code, result.Message }),
+};
+
 static void Configure(DbContextOptionsBuilder options, DbConnection connection, string provider, string module)
 {
     if (provider.Equals("PostgreSql", StringComparison.OrdinalIgnoreCase))
@@ -1122,6 +1321,8 @@ static void Configure(DbContextOptionsBuilder options, DbConnection connection, 
 }
 
 public sealed record SaveRecipeEditorRequest(long ExpectedVersion, RecipeEditorContent Content);
+public sealed record CreateMealPlanRequest(string Name);
+public sealed record ReorderMealPlansRequest(IReadOnlyList<Guid> MealPlanIds);
 public sealed record PublishCampRecipeRequest(
     long ExpectedVersion,
     bool AcknowledgeWarnings,

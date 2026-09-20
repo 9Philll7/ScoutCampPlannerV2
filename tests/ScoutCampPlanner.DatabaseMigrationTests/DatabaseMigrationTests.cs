@@ -47,7 +47,7 @@ public sealed class DatabaseMigrationTests
 
         Assert.Equal(7, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_platform"));
         Assert.Equal(8, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_camp"));
-        Assert.Equal(20, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_catering"));
+        Assert.Equal(21, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_catering"));
         Assert.Equal(9, await ScalarAsync<long>(connection,
             "SELECT COUNT(*) FROM MeasurementUnits WHERE NormalizedName IN ('GRAMM', 'KILOGRAMM', 'MILLILITER', 'LITER', 'STÜCK', 'TEELÖFFEL', 'ESSLÖFFEL', 'PRISE', 'BUND')"));
         Assert.Equal(18, await ScalarAsync<long>(connection,
@@ -58,8 +58,10 @@ public sealed class DatabaseMigrationTests
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'TenantStageTemplateEntries'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'CampStages'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'ParticipantEstimates'"));
-        Assert.Equal(0, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'CookingUnits'"));
+        Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'CookingUnits'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'IX_MealPlans_CampId'"));
+        Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'MealPlanSnapshots'"));
+        Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'CookingUnitMealStates'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'TenantStageFoodFactors'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'CampStageFoodFactors'"));
         Assert.Equal(2, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('CampMealTypes', 'CampMeals')"));
@@ -112,7 +114,7 @@ public sealed class DatabaseMigrationTests
 
         Assert.Equal(7, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM platform.\"__EFMigrationsHistory\""));
         Assert.Equal(8, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM camp.\"__EFMigrationsHistory\""));
-        Assert.Equal(20, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM catering.\"__EFMigrationsHistory\""));
+        Assert.Equal(21, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM catering.\"__EFMigrationsHistory\""));
         Assert.Equal(9, await ScalarAsync<long>(connection,
             "SELECT COUNT(*) FROM catering.\"MeasurementUnits\" WHERE \"NormalizedName\" IN ('GRAMM', 'KILOGRAMM', 'MILLILITER', 'LITER', 'STÜCK', 'TEELÖFFEL', 'ESSLÖFFEL', 'PRISE', 'BUND')"));
         Assert.Equal(18, await ScalarAsync<long>(connection,
@@ -125,6 +127,8 @@ public sealed class DatabaseMigrationTests
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'camp' AND table_name = 'ParticipantEstimates'"));
         Assert.Equal(0, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'camp' AND table_name = 'CookingUnits'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'catering' AND indexname = 'IX_MealPlans_CampId'"));
+        Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'catering' AND table_name = 'MealPlanSnapshots'"));
+        Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'catering' AND table_name = 'CookingUnitMealStates'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'catering' AND table_name = 'TenantStageFoodFactors'"));
         Assert.Equal(1, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'catering' AND table_name = 'CampStageFoodFactors'"));
         Assert.Equal(2, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'catering' AND table_name IN ('CampMealTypes', 'CampMeals')"));
@@ -224,10 +228,13 @@ public sealed class DatabaseMigrationTests
     {
         var identities = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
         databases.Platform.Tenants.Add(new Tenant(identities.Item1, "Migration Tenant"));
-        databases.Catering.MealPlans.Add(new MealPlan(identities.Item4, identities.Item2, "Migration Meal"));
         await databases.Platform.SaveChangesAsync();
         if (databases.Camp.Database.IsNpgsql())
         {
+            await databases.Catering.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO catering."MealPlans" ("Id", "CampId", "Name")
+                VALUES ({identities.Item4}, {identities.Item2}, {"Migration Meal"})
+                """);
             await databases.Camp.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO camp."Camps" ("Id", "TenantId", "Name", "IsFrozen", "ActiveTransferId", "BaselineVersion")
                 VALUES ({identities.Item2}, {identities.Item1}, {"Migration Camp"}, {false}, {null}, {0L})
@@ -239,6 +246,10 @@ public sealed class DatabaseMigrationTests
         }
         else
         {
+            await databases.Catering.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO "MealPlans" ("Id", "CampId", "Name")
+                VALUES ({identities.Item4}, {identities.Item2}, {"Migration Meal"})
+                """);
             await databases.Camp.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO "Camps" ("Id", "TenantId", "Name", "IsFrozen", "ActiveTransferId", "BaselineVersion")
                 VALUES ({identities.Item2}, {identities.Item1}, {"Migration Camp"}, {false}, {null}, {0L})
@@ -259,7 +270,7 @@ public sealed class DatabaseMigrationTests
     {
         Assert.True(await databases.Platform.Tenants.AnyAsync(x => x.Id == identities.TenantId));
         Assert.True(await databases.Camp.Camps.AnyAsync(x => x.Id == identities.CampId));
-        Assert.False(await TableExistsAsync(databases.Camp.Database.GetDbConnection(), "CookingUnits"));
+        Assert.False(await databases.Catering.CookingUnits.AnyAsync(x => x.Id == identities.UnitId));
         Assert.True(await databases.Catering.MealPlans.AnyAsync(x => x.Id == identities.MealId));
     }
 

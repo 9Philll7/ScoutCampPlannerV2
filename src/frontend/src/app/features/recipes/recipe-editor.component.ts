@@ -367,6 +367,11 @@ interface EditorConflictOption extends RecipeEditorConflict { name: string; }
             @if (recipe.isLocal) {
               <button matButton type="button" (click)="open(recipe)"><scp-action-icon name="edit"/>Öffnen</button>
             }
+            @if (recipe.libraryEntryId) {
+              <button matIconButton type="button" class="remove-action" matTooltip="Aus Lagerbibliothek entfernen"
+                aria-label="Aus Lagerbibliothek entfernen" (click)="removeLibraryEntry(recipe.libraryEntryId)"
+                [disabled]="disabled()"><scp-action-icon name="remove"/></button>
+            }
           </mat-card-actions></mat-card>
         } @empty { <p class="empty">Noch keine Lagerrezepte vorhanden.</p> }
       </div>
@@ -891,6 +896,16 @@ export class RecipeEditorComponent {
     return `Gruppe ${suffix}`;
   }
   private loadCatalogOnly() { this.api.list(this.campId()).subscribe({ next: values => this.recipes.set(values) }); }
+  removeLibraryEntry(entryId: string) {
+    this.api.removeLibraryEntry(this.campId(), entryId).subscribe({
+      next: () => { this.notice.set('Rezept aus der Lagerbibliothek entfernt.'); this.loadCatalogOnly(); },
+      error: error => {
+        const references = error.error?.references?.join(' · ');
+        this.error.set([error.error?.message || 'Das Rezept konnte nicht entfernt werden.', references]
+          .filter(Boolean).join(' '));
+      },
+    });
+  }
   private formatNumber(value: number, maximumFractionDigits: number) {
     return new Intl.NumberFormat('de-DE', { maximumFractionDigits }).format(value);
   }

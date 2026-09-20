@@ -172,6 +172,20 @@ Production role-changing endpoints must not be enabled before the required audit
 
 ### Offline authorization snapshot
 
+For the single-device operator, the explicitly confirmed import rule in ADR-009
+(2026-09-20) authorizes non-sensitive editing and return export of deliberately
+imported camps only. Implement this as local camp-scoped access, not by granting
+cloud CampAdmin roles or bypassing authorization globally. Tenant administration,
+central catalogue administration, and other camps remain outside this grant.
+This local grant is not part of the return package.
+
+For the single-device operator, the explicitly confirmed import rule in ADR-009
+(2026-09-20) authorizes non-sensitive editing and return export of deliberately
+imported camps only. Implement this as local camp-scoped access, not by granting
+cloud CampAdmin roles or bypassing authorization globally. Tenant administration,
+central catalogue administration, and other camps remain outside this grant.
+This local grant is not part of the return package.
+
 Prepared offline access stores the effective, stable permission identifiers plus a role-definition version, not only role names.
 
 - The snapshot is limited to the tenant and camps prepared for that local instance.

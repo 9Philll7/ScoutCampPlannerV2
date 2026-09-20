@@ -33,11 +33,14 @@ public enum RecipeLibraryMutationStatus
     AlreadyLocal,
     Updated,
     NoUpdate,
+    Removed,
+    ReferenceBlocked,
 }
 
 public sealed record RecipeLibraryMutationResult(
     RecipeLibraryMutationStatus Status,
-    Guid? EntryId = null);
+    Guid? EntryId = null,
+    IReadOnlyList<string>? References = null);
 
 public sealed record RecipeLibraryUpdate(
     Guid EntryId,
@@ -67,6 +70,10 @@ public interface IRecipeLibraryStore
         CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CampRecipeLibraryEntry>> ListCampEntriesAsync(
         Guid campId,
+        CancellationToken cancellationToken = default);
+    Task<RecipeLibraryMutationResult> RemoveCampEntryAsync(
+        Guid campId,
+        Guid entryId,
         CancellationToken cancellationToken = default);
     Task<RecipeLibraryMutationResult> ConvertTenantEntryToLocalRecipeAsync(
         Guid entryId,
@@ -131,6 +138,13 @@ public sealed class RecipeLibraryService(IRecipeLibraryStore store)
         Guid campId,
         CancellationToken cancellationToken = default) =>
         store.ListCampEntriesAsync(Required(campId, nameof(campId)), cancellationToken);
+
+    public Task<RecipeLibraryMutationResult> RemoveCampEntryAsync(
+        Guid campId,
+        Guid entryId,
+        CancellationToken cancellationToken = default) =>
+        store.RemoveCampEntryAsync(
+            Required(campId, nameof(campId)), Required(entryId, nameof(entryId)), cancellationToken);
 
     public Task<RecipeLibraryMutationResult> ConvertTenantEntryToLocalRecipeAsync(
         Guid entryId,

@@ -45,7 +45,8 @@ public sealed class CateringPlanningService(
         var types = await catering.CampMealTypes.Where(value => value.CampId == campId).OrderBy(value => value.SortOrder)
             .Select(value => new CampMealTypeSummary(value.Id, value.Name, value.SortOrder)).ToListAsync(cancellationToken);
         var names = types.ToDictionary(value => value.Id, value => value.Name);
-        var meals = await catering.CampMeals.Where(value => value.CampId == campId).OrderBy(value => value.Date)
+        var meals = await catering.CampMeals.Where(value => value.CampId == campId &&
+                value.Date >= startDate && value.Date <= endDate).OrderBy(value => value.Date)
             .ThenBy(value => value.MealTypeId).ToListAsync(cancellationToken);
         return new(types, meals.Select(value => new CampMealSummary(value.Id, value.MealTypeId,
             names.GetValueOrDefault(value.MealTypeId, string.Empty), value.Date, value.IsActive)).ToList());
@@ -79,6 +80,11 @@ public sealed class CateringPlanningService(
         Guid[] removed = existing.Where(value => !retained.Contains(value.Id)).Select(value => value.Id).ToArray();
         if (removed.Length > 0)
         {
+            Guid[] affectedMealIds = await catering.CampMeals.Where(value => removed.Contains(value.MealTypeId))
+                .Select(value => value.Id).ToArrayAsync(cancellationToken);
+            if (await catering.MealPlanOfferGroups.AnyAsync(
+                    value => affectedMealIds.Contains(value.CampMealId), cancellationToken))
+                return UpdateCampMealsFailure.Invalid;
             catering.CampMeals.RemoveRange(await catering.CampMeals.Where(value => removed.Contains(value.MealTypeId)).ToListAsync(cancellationToken));
             catering.CampMealTypes.RemoveRange(existing.Where(value => removed.Contains(value.Id)));
         }

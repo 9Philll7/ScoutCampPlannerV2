@@ -61,3 +61,5 @@ fields.
 Published recipes flow explicitly from the central catalog into a tenant library and from there into a camp library. Every reference targets a concrete immutable revision. Editing an upstream recipe creates an independently editable copy in the receiving scope with lineage to its source revision.
 
 Tenant and camp changes must not silently overwrite upstream data. There is no automatic synchronization or semantic merge.
+
+Mahlzeitenplanung referenziert ausschließlich konkrete veröffentlichte Rezeptrevisionen. Beim ersten Einsatz wird eine zugängliche zentrale oder Mandantenrevision automatisch in die Lagerbibliothek aufgenommen. Solange ein MealPlanEntry oder eine individuelle CookingUnit-Mahlzeitenwahl diese Revision verwendet, wird das Entfernen des Bibliothekseintrags mit benannten Referenzen blockiert. Nicht mehr verwendete Einträge werden nicht automatisch bereinigt.

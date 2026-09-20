@@ -122,6 +122,11 @@ export class RecipeEditorApiService {
       { withCredentials: true });
   }
 
+  removeLibraryEntry(campId: string, entryId: string) {
+    return this.http.delete(`${this.baseUrl}/api/camps/${campId}/recipe-library/${entryId}`,
+      { withCredentials: true });
+  }
+
   ingredients(campId: string) {
     return this.http.get<IngredientCatalogEntry[]>(`${this.baseUrl}/api/camps/${campId}/ingredients`,
       { withCredentials: true });

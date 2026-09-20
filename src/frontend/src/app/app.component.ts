@@ -13,10 +13,12 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { concatMap, forkJoin } from 'rxjs';
+import { concatMap, firstValueFrom, forkJoin } from 'rxjs';
+import { saveOfflinePackage } from './shared/save-offline-package';
 import { AuthenticationApiService, AuthenticatedUser } from './features/authentication/authentication-api.service';
 import { CampAdministratorOption, CampApiService, CampMeal, CampMealType, CampPlanningSummary, CampStageFoodFactor, CampSummary, IngredientCatalogEntry, IngredientConflictType, IngredientScope, MeasurementDimension, ParticipantEstimate, StructureConfiguration, StructureNodeSummary, TenantOption, TenantStageFoodFactor, WeightedStageTotal } from './features/camp/camp-api.service';
 import { IngredientRevisionEditorComponent } from './features/ingredients/ingredient-revision-editor.component';
+import { MealPlanningComponent } from './features/meal-planning/meal-planning.component';
 import { RecipeEditorComponent } from './features/recipes/recipe-editor.component';
 import { SetupApiService } from './features/setup/setup-api.service';
 import { ActionIconComponent } from './shared/action-icon.component';
@@ -30,7 +32,7 @@ type CampSection = 'general' | 'structure' | 'catering';
   standalone: true,
   imports: [FormsModule, MatButtonModule, MatButtonToggleModule, MatCardModule, MatCheckboxModule, MatFormFieldModule, MatInputModule,
     MatProgressSpinnerModule, MatSelectModule, MatToolbarModule, MatTooltipModule, MatDatepickerModule,
-    ActionIconComponent, IngredientRevisionEditorComponent, RecipeEditorComponent],
+    ActionIconComponent, IngredientRevisionEditorComponent, RecipeEditorComponent, MealPlanningComponent],
   providers: [provideNativeDateAdapter(), { provide: MAT_DATE_LOCALE, useValue: 'de-AT' }],
   template: `
     <mat-toolbar color="primary" class="app-toolbar">
@@ -576,6 +578,9 @@ type CampSection = 'general' | 'structure' | 'catering';
                   }
                   @if (campSection() === 'catering') {
                     <section class="settings-section">
+                      <scp-meal-planning [campId]="camp.id" [disabled]="!camp.canEdit || camp.isFrozen"/>
+                    </section>
+                    <section class="settings-section">
                       <div class="section-heading"><div><p class="eyebrow">Mahlzeiten</p><h3>Tagesplan</h3></div>
                         @if (camp.canEdit) {
                           <button matIconButton type="button" class="icon-only save-required" aria-label="Mahlzeitenbezeichnungen speichern"
@@ -838,12 +843,27 @@ export class AppComponent {
     this.authenticationApi.signOut().subscribe({ next: () => this.clearSession(), error: () => this.clearSession() });
   }
 
-  exportCamp(camp: CampSummary) {
-    this.campApi.startOfflineTransfer(camp.id).subscribe(blob => {
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url; anchor.download = `camp-${camp.id}.scoutcamp`; anchor.click(); URL.revokeObjectURL(url);
-    });
+  async exportCamp(camp: CampSummary) {
+    if (this.submitting()) return;
+    this.submitting.set(true);
+    this.error.set(null);
+    this.notice.set(null);
+    let transferStarted = false;
+    try {
+      const saved = await saveOfflinePackage(`camp-${camp.id}.scoutcamp`, () => {
+        transferStarted = true;
+        return firstValueFrom(this.campApi.startOfflineTransfer(camp.id));
+      });
+      this.notice.set(saved ? 'Offlinepaket gespeichert.' : 'Speichern abgebrochen. Die Offline-Phase wurde nicht gestartet.');
+    } catch (error) {
+      this.error.set(transferStarted
+        ? 'Das Offlinepaket konnte nicht gespeichert werden. Der Transfer wurde bereits angefordert; bitte den Lagerstatus prüfen. Die Sperre wird nicht automatisch aufgehoben.'
+        : error instanceof Error ? error.message : 'Der Speicherort konnte nicht geöffnet werden.');
+    } finally {
+      this.submitting.set(false);
+      const tenant = this.selectedTenant();
+      if (transferStarted && tenant) this.loadCamps(tenant.id);
+    }
   }
 
   isAdministratorSelected(membershipId: string) {

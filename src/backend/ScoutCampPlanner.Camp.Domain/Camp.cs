@@ -76,11 +76,22 @@ public sealed class Camp
 
     public void Freeze(Guid transferId)
     {
-        if (IsFrozen) throw new InvalidOperationException("Camp is already frozen.");
+        if (IsFrozen || ActiveTransferId.HasValue) throw new InvalidOperationException("Camp already has an active transfer.");
         if (transferId == Guid.Empty) throw new ArgumentException("Transfer ID is required.", nameof(transferId));
         IsFrozen = true;
         ActiveTransferId = transferId;
         BaselineVersion++;
+    }
+
+    public void BeginLocalTransfer(Guid transferId, long baselineVersion)
+    {
+        if (IsFrozen || ActiveTransferId.HasValue)
+            throw new InvalidOperationException("Camp already has an active transfer.");
+        if (transferId == Guid.Empty || baselineVersion < 1)
+            throw new ArgumentException("A transfer ID and positive source baseline are required.");
+        ActiveTransferId = transferId;
+        BaselineVersion = baselineVersion;
+        IsFrozen = false;
     }
 
     public void CompleteTransfer(Guid transferId, long baselineVersion)

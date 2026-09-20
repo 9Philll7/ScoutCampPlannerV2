@@ -6,9 +6,9 @@ using ScoutCampPlanner.Camp.Infrastructure;
 using ScoutCampPlanner.Catering.Domain;
 using ScoutCampPlanner.Catering.Application.Recipes;
 using ScoutCampPlanner.Catering.Infrastructure;
+using ScoutCampPlanner.Catering.Infrastructure.Recipes;
 using ScoutCampPlanner.Catering.Infrastructure.Ingredients;
 using ScoutCampPlanner.Catering.Infrastructure.Offline;
-using ScoutCampPlanner.Catering.Infrastructure.Recipes;
 using ScoutCampPlanner.Package;
 using ScoutCampPlanner.Platform.Domain;
 using ScoutCampPlanner.Platform.Infrastructure;
@@ -19,6 +19,42 @@ namespace ScoutCampPlanner.PackageTests;
 public sealed class CampPackageTests
 {
     static CampPackageTests() => SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_winsqlite3());
+
+    [Fact]
+    public async Task Repeated_transfers_preserve_source_baseline_and_allow_local_domain_changes()
+    {
+        await using var cloud = await DatabaseHarness.CreateAsync();
+        var tenantId = Guid.NewGuid();
+        var campId = Guid.NewGuid();
+        cloud.Platform.Tenants.Add(new Tenant(tenantId, "Roundtrip"));
+        cloud.Camp.Camps.Add(new Camp.Domain.Camp(campId, tenantId, "Lager",
+            new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 3)));
+        cloud.Camp.CampStages.Add(new CampStage(Guid.NewGuid(), campId, "GuSp", 0));
+        await cloud.SaveAsync();
+
+        for (var cycle = 0; cycle < 2; cycle++)
+        {
+            byte[] outbound = await cloud.Packages.StartOfflineTransferAsync(campId);
+            var manifest = CampPackageSerializer.Deserialize(outbound).Manifest;
+            Assert.Equal(1 + cycle * 2, manifest.BaselineVersion);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => cloud.Packages.CreateReturnPackageAsync(campId));
+
+            await using var local = await DatabaseHarness.CreateAsync();
+            await local.Packages.ImportInitialPackageAsync(outbound);
+            var imported = await local.Camp.Camps.SingleAsync();
+            Assert.False(imported.IsFrozen);
+            Assert.Equal(manifest.TransferId, imported.ActiveTransferId);
+            Assert.Equal(manifest.BaselineVersion, imported.BaselineVersion);
+            imported.ConfigureStructure(["Gruppe"]);
+            await local.SaveAsync();
+            await Assert.ThrowsAsync<InvalidOperationException>(() => local.Packages.StartOfflineTransferAsync(campId));
+
+            byte[] returned = await local.Packages.CreateReturnPackageAsync(campId);
+            await cloud.Packages.ImportReturnPackageAsync(returned);
+            Assert.False((await cloud.Camp.Camps.SingleAsync()).IsFrozen);
+            await Assert.ThrowsAsync<CampPackageValidationException>(() => cloud.Packages.ImportReturnPackageAsync(returned));
+        }
+    }
 
     [Fact]
     public void Serializer_rejects_tampered_package()
@@ -90,15 +126,67 @@ public sealed class CampPackageTests
         var mealId = Guid.NewGuid();
         var mealTypeId = Guid.NewGuid();
         var campMealId = Guid.NewGuid();
+        var offerGroupId = Guid.NewGuid();
+        var planEntryId = Guid.NewGuid();
+        var recipeRevisionId = Guid.NewGuid();
+        var unitGroupId = Guid.NewGuid();
+        var cookingUnitId = Guid.NewGuid();
+        var mealStateId = Guid.NewGuid();
+        var snapshotId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
         cloud.Platform.Tenants.Add(new Tenant(tenantId, "Stamm Nord"));
         cloud.Camp.Camps.Add(new Camp.Domain.Camp(
             campId, tenantId, "Sommerlager", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14)));
         cloud.Camp.CampStages.Add(new CampStage(stageId, campId, "GuSp", 0));
         cloud.Camp.StructureNodes.Add(new StructureNode(structureNodeId, campId, null, "Nord"));
         cloud.Camp.ParticipantEstimates.Add(new ParticipantEstimate(estimateId, campId, structureNodeId, stageId, 18, 4));
-        cloud.Catering.MealPlans.Add(new MealPlan(mealId, campId, "Montag"));
+        cloud.Catering.MealPlans.Add(new MealPlan(mealId, campId, "Montag", version: 1));
         cloud.Catering.CampMealTypes.Add(new CampMealType(mealTypeId, campId, "Frühstück", 0));
         cloud.Catering.CampMeals.Add(new CampMeal(campMealId, campId, mealTypeId, new DateOnly(2027, 7, 1)));
+        cloud.Catering.MealPlanSnapshots.Add(new MealPlanSnapshot(
+            snapshotId, mealId, campId, 1, "{\"version\":1}", DateTimeOffset.UtcNow));
+        cloud.Catering.MealPlanOfferGroups.Add(new MealPlanOfferGroup(
+            offerGroupId, mealId, campMealId, "Frühstück", 0));
+        cloud.Catering.MealPlanEntries.Add(new MealPlanEntry(
+            planEntryId, offerGroupId, recipeRevisionId, true, null, MealPlanEntryRole.MainDish, null, 0));
+        cloud.Catering.CookingUnitGroups.Add(new CookingUnitGroup(unitGroupId, campId, "Nord", 0));
+        cloud.Catering.CookingUnits.Add(new CookingUnit(
+            cookingUnitId, campId, "Küche Nord", 0, unitGroupId, mealId));
+        cloud.Catering.CookingUnitStructureAssignments.Add(new CookingUnitStructureAssignment(
+            Guid.NewGuid(), campId, cookingUnitId, null, structureNodeId));
+        var mealState = new CookingUnitMealState(mealStateId, campId, cookingUnitId, campMealId);
+        mealState.Configure(MealPlanSubscriptionState.Custom, 24m);
+        mealState.ApplyCalculation(22m, null, null, null, "{}", "ABC", "[]", DateTimeOffset.UtcNow, true);
+        cloud.Catering.CookingUnitMealStates.Add(mealState);
+        cloud.Catering.CookingUnitMealOfferTargets.Add(new CookingUnitMealOfferTarget(
+            Guid.NewGuid(), mealStateId, offerGroupId, 20m));
+        cloud.Catering.CookingUnitMealRecipeChoices.Add(new CookingUnitMealRecipeChoice(
+            Guid.NewGuid(), mealStateId, recipeRevisionId, offerGroupId, planEntryId, 0));
+        cloud.Catering.AddRange(
+            new RecipeRecord
+            {
+                Id = Guid.NewGuid(), ScopeType = (int)RecipeScopeType.Central, Name = "Milchreis",
+                NormalizedName = "MILCHREIS", Status = (int)RecipeStatus.Active,
+                RecipeType = (int)RecipeType.PortionBased, CreatedBy = actorId,
+                CreatedAtUtc = DateTimeOffset.UtcNow, UpdatedBy = actorId, UpdatedAtUtc = DateTimeOffset.UtcNow,
+            });
+        RecipeRecord recipe = cloud.Catering.Set<RecipeRecord>().Local.Single();
+        cloud.Catering.AddRange(
+            new RecipeRevisionRecord
+            {
+                Id = recipeRevisionId, RecipeId = recipe.Id, RevisionNumber = 1,
+                PublishedAtUtc = DateTimeOffset.UtcNow, PublishedBy = actorId,
+                SnapshotSchemaVersion = 2,
+                SnapshotJson = RecipeSnapshotBuilder.Serialize(new RecipeSnapshot(
+                    2, "Milchreis", null, null, null, RecipeType.PortionBased,
+                    new RecipeReferenceSnapshot(10, 1m, null, null), null, true, [], [], [], [], [])),
+            },
+            new CampRecipeEntryRecord
+            {
+                Id = Guid.NewGuid(), CampId = campId, UpstreamRecipeRevisionId = recipeRevisionId,
+                CreatedBy = actorId, CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedBy = actorId, UpdatedAtUtc = DateTimeOffset.UtcNow,
+            });
         await cloud.SaveAsync();
 
         var initialPackage = await cloud.Packages.StartOfflineTransferAsync(campId);
@@ -124,6 +212,15 @@ public sealed class CampPackageTests
         Assert.Equal(18, importedEstimate.ChildYouthCount);
         Assert.Equal(mealId, importedMeal.Id);
         Assert.Equal("Montag offline geändert", importedMeal.Name);
+        Assert.Equal(1, importedMeal.Version);
+        Assert.Equal(snapshotId, (await cloud.Catering.MealPlanSnapshots.SingleAsync()).Id);
+        Assert.Equal(cookingUnitId, (await cloud.Catering.CookingUnits.SingleAsync()).Id);
+        CookingUnitMealState importedState = await cloud.Catering.CookingUnitMealStates.SingleAsync();
+        Assert.Equal(MealPlanSubscriptionState.Custom, importedState.SubscriptionState);
+        Assert.Equal(24m, importedState.DemandOverride);
+        Assert.Single(await cloud.Catering.CookingUnitStructureAssignments.ToArrayAsync());
+        Assert.Single(await cloud.Catering.CookingUnitMealOfferTargets.ToArrayAsync());
+        Assert.Single(await cloud.Catering.CookingUnitMealRecipeChoices.ToArrayAsync());
         Assert.False((await cloud.Catering.CampMeals.SingleAsync()).IsActive);
         Assert.Equal(new DateOnly(2027, 7, 1), completedCamp.StartDate);
         Assert.Equal(new DateOnly(2027, 7, 14), completedCamp.EndDate);
@@ -279,8 +376,9 @@ public sealed class CampPackageTests
             new TenantData(tenantId, "Tenant"), new CampData(
                 campId, tenantId, "Camp", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 14), "Free", []),
             [new CampStageData(stageId, campId, "GuSp", 0)], [],
-            [new CampStageFoodFactorData(Guid.NewGuid(), campId, stageId, "GuSp", 1m)], [], [],
-            CateringReferenceData: CampOfflineReferenceStore.CreateEmptyPackageData());
+            [new CampStageFoodFactorData(Guid.NewGuid(), campId, stageId, "GuSp", 1m)], [],
+            CateringReferenceData: CampOfflineReferenceStore.CreateEmptyPackageData(),
+            CateringMealPlanningData: CampMealPlanningPackageStore.CreateEmptyPackageData(campId));
     }
 
     private sealed class DatabaseHarness : IAsyncDisposable

@@ -59,6 +59,13 @@ public static class CampPackageSerializer
         if (package.CateringReferenceData.ValueKind != JsonValueKind.Object)
             throw new CampPackageValidationException("Catering reference data is missing.");
         CampOfflineReferenceStore.Validate(package.CateringReferenceData, package.Camp.Id);
+        if (package.CateringMealPlanningData.ValueKind != JsonValueKind.Object)
+            throw new CampPackageValidationException("Catering meal-planning data is missing.");
+        try { CampMealPlanningPackageStore.Validate(package.CateringMealPlanningData, package.Camp.Id); }
+        catch (InvalidOperationException exception)
+        {
+            throw new CampPackageValidationException(exception.Message);
+        }
         if (package.Manifest.FormatVersion != CampPackageVersions.Current)
             throw new CampPackageValidationException($"Unsupported package version {package.Manifest.FormatVersion}.");
         if (package.Manifest.TenantId != package.Tenant.Id || package.Manifest.CampId != package.Camp.Id)
@@ -81,7 +88,6 @@ public static class CampPackageSerializer
             package.ParticipantEstimates.Any(x => x.CampId != package.Camp.Id) ||
             package.CampStageFoodFactors.Any(x => x.CampId != package.Camp.Id) ||
             package.StructureNodes.Any(x => x.CampId != package.Camp.Id) ||
-            package.MealPlans.Any(x => x.CampId != package.Camp.Id) ||
             (package.CampMealTypes ?? []).Any(x => x.CampId != package.Camp.Id) ||
             (package.CampMeals ?? []).Any(x => x.CampId != package.Camp.Id))
             throw new CampPackageValidationException("Package contains data for another camp.");
@@ -92,7 +98,7 @@ public static class CampPackageSerializer
             mealTypes.Select(x => x.Name.Trim().ToUpperInvariant()).Distinct().Count() != mealTypes.Count ||
             mealTypes.Select(x => x.SortOrder).Order().Where((value, index) => value != index).Any() ||
             (package.CampMeals ?? []).Any(x => x.Id == Guid.Empty || !mealTypeIds.Contains(x.MealTypeId) ||
-                x.Date < package.Camp.StartDate || x.Date > package.Camp.EndDate))
+                x.Date < package.Camp.StartDate || x.Date > package.Camp.EndDate || x.ChangeVersion < 0))
             throw new CampPackageValidationException("Camp meal schedule is invalid.");
         if (package.CampStages.Count == 0 || package.CampStages.Select(x => x.Id).Distinct().Count() != package.CampStages.Count ||
             package.CampStages.Select(x => x.Name.Trim().ToUpperInvariant()).Distinct().Count() != package.CampStages.Count ||
@@ -118,6 +124,19 @@ public static class CampPackageSerializer
             node.Id == Guid.Empty || node.ParentId == node.Id ||
             node.ParentId is Guid parentId && !nodeIds.Contains(parentId)))
             throw new CampPackageValidationException("Camp structure identity or parent reference is invalid.");
+        MealPlanningPackageData mealPlanning = CampMealPlanningPackageStore.ReadPackageData(
+            package.CateringMealPlanningData, package.Camp.Id);
+        IReadOnlySet<Guid> packagedRecipeRevisions = CampOfflineReferenceStore.ReadRecipeRevisionIds(
+            package.CateringReferenceData);
+        var campMealIds = (package.CampMeals ?? []).Select(meal => meal.Id).ToHashSet();
+        if (mealPlanning.OfferGroups.Any(group => !campMealIds.Contains(group.CampMealId)) ||
+            mealPlanning.MealStates.Any(state => !campMealIds.Contains(state.CampMealId)) ||
+            mealPlanning.StructureAssignments.Any(assignment => !nodeIds.Contains(assignment.StructureNodeId) ||
+                assignment.CampMealId.HasValue && !campMealIds.Contains(assignment.CampMealId.Value)))
+            throw new CampPackageValidationException("Catering meal-planning references are outside the package camp data.");
+        if (mealPlanning.Entries.Any(entry => !packagedRecipeRevisions.Contains(entry.RecipeRevisionId)) ||
+            mealPlanning.RecipeChoices.Any(choice => !packagedRecipeRevisions.Contains(choice.RecipeRevisionId)))
+            throw new CampPackageValidationException("Catering meal planning references a recipe revision outside the offline closure.");
         if (package.ParticipantEstimates.Any(estimate =>
             package.StructureNodes.Any(node => node.ParentId == estimate.StructureNodeId)))
             throw new CampPackageValidationException("Participant estimates must belong to leaf nodes.");

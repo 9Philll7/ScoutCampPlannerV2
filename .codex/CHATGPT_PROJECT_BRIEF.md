@@ -89,45 +89,27 @@ nur eine Prüfsumme, keine produktive Verschlüsselung oder Signatur.
 
 ## Aktueller Working Tree
 
-Das noch nicht committete Inkrement ersetzt einen großen BLS-Zutatenimport
-durch eine lokale Vorschlagssuche:
-
-- read-only Suchindex aus der vollständigen BLS-4.0-CSV
-- keine automatische Anlage von Zutaten
-- bewusste, getrennte Übernahme von Nährwerten und quantitativen Stoffgehalten
-  in einen Zutatenentwurf
-- Übernahme ausschließlich als ungeprüfte Schätzung
-- revisionsweite Quellenliste mit Dublettenprüfung
-- Übernahme der BLS-Bezugsbasis `100 g` nur für gewichtsbasierten Zutaten
-- Open Food Facts noch nicht implementiert
-
-Der Angular-Build, der vollständige Solution-Build, 177 Catering-Tests und vier
-Architekturtests waren erfolgreich. Die Stoffmengen-Übernahme, Persistenz und
-Dublettenprüfung der Quellenliste wurden anschließend manuell erfolgreich
-geprüft. Das Inkrement ist damit bereit für einen gemeinsamen Commit.
+Im noch nicht committeten Inkrement wird Mahlzeitenplanung Inkrement 1 als
+durchgängiger Vertikalschnitt umgesetzt: versionierte MealPlans und Snapshots,
+OfferGroups und Rezeptrevisionen, CookingUnits, Strukturzuordnung,
+FollowStandard/Custom/NoSupplyRequired, explizite Bedarfsberechnung,
+Current/Stale/Incomplete, Löschblockaden, API, Angular-Oberfläche und der
+vollständige Camp-Package-Replace. Der konkrete Prüfnachweis steht in
+`.codex/meal-planning-increment-1-result.md`.
 
 ## Wichtigste offene Produktphase
 
-Der logisch nächste fachliche Vertikalschnitt ist die Mahlzeitenplanung:
-
-1. eine konkrete veröffentlichte Rezeptrevision einem datierten Lageressen
-   zuordnen;
-2. Catering-eigene Koch-/Verpflegungseinheiten definieren;
-3. den Bedarf aus anonymen Planungszahlen berechnen;
-4. Varianten und explizite Ersatzregeln für einen konkreten Nutzungskontext
-   auswählen;
-5. ungelöste Konflikte sichtbar lassen, statt medizinische Sicherheit zu
-   behaupten.
-
-Vor der Implementierung müssen insbesondere Eigentum und Lebenszyklus einer
-Essenszuordnung, die Beziehung zu Koch-/Verpflegungseinheiten sowie der erste
-anonyme Anforderungskatalog fachlich festgelegt werden.
+Mahlzeitenplanung Inkrement 1 ist umgesetzt. Als nächstes ist Inkrement 2
+fachlich zu definieren: personalisierte Anforderungen, eindeutige direkte
+Ersatzauflösung und spätere Verifikation. Dabei dürfen keine medizinischen
+Grenzwerte erfunden und keine sensiblen Personendaten vor den noch offenen
+Datenschutz-/Paket-Sicherheitsentscheidungen eingeführt werden.
 
 ## Weitere offene Punkte
 
 ### Kurz- bis mittelfristig
 
-- aktuelles BLS-Inkrement committen
+- Mahlzeitenplanung Inkrement 1 manuell vollständig prüfen und gemeinsam committen
 - entscheiden, ob und unter welchen ODbL-/Cache-/Rate-Limit-Regeln Open Food
   Facts ergänzt wird
 - zentrale und Mandanten-Rezeptverwaltung in der Oberfläche vervollständigen

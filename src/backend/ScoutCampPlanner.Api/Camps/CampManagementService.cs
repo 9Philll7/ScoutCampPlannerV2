@@ -822,8 +822,6 @@ public sealed class CampManagementService(
                     camp.UpdateDetails(request.Name, request.StartDate, request.EndDate);
                     var mealTypes = await catering.CampMealTypes.Where(value => value.CampId == campId)
                         .ToListAsync(operationCancellationToken);
-                    await catering.CampMeals.Where(value => value.CampId == campId &&
-                        (value.Date < request.StartDate || value.Date > request.EndDate)).ExecuteDeleteAsync(operationCancellationToken);
                     var existing = await catering.CampMeals.Where(value => value.CampId == campId)
                         .Select(value => new { value.Date, value.MealTypeId }).ToListAsync(operationCancellationToken);
                     var existingKeys = existing.Select(value => (value.Date, value.MealTypeId)).ToHashSet();

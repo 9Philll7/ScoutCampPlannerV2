@@ -65,6 +65,9 @@ Initial camp permissions:
 - `camp.package.export`
 - `camp.package.import`
 - `camp.audit.view`
+- `catering.meal-planning.edit`
+
+`catering.meal-planning.edit` is a camp-scoped permission shared by all mutating meal-planning use cases. It is included for `CampAdmin` and `CampEditor`; read access to the overview follows `camp.view`. No fixed meal-planning role and no verify permission are introduced by increment 1.
 
 Recipe permissions are defined by [ADR-019](../decisions/adr-019-recipe-permissions.md). They are evaluated in the tenant or camp context and use the following stable identifiers:
 

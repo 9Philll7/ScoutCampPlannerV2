@@ -8,10 +8,10 @@ public sealed class AuthorizationCatalogueTests
     [Fact]
     public void CatalogueContainsTheDocumentedStableIdentifiers()
     {
-        Assert.Equal(4, AuthorizationCatalogue.DefinitionVersion);
+        Assert.Equal(5, AuthorizationCatalogue.DefinitionVersion);
         Assert.Equal(4, AuthorizationCatalogue.AllPlatformPermissions.Count);
         Assert.Equal(18, AuthorizationCatalogue.AllTenantPermissions.Count);
-        Assert.Equal(17, AuthorizationCatalogue.AllCampPermissions.Count);
+        Assert.Equal(18, AuthorizationCatalogue.AllCampPermissions.Count);
         Assert.Equal(8, AuthorizationCatalogue.AllRoles.Count);
         Assert.Contains(Permissions.Platform.ReviewCentralRecipeChanges, AuthorizationCatalogue.AllPlatformPermissions);
         Assert.Contains(Permissions.Tenant.ManageAuditLegalHold, AuthorizationCatalogue.AllTenantPermissions);
@@ -22,6 +22,8 @@ public sealed class AuthorizationCatalogueTests
         Assert.Contains(Permissions.Ingredients.Manage, AuthorizationCatalogue.AllTenantPermissions);
         Assert.Contains(Permissions.Ingredients.Manage, AuthorizationCatalogue.AllCampPermissions);
         Assert.Contains(Permissions.Platform.ManageCentralIngredients, AuthorizationCatalogue.AllPlatformPermissions);
+        Assert.Contains(Permissions.Catering.EditMealPlanning, AuthorizationCatalogue.AllCampPermissions);
+        Assert.DoesNotContain(Permissions.Catering.EditMealPlanning, AuthorizationCatalogue.AllTenantPermissions);
     }
 
     [Fact]
@@ -57,7 +59,8 @@ public sealed class AuthorizationCatalogueTests
             Permissions.Recipes.Read,
             Permissions.Recipes.Edit,
             Permissions.Recipes.ManageCampNotes,
-            Permissions.Ingredients.Manage);
+            Permissions.Ingredients.Manage,
+            Permissions.Catering.EditMealPlanning);
         AssertRole(Roles.CampViewer, AuthorizationScope.Camp,
             Permissions.Camp.View,
             Permissions.Recipes.Read);

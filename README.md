@@ -21,8 +21,11 @@ dotnet test tests/ScoutCampPlanner.PackageTests/ScoutCampPlanner.PackageTests.cs
 
 Set-Location src/frontend
 npm install
+npm test
 npm run build
 ```
+
+The current product baseline includes meal-planning increment 1: versioned meal plans, published recipe-revision assignments, Catering-owned cooking units, anonymous demand calculation, operational freshness states, and complete camp-package transfer. Personalized participant requirements and verification are not part of this increment.
 
 Database migrations are provider- and module-specific. Restore the pinned EF tool with `dotnet tool restore` and follow the [database migration workflow](docs/architecture/database-migrations.md) when changing a persistent model.
 

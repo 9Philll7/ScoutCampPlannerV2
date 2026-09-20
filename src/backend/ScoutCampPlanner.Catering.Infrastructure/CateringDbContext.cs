@@ -8,6 +8,15 @@ namespace ScoutCampPlanner.Catering.Infrastructure;
 public sealed class CateringDbContext(DbContextOptions<CateringDbContext> options) : DbContext(options)
 {
     public DbSet<MealPlan> MealPlans => Set<MealPlan>();
+    public DbSet<MealPlanSnapshot> MealPlanSnapshots => Set<MealPlanSnapshot>();
+    public DbSet<MealPlanOfferGroup> MealPlanOfferGroups => Set<MealPlanOfferGroup>();
+    public DbSet<MealPlanEntry> MealPlanEntries => Set<MealPlanEntry>();
+    public DbSet<CookingUnitGroup> CookingUnitGroups => Set<CookingUnitGroup>();
+    public DbSet<CookingUnit> CookingUnits => Set<CookingUnit>();
+    public DbSet<CookingUnitStructureAssignment> CookingUnitStructureAssignments => Set<CookingUnitStructureAssignment>();
+    public DbSet<CookingUnitMealState> CookingUnitMealStates => Set<CookingUnitMealState>();
+    public DbSet<CookingUnitMealOfferTarget> CookingUnitMealOfferTargets => Set<CookingUnitMealOfferTarget>();
+    public DbSet<CookingUnitMealRecipeChoice> CookingUnitMealRecipeChoices => Set<CookingUnitMealRecipeChoice>();
     public DbSet<CampMealType> CampMealTypes => Set<CampMealType>();
     public DbSet<CampMeal> CampMeals => Set<CampMeal>();
     public DbSet<TenantStageFoodFactor> TenantStageFoodFactors => Set<TenantStageFoodFactor>();
@@ -48,7 +57,9 @@ public sealed class CateringDbContext(DbContextOptions<CateringDbContext> option
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(200);
             entity.HasIndex(x => x.CampId);
+            entity.HasIndex(x => new { x.CampId, x.SortOrder });
         });
+        MealPlanningPersistenceConfiguration.Configure(modelBuilder);
         modelBuilder.Entity<CampMealType>(entity =>
         {
             entity.ToTable("CampMealTypes"); entity.HasKey(x => x.Id);

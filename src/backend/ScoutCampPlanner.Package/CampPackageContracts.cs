@@ -33,10 +33,10 @@ public sealed record CampPackagePayload(
     IReadOnlyList<ParticipantEstimateData> ParticipantEstimates,
     IReadOnlyList<CampStageFoodFactorData> CampStageFoodFactors,
     IReadOnlyList<StructureNodeData> StructureNodes,
-    IReadOnlyList<MealPlanData> MealPlans,
     IReadOnlyList<CampMealTypeData>? CampMealTypes = null,
     IReadOnlyList<CampMealData>? CampMeals = null,
-    JsonElement CateringReferenceData = default);
+    JsonElement CateringReferenceData = default,
+    JsonElement CateringMealPlanningData = default);
 
 public sealed record TenantData(Guid Id, string Name);
 public sealed record CampData(
@@ -47,8 +47,8 @@ public sealed record CampStageData(Guid Id, Guid CampId, string Name, int SortOr
 public sealed record ParticipantEstimateData(Guid Id, Guid CampId, Guid StructureNodeId, Guid CampStageId,
     int ChildYouthCount, int LeaderCount);
 public sealed record CampStageFoodFactorData(Guid Id, Guid CampId, Guid CampStageId, string StageName, decimal Factor);
-public sealed record MealPlanData(Guid Id, Guid CampId, string Name);
 public sealed record CampMealTypeData(Guid Id, Guid CampId, string Name, int SortOrder);
-public sealed record CampMealData(Guid Id, Guid CampId, Guid MealTypeId, DateOnly Date, bool IsActive);
+public sealed record CampMealData(
+    Guid Id, Guid CampId, Guid MealTypeId, DateOnly Date, bool IsActive, int ChangeVersion = 0);
 
 public sealed class CampPackageValidationException(string message) : Exception(message);

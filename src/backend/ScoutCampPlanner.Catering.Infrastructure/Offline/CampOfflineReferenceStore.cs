@@ -118,13 +118,28 @@ public sealed class CampOfflineReferenceStore(CateringDbContext database)
             throw new InvalidDataException("Catering reference data contains records outside the dependency closure.");
     }
 
+    public static IReadOnlySet<Guid> ReadRecipeRevisionIds(JsonElement json) =>
+        Read(json).RecipeRevisions.Select(value => value.Id).ToHashSet();
+
     public async Task<JsonElement> ExportAsync(Guid campId, CancellationToken cancellationToken = default)
     {
         CampRecipeEntryRecord[] entries = await database.Set<CampRecipeEntryRecord>().AsNoTracking()
-            .Where(value => value.CampId == campId && value.UpstreamRecipeRevisionId.HasValue)
+            .Where(value => value.CampId == campId)
             .OrderBy(value => value.Id).ToArrayAsync(cancellationToken);
+        var entryData = new List<CampEntryData>(entries.Length);
+        foreach (CampRecipeEntryRecord entry in entries)
+        {
+            Guid revisionId = entry.UpstreamRecipeRevisionId ?? await database.Set<RecipeRevisionRecord>()
+                .AsNoTracking().Where(value => value.RecipeId == entry.CampRecipeId)
+                .OrderByDescending(value => value.RevisionNumber).Select(value => value.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (revisionId == Guid.Empty)
+                throw new InvalidOperationException("A camp-local library recipe has no published revision.");
+            entryData.Add(new CampEntryData(entry.Id, entry.CampId, revisionId,
+                entry.CreatedBy, entry.CreatedAtUtc, entry.UpdatedBy, entry.UpdatedAtUtc));
+        }
 
-        var revisionIds = new HashSet<Guid>(entries.Select(value => value.UpstreamRecipeRevisionId!.Value));
+        var revisionIds = new HashSet<Guid>(entryData.Select(value => value.RevisionId));
         var pending = new Queue<Guid>(revisionIds);
         var revisions = new List<RecipeRevisionRecord>();
         while (pending.TryDequeue(out Guid revisionId))
@@ -168,7 +183,7 @@ public sealed class CampOfflineReferenceStore(CateringDbContext database)
 
         var payload = new Payload(
             SchemaVersion,
-            entries.Select(Map).ToArray(), recipes.Select(Map).ToArray(), revisions.Select(Map).ToArray(),
+            entryData, recipes.Select(Map).ToArray(), revisions.Select(Map).ToArray(),
             (await database.MeasurementUnits.AsNoTracking().ToArrayAsync(cancellationToken)).Select(Map).ToArray(),
             (await database.Set<IngredientCategoryRecord>().AsNoTracking().ToArrayAsync(cancellationToken)).Select(Map).ToArray(),
             (await database.Set<IngredientAllergenDefinitionRecord>().AsNoTracking().ToArrayAsync(cancellationToken)).Select(Map).ToArray(),

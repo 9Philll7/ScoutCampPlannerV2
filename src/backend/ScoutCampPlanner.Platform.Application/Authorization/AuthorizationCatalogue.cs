@@ -28,6 +28,11 @@ public static class Permissions
         public const string Manage = "ingredients.manage";
     }
 
+    public static class Catering
+    {
+        public const string EditMealPlanning = "catering.meal-planning.edit";
+    }
+
     public static class Platform
     {
         public const string ReadCentralRecipes = "recipes.central.read";
@@ -82,7 +87,7 @@ public sealed record RoleDefinition(
 
 public static class AuthorizationCatalogue
 {
-    public const int DefinitionVersion = 4;
+    public const int DefinitionVersion = 5;
 
     private static readonly FrozenSet<string> PlatformPermissions = new[]
     {
@@ -133,6 +138,7 @@ public static class AuthorizationCatalogue
         Permissions.Recipes.ManageCampNotes,
         Permissions.Recipes.SubmitCentralChange,
         Permissions.Ingredients.Manage,
+        Permissions.Catering.EditMealPlanning,
     }.ToFrozenSet(StringComparer.Ordinal);
 
     private static readonly FrozenDictionary<string, RoleDefinition> Definitions =
@@ -168,7 +174,8 @@ public static class AuthorizationCatalogue
                 Permissions.Recipes.Read,
                 Permissions.Recipes.Edit,
                 Permissions.Recipes.ManageCampNotes,
-                Permissions.Ingredients.Manage),
+                Permissions.Ingredients.Manage,
+                Permissions.Catering.EditMealPlanning),
             Define(Roles.CampViewer, AuthorizationScope.Camp,
                 Permissions.Camp.View,
                 Permissions.Recipes.Read),

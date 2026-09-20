@@ -65,7 +65,7 @@ The validated module dependency direction is:
 
 ## Camp package transfer
 
-Before the first product release, package format version 1 was extended with the required camp start and end date, the neutral Camp structure tree, its free or administrator-defined fixed-depth configuration, the stable camp-specific stage list, anonymous participant estimates, the Catering-owned camp food factors, and the immutable transitive recipe/ingredient references needed by upstream recipes in the camp library. These references include revisions, subrecipes, variants, conversions, property catalogues, and nutrition profiles. Tenant templates are not camp data and are therefore not transferred. Mutable camp-local recipe drafts are not yet part of package replacement. The obsolete spike-only Camp cooking-unit payload was removed. Earlier spike-generated version-1 files are development artifacts and are intentionally rejected; no released compatibility promise is affected. Version 2 remains reserved for the validated encryption and signature model.
+Before the first product release, package format version 1 was extended with the required camp start and end date, the neutral Camp structure tree, its free or administrator-defined fixed-depth configuration, the stable camp-specific stage list, anonymous participant estimates, the Catering-owned camp food factors, the complete mutable meal-planning state, and the immutable transitive recipe/ingredient references needed by upstream recipes in the camp library. Meal planning uses one independently versioned embedded schema for plans, snapshots, CookingUnits, assignments, overrides, choices and calculation states. These references include revisions, subrecipes, variants, conversions, property catalogues, and nutrition profiles. Tenant templates are not camp data and are therefore not transferred. Mutable camp-local recipe drafts are not yet part of package replacement. The obsolete spike-only Camp cooking-unit payload and the duplicate development-only MealPlan list were removed. Earlier spike-generated version-1 files are development artifacts and are intentionally rejected; no released compatibility promise is affected. Version 2 remains reserved for the validated encryption and signature model.
 
 - Camp packages are versioned domain-level transfer packages. A raw SQLite database file is not used as the transfer format.
 - Starting an offline phase freezes the camp in the source system for write operations.
@@ -109,6 +109,10 @@ The first productive cross-module case is now implemented: camp creation validat
 - release-readiness checks for packaged desktop installers on the ADR-013 platform matrix, including final desktop Argon2id calibration
 
 These open items must be resolved before the affected production functionality is released. They do not invalidate the proven technical baseline.
+
+## Current functional baseline: meal planning
+
+Mahlzeitenplanung Inkrement 1 is implemented inside Catering. Camp exposes only the read contract needed for dates, structure, stages and anonymous estimates; Catering does not reference Camp Infrastructure. The shared application logic covers PostgreSQL, SQLite, server, Docker-local and Tauri-sidecar operation. The Angular client uses the same REST contract for versioned MealPlans, CookingUnits and explicit calculation. Personalized requirements, automatic replacement resolution and verification are deliberately not part of this baseline.
 
 ## Core principle
 

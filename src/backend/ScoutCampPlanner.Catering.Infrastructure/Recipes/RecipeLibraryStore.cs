@@ -98,6 +98,40 @@ public sealed class RecipeLibraryStore(
                 entry.UpstreamRecipeRevisionId.HasValue ? (RecipeScopeType?)recipe.ScopeType : null,
                 entry.UpdatedAtUtc)).ToArrayAsync(cancellationToken);
 
+    public async Task<RecipeLibraryMutationResult> RemoveCampEntryAsync(
+        Guid campId,
+        Guid entryId,
+        CancellationToken cancellationToken = default)
+    {
+        CampRecipeEntryRecord? entry = await database.Set<CampRecipeEntryRecord>()
+            .SingleOrDefaultAsync(value => value.Id == entryId && value.CampId == campId, cancellationToken);
+        if (entry is null) return new RecipeLibraryMutationResult(RecipeLibraryMutationStatus.NotFound);
+        Guid[] revisionIds = entry.UpstreamRecipeRevisionId.HasValue
+            ? [entry.UpstreamRecipeRevisionId.Value]
+            : await database.Set<RecipeRevisionRecord>().AsNoTracking()
+                .Where(value => value.RecipeId == entry.CampRecipeId)
+                .Select(value => value.Id).ToArrayAsync(cancellationToken);
+        string[] planReferences = await (from mealEntry in database.MealPlanEntries.AsNoTracking()
+            join offerGroup in database.MealPlanOfferGroups.AsNoTracking()
+                on mealEntry.OfferGroupId equals offerGroup.Id
+            join plan in database.MealPlans.AsNoTracking() on offerGroup.MealPlanId equals plan.Id
+            where plan.CampId == campId && revisionIds.Contains(mealEntry.RecipeRevisionId)
+            select $"Mahlzeitenplan: {plan.Name}").Distinct().ToArrayAsync(cancellationToken);
+        string[] unitReferences = await (from choice in database.CookingUnitMealRecipeChoices.AsNoTracking()
+            join state in database.CookingUnitMealStates.AsNoTracking()
+                on choice.CookingUnitMealStateId equals state.Id
+            join unit in database.CookingUnits.AsNoTracking() on state.CookingUnitId equals unit.Id
+            where state.CampId == campId && revisionIds.Contains(choice.RecipeRevisionId)
+            select $"Kocheinheit: {unit.Name}").Distinct().ToArrayAsync(cancellationToken);
+        string[] references = planReferences.Concat(unitReferences).Distinct().ToArray();
+        if (references.Length > 0)
+            return new RecipeLibraryMutationResult(
+                RecipeLibraryMutationStatus.ReferenceBlocked, entry.Id, references);
+        database.Remove(entry);
+        await database.SaveChangesAsync(cancellationToken);
+        return new RecipeLibraryMutationResult(RecipeLibraryMutationStatus.Removed, entry.Id);
+    }
+
     private async Task<RecipeScopeType?> FindRevisionScopeAsync(
         Guid revisionId,
         CancellationToken cancellationToken) =>

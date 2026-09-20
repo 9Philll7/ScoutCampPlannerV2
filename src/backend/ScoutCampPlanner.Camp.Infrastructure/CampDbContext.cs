@@ -4,7 +4,7 @@ using ScoutCampPlanner.Camp.Domain;
 
 namespace ScoutCampPlanner.Camp.Infrastructure;
 
-public sealed class CampDbContext(DbContextOptions<CampDbContext> options) : DbContext(options), ICampLookup
+public sealed class CampDbContext(DbContextOptions<CampDbContext> options) : DbContext(options), ICampLookup, ICampPlanningLookup
 {
     public DbSet<Camp.Domain.Camp> Camps => Set<Camp.Domain.Camp>();
     public DbSet<StructureNode> StructureNodes => Set<StructureNode>();
@@ -74,4 +74,32 @@ public sealed class CampDbContext(DbContextOptions<CampDbContext> options) : DbC
         await Camps.Where(x => x.Id == campId)
             .Select(x => new CampReference(x.Id, x.TenantId, x.Name, x.IsFrozen))
             .SingleOrDefaultAsync(cancellationToken);
+
+    public async Task<CampPlanningData?> GetPlanningDataAsync(
+        Guid campId,
+        CancellationToken cancellationToken = default)
+    {
+        var camp = await Camps.AsNoTracking().Where(value => value.Id == campId)
+            .Select(value => new { value.Id, value.TenantId, value.StartDate, value.EndDate })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (camp is null) return null;
+
+        CampPlanningNode[] nodes = await StructureNodes.AsNoTracking()
+            .Where(value => value.CampId == campId)
+            .OrderBy(value => value.Name)
+            .Select(value => new CampPlanningNode(value.Id, value.ParentId, value.Name))
+            .ToArrayAsync(cancellationToken);
+        CampPlanningStage[] stages = await CampStages.AsNoTracking()
+            .Where(value => value.CampId == campId)
+            .OrderBy(value => value.SortOrder)
+            .Select(value => new CampPlanningStage(value.Id, value.Name, value.SortOrder))
+            .ToArrayAsync(cancellationToken);
+        CampPlanningEstimate[] estimates = await ParticipantEstimates.AsNoTracking()
+            .Where(value => value.CampId == campId)
+            .Select(value => new CampPlanningEstimate(
+                value.StructureNodeId, value.CampStageId, value.ChildYouthCount, value.LeaderCount))
+            .ToArrayAsync(cancellationToken);
+        return new CampPlanningData(
+            camp.Id, camp.TenantId, camp.StartDate, camp.EndDate, nodes, stages, estimates);
+    }
 }

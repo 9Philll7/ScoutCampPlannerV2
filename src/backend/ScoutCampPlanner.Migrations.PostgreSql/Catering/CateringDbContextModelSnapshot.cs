@@ -145,6 +145,9 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                     b.Property<Guid>("CampId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("ChangeVersion")
+                        .HasColumnType("integer");
+
                     b.Property<DateOnly>("Date")
                         .HasColumnType("date");
 
@@ -226,6 +229,232 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                         .IsUnique();
 
                     b.ToTable("CampStageFoodFactors", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CookingUnit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CampId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("GroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("StandardMealPlanId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GroupId");
+
+                    b.HasIndex("StandardMealPlanId");
+
+                    b.HasIndex("CampId", "Name")
+                        .IsUnique();
+
+                    b.HasIndex("CampId", "SortOrder");
+
+                    b.ToTable("CookingUnits", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CookingUnitGroup", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CampId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampId", "Name")
+                        .IsUnique();
+
+                    b.HasIndex("CampId", "SortOrder");
+
+                    b.ToTable("CookingUnitGroups", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CookingUnitMealOfferTarget", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CookingUnitMealStateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OfferGroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("TargetOverride")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OfferGroupId");
+
+                    b.HasIndex("CookingUnitMealStateId", "OfferGroupId")
+                        .IsUnique();
+
+                    b.ToTable("CookingUnitMealOfferTargets", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CookingUnitMealRecipeChoice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CookingUnitMealStateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("MealPlanEntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("OfferGroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RecipeRevisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MealPlanEntryId");
+
+                    b.HasIndex("OfferGroupId");
+
+                    b.HasIndex("RecipeRevisionId");
+
+                    b.HasIndex("CookingUnitMealStateId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("CookingUnitMealRecipeChoices", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CookingUnitMealState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CalculatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal?>("CalculatedDemand")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<string>("CalculationSnapshotJson")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("CampId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CampMealId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CookingUnitId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("DemandOverride")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<decimal?>("EffectiveDemand")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<Guid?>("MealPlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("MealPlanSnapshotId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("MealPlanVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SourceFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SubscriptionState")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("WarningsJson")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampId");
+
+                    b.HasIndex("CampMealId");
+
+                    b.HasIndex("MealPlanId");
+
+                    b.HasIndex("MealPlanSnapshotId");
+
+                    b.HasIndex("CookingUnitId", "CampMealId")
+                        .IsUnique();
+
+                    b.ToTable("CookingUnitMealStates", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CookingUnitStructureAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CampId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CampMealId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CookingUnitId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StructureNodeId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampId");
+
+                    b.HasIndex("CampMealId");
+
+                    b.HasIndex("CookingUnitId", "CampMealId", "StructureNodeId")
+                        .IsUnique();
+
+                    b.ToTable("CookingUnitStructureAssignments", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.DietaryRequirement", b =>
@@ -339,11 +568,122 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CampId");
 
+                    b.HasIndex("CampId", "SortOrder");
+
                     b.ToTable("MealPlans", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.MealPlanEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<bool>("IsStandard")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid>("OfferGroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RecipeRevisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("Role")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecipeRevisionId");
+
+                    b.HasIndex("OfferGroupId", "RecipeRevisionId")
+                        .IsUnique();
+
+                    b.HasIndex("OfferGroupId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("MealPlanEntries", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.MealPlanOfferGroup", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CampMealId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("MealPlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampMealId");
+
+                    b.HasIndex("MealPlanId", "CampMealId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("MealPlanOfferGroups", "catering");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.MealPlanSnapshot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CampId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("MealPlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("SavedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampId");
+
+                    b.HasIndex("MealPlanId", "Version")
+                        .IsUnique();
+
+                    b.ToTable("MealPlanSnapshots", "catering");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.MeasurementUnit", b =>
@@ -2610,6 +2950,92 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CookingUnit", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.CookingUnitGroup", null)
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.MealPlan", null)
+                        .WithMany()
+                        .HasForeignKey("StandardMealPlanId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CookingUnitMealOfferTarget", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.CookingUnitMealState", null)
+                        .WithMany()
+                        .HasForeignKey("CookingUnitMealStateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.MealPlanOfferGroup", null)
+                        .WithMany()
+                        .HasForeignKey("OfferGroupId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CookingUnitMealRecipeChoice", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.CookingUnitMealState", null)
+                        .WithMany()
+                        .HasForeignKey("CookingUnitMealStateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.MealPlanEntry", null)
+                        .WithMany()
+                        .HasForeignKey("MealPlanEntryId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.MealPlanOfferGroup", null)
+                        .WithMany()
+                        .HasForeignKey("OfferGroupId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CookingUnitMealState", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.CampMeal", null)
+                        .WithMany()
+                        .HasForeignKey("CampMealId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.CookingUnit", null)
+                        .WithMany()
+                        .HasForeignKey("CookingUnitId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.MealPlan", null)
+                        .WithMany()
+                        .HasForeignKey("MealPlanId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.MealPlanSnapshot", null)
+                        .WithMany()
+                        .HasForeignKey("MealPlanSnapshotId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CookingUnitStructureAssignment", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.CampMeal", null)
+                        .WithMany()
+                        .HasForeignKey("CampMealId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.CookingUnit", null)
+                        .WithMany()
+                        .HasForeignKey("CookingUnitId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.IngredientUnitConversion", b =>
                 {
                     b.HasOne("ScoutCampPlanner.Catering.Domain.BaseIngredient", null)
@@ -2631,6 +3057,39 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                         .WithMany()
                         .HasForeignKey("BaseIngredientId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.MealPlanEntry", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.MealPlanOfferGroup", null)
+                        .WithMany()
+                        .HasForeignKey("OfferGroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.MealPlanOfferGroup", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.CampMeal", null)
+                        .WithMany()
+                        .HasForeignKey("CampMealId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.MealPlan", null)
+                        .WithMany()
+                        .HasForeignKey("MealPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.MealPlanSnapshot", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.MealPlan", null)
+                        .WithMany()
+                        .HasForeignKey("MealPlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

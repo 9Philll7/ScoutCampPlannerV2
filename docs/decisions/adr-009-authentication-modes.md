@@ -86,6 +86,26 @@ Memory, iteration, parallelism, salt length, derived-key length, and maximum con
 
 ### Single-device instance
 
+#### Local access after camp-package import (confirmed 2026-09-20)
+
+In explicit single-device mode, deliberately importing a camp package grants
+the local device user access to that imported camp's non-sensitive editing
+functions and return export. This is a local authorization grant, not a cloud
+role or tenant-administration grant. It grants no access to other camps or
+central catalogue management and is never returned to the cloud. The optional
+local password policy below remains independent of this grant. Authentication
+and this camp-scoped authorization must both be enforced by the backend.
+
+#### Local access after camp-package import (confirmed 2026-09-20)
+
+In explicit single-device mode, deliberately importing a camp package grants
+the local device user access to that imported camp's non-sensitive editing
+functions and return export. This is a local authorization grant, not a cloud
+role or tenant-administration grant. It grants no access to other camps or
+central catalogue management and is never returned to the cloud. The optional
+local password policy below remains independent of this grant. Authentication
+and this camp-scoped authorization must both be enforced by the backend.
+
 Creating a local application password is optional for the Windows single-device instance.
 
 - If a password is configured, it protects access to that local application data.

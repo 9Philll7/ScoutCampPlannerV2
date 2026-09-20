@@ -32,6 +32,17 @@ Version 1 requires the `Camp` and `Catering` module payloads. Platform data is l
 
 The Catering payload includes the camp-specific meal labels and every dated meal with its active state, so arrival/departure-day adjustments survive Cloud → Local → Cloud replacement.
 
+Package format version 1 also contains the mandatory, independently versioned
+`cateringMealPlanningData` object. Its embedded schema version 1 transfers the
+complete mutable state of meal planning increment 1: plans and immutable
+snapshots, offer groups and entries, cooking-unit groups and units, default and
+meal-specific structure assignments, subscription states, demand and target
+overrides, recipe choices, calculation snapshots, fingerprints, warnings and
+status markers. The data is validated against the package camp meals and
+structure nodes and participates in the same atomic replacement transaction.
+The former development-only duplicate `mealPlans` payload was removed; there is
+one authoritative meal-planning representation.
+
 Before the first product release, version 1 was additionally extended with a versioned `cateringReferenceData` module object. It contains the immutable dependency closure of every upstream recipe revision included in the camp recipe library:
 
 - the camp-library reference needed to expose the recipe locally
@@ -43,11 +54,39 @@ Before the first product release, version 1 was additionally extended with a ver
 - revision-bound properties, unit conversions, and nutrition profiles including source, review state, and reference date
 - measurement units and the provider-identical ingredient reference catalogues needed to resolve those records locally
 
-The embedded Catering reference schema currently has version 1 and is validated independently inside package format version 1. A missing, malformed, cross-camp, duplicate, or transitively incomplete reference section rejects the complete package. Offline use does not load a missing dependency from the cloud.
+The embedded Catering reference schema currently has version 2 and is validated independently inside package format version 1. It accepts the development-only schema 1 as an explicit migration input. A missing, malformed, cross-camp, duplicate, or transitively incomplete reference section rejects the complete package. Offline use does not load a missing dependency from the cloud. Published camp-local recipe revisions used by the camp library are transferred as immutable offline references; mutable camp-local drafts remain outside this reference section.
 
 These records are imported idempotently: an existing immutable identity is not updated or deleted. On return import, the cloud remains authoritative for central and tenant-wide recipe and ingredient catalogues; the reference section never grants replacement authority over them. Transfer and replacement of mutable camp-local recipe drafts is not part of this increment and remains separate work.
 
 ## Import rules
+
+The frozen source camp and the writable local copy have distinct transfer
+states: the source has `IsFrozen = true`; the local copy has `IsFrozen = false`
+while retaining the same `ActiveTransferId` and original `BaselineVersion`.
+Initial import must not reset the baseline to 1. A camp with an active transfer
+cannot start a further outbound transfer. Only the writable local copy can
+produce a return package; the source validates and completes the transfer.
+
+The frozen source camp and the writable local copy have distinct transfer
+states: the source has `IsFrozen = true`; the local copy has `IsFrozen = false`
+while retaining the same `ActiveTransferId` and original `BaselineVersion`.
+Initial import must not reset the baseline to 1. A camp with an active transfer
+cannot start a further outbound transfer. Only the writable local copy can
+produce a return package; the source validates and completes the transfer.
+
+The browser export selects and opens the destination file before requesting the
+offline transfer. Cancelling the save dialog therefore leaves the camp online.
+This requires a browser supporting `showSaveFilePicker` (for example Chrome or
+Edge in a secure context). Once the transfer request has been sent, write or
+network failures do not automatically unfreeze the camp because a package may
+already have been issued. Existing frozen transfers are not reset by this UI fix.
+
+The browser export selects and opens the destination file before requesting the
+offline transfer. Cancelling the save dialog therefore leaves the camp online.
+This requires a browser supporting `showSaveFilePicker` (for example Chrome or
+Edge in a secure context). Once the transfer request has been sent, write or
+network failures do not automatically unfreeze the camp because a package may
+already have been issued. Existing frozen transfers are not reset by this UI fix.
 
 - Manifest and payload identities must match.
 - Every exported entity must belong to the package camp.

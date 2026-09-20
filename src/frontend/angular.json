@@ -21,6 +21,16 @@
         "serve": {
           "builder": "@angular/build:dev-server",
           "options": { "buildTarget": "scoutcampplanner:build" }
+        },
+        "test": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "buildTarget": "scoutcampplanner:build",
+            "tsConfig": "tsconfig.spec.json",
+            "runner": "vitest",
+            "runnerConfig": "vitest.config.ts",
+            "watch": false
+          }
         }
       }
     }

@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using System.Text.Json;
 using ScoutCampPlanner.Camp.Domain;
 using ScoutCampPlanner.Camp.Infrastructure;
 using ScoutCampPlanner.Catering.Domain;
 using ScoutCampPlanner.Catering.Infrastructure;
+using ScoutCampPlanner.Catering.Infrastructure.Offline;
 using ScoutCampPlanner.Package;
 using ScoutCampPlanner.Platform.Domain;
 using ScoutCampPlanner.Platform.Infrastructure;
@@ -54,14 +56,19 @@ public sealed class PostgreSqlPackageTests
         var returnManifest = initial.Manifest with { Direction = CampPackageDirection.LocalToCloud };
 
         var duplicateId = Guid.NewGuid();
+        MealPlanningPackageData mealPlanning = CampMealPlanningPackageStore.ReadPackageData(
+            initial.CateringMealPlanningData, campId);
         var invalidReturn = initial with
         {
             Manifest = returnManifest,
-            MealPlans =
-            [
-                new MealPlanData(duplicateId, campId, "Duplicate A"),
-                new MealPlanData(duplicateId, campId, "Duplicate B")
-            ]
+            CateringMealPlanningData = JsonSerializer.SerializeToElement(mealPlanning with
+            {
+                MealPlans =
+                [
+                    new MealPlanPackageRecord(duplicateId, campId, "Duplicate A", 0, 0),
+                    new MealPlanPackageRecord(duplicateId, campId, "Duplicate B", 1, 0)
+                ]
+            }, new JsonSerializerOptions(JsonSerializerDefaults.Web))
         };
         await Assert.ThrowsAnyAsync<Exception>(() =>
             service.ImportReturnPackageAsync(CampPackageSerializer.Serialize(invalidReturn)));
@@ -80,7 +87,10 @@ public sealed class PostgreSqlPackageTests
         var validReturn = initial with
         {
             Manifest = returnManifest,
-            MealPlans = [new MealPlanData(mealId, campId, "Changed offline")]
+            CateringMealPlanningData = CampMealPlanningPackageStore.CreatePackageData(mealPlanning with
+            {
+                MealPlans = [new MealPlanPackageRecord(mealId, campId, "Changed offline", 0, 0)]
+            })
         };
         await service.ImportReturnPackageAsync(CampPackageSerializer.Serialize(validReturn));
 
