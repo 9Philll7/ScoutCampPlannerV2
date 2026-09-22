@@ -89,6 +89,14 @@ Noch offen sind die gezielte Prüfung von FollowStandard-Invalidierung und unver
 
 ## 13. Dokumentierte Abweichungen und Grenzen
 
+Aktualisierung 2026-09-21: Die unten historisch beschriebenen Desktoplücken sind
+technisch bearbeitet: lokale Identität/Zugriffszuordnung, native Dateidialoge,
+Import/Rückexport und dynamischer Sidecar sind integriert. Der autorisierte
+HTTP-Roundtrip ist mit temporären SQLite-Datenbanken erfolgreich geprüft, auch
+die Rückübernahme lokal geänderter Grundeinstellungen. Aktuelle Grenzen und
+ausstehende manuelle Desktopabnahme: `docs/architecture/desktop-roundtrip.md`.
+Die folgenden Desktopbefunde dokumentieren den früheren Prüfstand.
+
 - Nachprüfung des Desktop-Roundtrips: Die lokale API-Bearbeitung ist noch nicht
   durchgängig nutzbar (Freeze auch lokal, Originalbaseline nicht übernommen,
   fehlende lokale Zugriffszuordnung). Die Aussage „technisch vollständig“ in

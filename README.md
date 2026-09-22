@@ -63,6 +63,12 @@ npm run tauri build
 
 The preparation script publishes the ASP.NET Core API as a Windows x64 self-contained sidecar using the filename expected by Tauri.
 
+The current desktop uses its own SQLite database in the Windows user's local
+application-data directory, a dynamic loopback port and a private launch token.
+Native file dialogs open camp packages and save return packages. See
+[desktop roundtrip and manual acceptance](docs/architecture/desktop-roundtrip.md)
+for the workflow, automated smoke test and remaining limitations.
+
 Successful bundles are written below:
 
 ```text

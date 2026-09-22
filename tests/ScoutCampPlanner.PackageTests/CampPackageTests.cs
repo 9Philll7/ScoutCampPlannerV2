@@ -21,12 +21,80 @@ public sealed class CampPackageTests
     static CampPackageTests() => SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_winsqlite3());
 
     [Fact]
+    public async Task Removing_local_copy_preserves_other_camps_and_allows_reimport()
+    {
+        await using var cloud = await DatabaseHarness.CreateAsync();
+        await using var local = await DatabaseHarness.CreateAsync();
+        var tenant = new Tenant(Guid.NewGuid(), "Removal test");
+        cloud.Platform.Tenants.Add(tenant);
+        var first = new Camp.Domain.Camp(Guid.NewGuid(), tenant.Id, "First", new(2027, 7, 1), new(2027, 7, 3));
+        var second = new Camp.Domain.Camp(Guid.NewGuid(), tenant.Id, "Second", new(2027, 7, 1), new(2027, 7, 3));
+        cloud.Camp.Camps.AddRange(first, second);
+        cloud.Camp.CampStages.AddRange(new CampStage(Guid.NewGuid(), first.Id, "GuSp", 0),
+            new CampStage(Guid.NewGuid(), second.Id, "GuSp", 0));
+        var parent = new StructureNode(Guid.NewGuid(), first.Id, null, "Parent");
+        cloud.Camp.StructureNodes.AddRange(parent, new StructureNode(Guid.NewGuid(), first.Id, parent.Id, "Child"));
+        await cloud.SaveAsync();
+        var device = new LocalDeviceIdentity(Guid.NewGuid());
+        local.Platform.LocalDeviceIdentities.Add(device);
+        await local.SaveAsync();
+        byte[] package = await cloud.Packages.StartOfflineTransferAsync(first.Id);
+        await local.Packages.ImportInitialPackageForDeviceAsync(package, device.Id);
+        await local.Packages.ImportInitialPackageForDeviceAsync(await cloud.Packages.StartOfflineTransferAsync(second.Id), device.Id);
+        Guid transfer = first.ActiveTransferId!.Value;
+        Assert.False(await local.Packages.RemoveLocalCampAsync(Guid.NewGuid(), first.Id, transfer));
+        Assert.False(await local.Packages.RemoveLocalCampAsync(device.Id, first.Id, Guid.NewGuid()));
+        Assert.Equal(2, await local.Camp.Camps.CountAsync());
+        await local.Camp.Database.ExecuteSqlRawAsync("CREATE TRIGGER block_local_removal BEFORE DELETE ON Camps BEGIN SELECT RAISE(ABORT, 'test rollback'); END;");
+        await Assert.ThrowsAsync<SqliteException>(() => local.Packages.RemoveLocalCampAsync(device.Id, first.Id, transfer));
+        Assert.Equal(2, await local.Camp.StructureNodes.CountAsync());
+        Assert.Equal(2, await local.Platform.LocalCampAccessGrants.CountAsync());
+        await local.Camp.Database.ExecuteSqlRawAsync("DROP TRIGGER block_local_removal;");
+        Assert.True(await local.Packages.RemoveLocalCampAsync(device.Id, first.Id, transfer));
+        Assert.Equal(second.Id, (await local.Camp.Camps.SingleAsync()).Id);
+        Assert.Equal(second.Id, (await local.Platform.LocalCampAccessGrants.SingleAsync()).CampId);
+        Assert.Empty(await local.Camp.StructureNodes.ToArrayAsync());
+        Assert.True(first.IsFrozen);
+        await local.Packages.ImportInitialPackageForDeviceAsync(package, device.Id);
+        Assert.Equal(2, await local.Camp.Camps.CountAsync());
+        Assert.Equal(2, await local.Camp.StructureNodes.CountAsync());
+        Assert.Equal(2, await local.Platform.LocalCampAccessGrants.CountAsync());
+    }
+
+    [Fact]
+    public async Task Abandoned_transfer_return_is_rejected_even_after_a_new_transfer_starts()
+    {
+        await using var cloud = await DatabaseHarness.CreateAsync();
+        await using var local = await DatabaseHarness.CreateAsync();
+        var tenantId = Guid.NewGuid();
+        var campId = Guid.NewGuid();
+        cloud.Platform.Tenants.Add(new Tenant(tenantId, "Recovery"));
+        var camp = new Camp.Domain.Camp(campId, tenantId, "Preserved",
+            new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 3));
+        cloud.Camp.Camps.Add(camp);
+        cloud.Camp.CampStages.Add(new CampStage(Guid.NewGuid(), campId, "GuSp", 0));
+        await cloud.SaveAsync();
+        await local.Packages.ImportInitialPackageAsync(await cloud.Packages.StartOfflineTransferAsync(campId));
+        byte[] abandoned = await local.Packages.CreateReturnPackageAsync(campId);
+        camp.CompleteTransfer(camp.ActiveTransferId!.Value, camp.BaselineVersion);
+        await cloud.SaveAsync();
+        await Assert.ThrowsAsync<CampPackageValidationException>(() => cloud.Packages.ImportReturnPackageAsync(abandoned));
+        await cloud.Packages.StartOfflineTransferAsync(campId);
+        await Assert.ThrowsAsync<CampPackageValidationException>(() => cloud.Packages.ImportReturnPackageAsync(abandoned));
+        Assert.Equal("Preserved", camp.Name);
+        Assert.True(camp.IsFrozen);
+    }
+
+    [Fact]
     public async Task Repeated_transfers_preserve_source_baseline_and_allow_local_domain_changes()
     {
         await using var cloud = await DatabaseHarness.CreateAsync();
         var tenantId = Guid.NewGuid();
         var campId = Guid.NewGuid();
         cloud.Platform.Tenants.Add(new Tenant(tenantId, "Roundtrip"));
+        var mealType = new CampMealType(Guid.NewGuid(), campId, "Frühstück", 0);
+        cloud.Catering.CampMealTypes.Add(mealType);
+        cloud.Catering.CampMeals.Add(new CampMeal(Guid.NewGuid(), campId, mealType.Id, new DateOnly(2027, 7, 1)));
         cloud.Camp.Camps.Add(new Camp.Domain.Camp(campId, tenantId, "Lager",
             new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 3)));
         cloud.Camp.CampStages.Add(new CampStage(Guid.NewGuid(), campId, "GuSp", 0));
@@ -40,18 +108,34 @@ public sealed class CampPackageTests
             await Assert.ThrowsAsync<InvalidOperationException>(() => cloud.Packages.CreateReturnPackageAsync(campId));
 
             await using var local = await DatabaseHarness.CreateAsync();
-            await local.Packages.ImportInitialPackageAsync(outbound);
+            var deviceId = Guid.NewGuid();
+            local.Platform.LocalDeviceIdentities.Add(new LocalDeviceIdentity(deviceId));
+            await local.SaveAsync();
+            await Assert.ThrowsAsync<CampPackageValidationException>(() =>
+                local.Packages.ImportInitialPackageForDeviceAsync(outbound, Guid.NewGuid()));
+            Assert.Empty(await local.Platform.LocalCampAccessGrants.ToArrayAsync());
+            await local.Packages.ImportInitialPackageForDeviceAsync(outbound, deviceId);
+            var grant = await local.Platform.LocalCampAccessGrants.SingleAsync();
+            Assert.Equal(deviceId, grant.DeviceIdentityId);
+            Assert.Equal(campId, grant.CampId);
+            Assert.Equal(tenantId, grant.TenantId);
+            Assert.Equal(manifest.TransferId, grant.TransferId);
             var imported = await local.Camp.Camps.SingleAsync();
             Assert.False(imported.IsFrozen);
             Assert.Equal(manifest.TransferId, imported.ActiveTransferId);
             Assert.Equal(manifest.BaselineVersion, imported.BaselineVersion);
             imported.ConfigureStructure(["Gruppe"]);
+            imported.UpdateDetails($"Local change {cycle}", new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 5));
             await local.SaveAsync();
             await Assert.ThrowsAsync<InvalidOperationException>(() => local.Packages.StartOfflineTransferAsync(campId));
 
             byte[] returned = await local.Packages.CreateReturnPackageAsync(campId);
             await cloud.Packages.ImportReturnPackageAsync(returned);
+            Assert.Empty(await cloud.Platform.LocalCampAccessGrants.ToArrayAsync());
             Assert.False((await cloud.Camp.Camps.SingleAsync()).IsFrozen);
+            Assert.Equal($"Local change {cycle}", (await cloud.Camp.Camps.SingleAsync()).Name);
+            Assert.Equal(new DateOnly(2026, 10, 5), (await cloud.Camp.Camps.SingleAsync()).EndDate);
+            Assert.Equal(new DateOnly(2027, 7, 1), (await cloud.Catering.CampMeals.SingleAsync()).Date);
             await Assert.ThrowsAsync<CampPackageValidationException>(() => cloud.Packages.ImportReturnPackageAsync(returned));
         }
     }

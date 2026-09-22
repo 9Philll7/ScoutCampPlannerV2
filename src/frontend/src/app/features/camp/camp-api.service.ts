@@ -11,6 +11,9 @@ export interface CampSummary {
   isFrozen: boolean;
   canEdit: boolean;
   canExport: boolean;
+  canImport?: boolean;
+  activeTransferId?: string | null;
+  baselineVersion?: number;
 }
 
 export interface TenantOption { id: string; name: string; canManageIngredients: boolean; }
@@ -57,6 +60,18 @@ export interface CreateCampRequest {
 export class CampApiService {
   private readonly http = inject(HttpClient);
   private readonly baseUrl = inject(API_BASE_URL);
+
+  cancelOfflineTransfer(camp: CampSummary) {
+    return this.http.post<void>(`${this.baseUrl}/api/camps/${camp.id}/offline-transfer/cancel`, {
+      transferId: camp.activeTransferId, baselineVersion: camp.baselineVersion, confirmLoss: true,
+    }, { withCredentials: true });
+  }
+
+  removeLocalCopy(camp: CampSummary) {
+    return this.http.post<void>(`${this.baseUrl}/api/camps/${camp.id}/remove-local-copy`, {
+      transferId: camp.activeTransferId, confirmLoss: true,
+    }, { withCredentials: true });
+  }
 
   listTenants() {
     return this.http.get<TenantOption[]>(`${this.baseUrl}/api/tenants`, { withCredentials: true });
@@ -199,6 +214,11 @@ export class CampApiService {
 
   startOfflineTransfer(campId: string) {
     return this.http.post(`${this.baseUrl}/api/camps/${campId}/offline-package`, null, {
+      responseType: 'blob', withCredentials: true
+    });
+  }
+  createReturnPackage(campId: string) {
+    return this.http.post(`${this.baseUrl}/api/camps/${campId}/return-package`, null, {
       responseType: 'blob', withCredentials: true
     });
   }

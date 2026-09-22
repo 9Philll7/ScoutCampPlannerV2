@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using ScoutCampPlanner.Api;
 using ScoutCampPlanner.Api.Camps;
 using ScoutCampPlanner.Api.Catering;
 using ScoutCampPlanner.Camp.Contracts;
@@ -28,11 +29,14 @@ using ScoutCampPlanner.Platform.Infrastructure.Authentication;
 using ScoutCampPlanner.Platform.Infrastructure.Auditing;
 
 var builder = WebApplication.CreateBuilder(args);
+var singleDevice = new SingleDeviceRuntime(builder.Configuration);
+builder.Services.AddSingleton(singleDevice);
+builder.Services.AddScoped<LocalDeviceAccess>();
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Services.AddOpenApi();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
-    .WithOrigins("http://localhost:4200", "http://127.0.0.1:4200", "tauri://localhost", "https://tauri.localhost")
+    .WithOrigins("http://localhost:4200", "http://127.0.0.1:4200", "tauri://localhost", "https://tauri.localhost", "http://tauri.localhost")
     .AllowAnyHeader()
     .AllowAnyMethod()
     .AllowCredentials()));
@@ -179,7 +183,41 @@ app.MapOpenApi();
 app.UseCors();
 app.UseRateLimiter();
 app.UseAuthentication();
+app.Use(async (context, next) =>
+{
+    if (singleDevice.Enabled)
+    {
+        if (!singleDevice.Accepts(context.Connection.RemoteIpAddress,
+                context.Request.Headers[SingleDeviceRuntime.HeaderName].ToString()))
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return;
+        }
+        context.User = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim(ClaimTypes.NameIdentifier, singleDevice.IdentityId.ToString())
+        ], "SingleDevice"));
+        if ((context.Request.Path == "/api/setup" || context.Request.Path == "/api/session") &&
+            context.Request.Method != "GET")
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return;
+        }
+    }
+    await next(context);
+});
 app.UseAuthorization();
+app.Use(async (context, next) =>
+{
+    try { await next(context); }
+    catch (CampPackageValidationException) when (context.Request.Path.StartsWithSegments("/api/packages"))
+    {
+        context.Response.StatusCode = StatusCodes.Status409Conflict;
+        await context.Response.WriteAsJsonAsync(new {
+            code = "invalid_package_or_transfer",
+            message = "Das Paket ist ungültig oder passt nicht zum aktuellen Transfer. Ein bereits lokal vorhandenes Lager kann nicht erneut importiert werden."
+        });
+    }
+});
 
 await using (var scope = app.Services.CreateAsyncScope())
 {
@@ -192,11 +230,12 @@ await using (var scope = app.Services.CreateAsyncScope())
         scope.ServiceProvider.GetRequiredService<TimeProvider>(),
         sqliteBackupRetention);
     await scope.ServiceProvider.GetRequiredService<AuditRuntimeBootstrapper>().InitializeAsync();
+    await singleDevice.InitializeAsync(scope.ServiceProvider.GetRequiredService<PlatformDbContext>());
 }
 
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", databaseProvider = provider }));
 app.MapGet("/api/setup/status", async (IInitialSetupService setup, CancellationToken cancellationToken) =>
-    Results.Ok(await setup.GetStatusAsync(cancellationToken)));
+    Results.Ok(singleDevice.Enabled ? new InitialSetupStatus(false) : await setup.GetStatusAsync(cancellationToken)));
 app.MapPost("/api/setup", async (
     InitialSetupRequest request,
     IInitialSetupService setup,
@@ -261,6 +300,8 @@ app.MapGet("/api/session", async (
     CancellationToken cancellationToken) =>
 {
     Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    if (singleDevice.IsOperator(userId))
+        return Results.Ok(new { userId, email = "Lokaler Gerätebenutzer", canManageCentralIngredients = false });
     string email = await database.UserAccounts.Where(value => value.Id == userId)
         .Select(value => value.Email).SingleAsync(cancellationToken);
     bool canManageCentralIngredients = await authorization.CanManageCentralAsync(userId, cancellationToken);
@@ -1112,30 +1153,73 @@ app.MapPost("/api/ingredient-central-contributions/{contributionId:guid}/reject"
 app.MapPost("/api/camps/{campId:guid}/offline-package", async (
     Guid campId, ClaimsPrincipal principal, CampManagementService management,
     CampPackageService packages, CancellationToken cancellationToken) =>
-    await management.HasCampPermissionAsync(
+    !singleDevice.Enabled && await management.HasCampPermissionAsync(
         Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId,
         ScoutCampPlanner.Platform.Application.Authorization.Permissions.Camp.ExportPackage, cancellationToken)
         ? Results.File(await packages.StartOfflineTransferAsync(campId, cancellationToken),
             "application/vnd.scoutcampplanner.camp-package", $"camp-{campId}.scoutcamp")
         : Results.NotFound())
     .RequireAuthorization();
+app.MapPost("/api/camps/{campId:guid}/remove-local-copy", async (Guid campId,
+    RemoveLocalCampRequest request, CampPackageService packages, CancellationToken cancellationToken) =>
+{
+    if (!singleDevice.Enabled) return Results.Forbid();
+    if (!request.ConfirmLoss) return Results.BadRequest(new { code = "confirmation_required" });
+    try
+    {
+        return await packages.RemoveLocalCampAsync(singleDevice.IdentityId, campId, request.TransferId, cancellationToken)
+            ? Results.NoContent() : Results.NotFound();
+    }
+    catch (DbException)
+    {
+        return Results.Conflict(new { message = "Die lokale Kopie konnte nicht entfernt werden. Möglicherweise werden ihre Rezepte oder Zutaten noch von einem anderen Lager verwendet. Es wurde nichts entfernt." });
+    }
+}).RequireAuthorization();
 app.MapPost("/api/packages/import-initial", async (HttpRequest request, CampPackageService packages, CancellationToken cancellationToken) =>
 {
+    if (!singleDevice.Enabled) return Results.Forbid();
     using var stream = new MemoryStream();
     await request.Body.CopyToAsync(stream, cancellationToken);
-    await packages.ImportInitialPackageAsync(stream.ToArray(), cancellationToken);
+    await packages.ImportInitialPackageForDeviceAsync(stream.ToArray(), singleDevice.IdentityId, cancellationToken);
     return Results.NoContent();
-}).RequireAuthorization();
-app.MapPost("/api/camps/{campId:guid}/return-package", async (Guid campId, CampPackageService packages, CancellationToken cancellationToken) =>
-    Results.File(await packages.CreateReturnPackageAsync(campId, cancellationToken), "application/vnd.scoutcampplanner.camp-package", $"camp-{campId}-return.scoutcamp"))
+}).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(100 * 1024 * 1024)).RequireAuthorization();
+app.MapPost("/api/camps/{campId:guid}/return-package", async (Guid campId, CampPackageService packages,
+    LocalDeviceAccess access, CancellationToken cancellationToken) =>
+    singleDevice.Enabled && await access.AllowsAsync(singleDevice.IdentityId, campId,
+        ScoutCampPlanner.Platform.Application.Authorization.Permissions.Camp.ExportPackage, cancellationToken)
+        ? Results.File(await packages.CreateReturnPackageAsync(campId, cancellationToken), "application/vnd.scoutcampplanner.camp-package", $"camp-{campId}-return.scoutcamp")
+        : Results.NotFound())
     .RequireAuthorization();
-app.MapPost("/api/packages/import-return", async (HttpRequest request, CampPackageService packages, CancellationToken cancellationToken) =>
+app.MapPost("/api/camps/{campId:guid}/offline-transfer/cancel", async (
+    Guid campId, CancelOfflineTransferRequest request, ClaimsPrincipal principal,
+    CampManagementService management, CancellationToken cancellationToken) =>
 {
+    if (singleDevice.Enabled) return Results.Forbid();
+    var result = await management.CancelOfflineTransferAsync(
+        Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId, request, cancellationToken);
+    return result switch {
+        CancelOfflineTransferFailure.None => Results.NoContent(),
+        CancelOfflineTransferFailure.NotFound => Results.NotFound(),
+        CancelOfflineTransferFailure.ConfirmationRequired => Results.BadRequest(new { code = "confirmation_required" }),
+        _ => Results.Conflict(new { code = "transfer_changed", message = "Der Transferstand hat sich geändert. Bitte die Lagerliste neu laden." })
+    };
+}).RequireAuthorization();
+app.MapPost("/api/packages/import-return", async (HttpRequest request, ClaimsPrincipal principal,
+    CampManagementService management, CampPackageService packages, CancellationToken cancellationToken) =>
+{
+    if (singleDevice.Enabled) return Results.Forbid();
     using var stream = new MemoryStream();
     await request.Body.CopyToAsync(stream, cancellationToken);
-    await packages.ImportReturnPackageAsync(stream.ToArray(), cancellationToken);
+    byte[] bytes = stream.ToArray();
+    var payload = CampPackageSerializer.Deserialize(bytes);
+    if (!Guid.TryParse(request.Query["expectedCampId"], out var expectedCampId) || payload.Camp.Id != expectedCampId)
+        return Results.Conflict(new { code = "wrong_camp", message = "Das Rückpaket gehört nicht zum ausgewählten Lager." });
+    if (!await management.HasCampPermissionAsync(Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!),
+            payload.Camp.Id, ScoutCampPlanner.Platform.Application.Authorization.Permissions.Camp.ImportPackage, cancellationToken))
+        return Results.NotFound();
+    await packages.ImportReturnPackageAsync(bytes, cancellationToken);
     return Results.NoContent();
-}).RequireAuthorization();
+}).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(100 * 1024 * 1024)).RequireAuthorization();
 
 app.Run();
 

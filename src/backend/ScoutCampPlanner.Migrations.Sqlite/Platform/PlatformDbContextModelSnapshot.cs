@@ -59,6 +59,40 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Platform
                     b.ToTable("CampRoleAssignments", (string)null);
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.LocalCampAccess", b =>
+                {
+                    b.Property<Guid>("DeviceIdentityId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CampId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("TransferId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("DeviceIdentityId", "CampId");
+
+                    b.HasIndex("CampId");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("LocalCampAccessGrants", (string)null);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.LocalDeviceIdentity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("LocalDeviceIdentities", (string)null);
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.PlatformRoleAssignment", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -401,6 +435,21 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Platform
                         .WithMany()
                         .HasForeignKey("MembershipId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.LocalCampAccess", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Platform.Domain.LocalDeviceIdentity", null)
+                        .WithMany()
+                        .HasForeignKey("DeviceIdentityId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Platform.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

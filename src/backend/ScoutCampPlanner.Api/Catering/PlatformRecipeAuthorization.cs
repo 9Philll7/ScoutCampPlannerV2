@@ -7,7 +7,7 @@ using ScoutCampPlanner.Platform.Domain;
 
 namespace ScoutCampPlanner.Api.Catering;
 
-public sealed class PlatformRecipeAuthorization(PlatformDbContext database) :
+public sealed class PlatformRecipeAuthorization(PlatformDbContext database, LocalDeviceAccess? localAccess = null) :
     IRecipePermanentDeleteAuthorization,
     IRecipeChangeSubmissionAuthorization,
     ICampRecipeNoteAuthorization,
@@ -138,6 +138,8 @@ public sealed class PlatformRecipeAuthorization(PlatformDbContext database) :
     private async Task<bool> HasCampPermissionAsync(
         Guid actorUserId, Guid campId, string permission, CancellationToken cancellationToken)
     {
+        if (localAccess?.IsOperator(actorUserId) == true)
+            return await localAccess.AllowsAsync(actorUserId, campId, permission, cancellationToken);
         string[] roles = await (from campMembership in database.CampMemberships.AsNoTracking()
             join tenantMembership in database.TenantMemberships.AsNoTracking()
                 on campMembership.TenantMembershipId equals tenantMembership.Id

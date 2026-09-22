@@ -15,6 +15,8 @@ import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { concatMap, firstValueFrom, forkJoin } from 'rxjs';
 import { saveOfflinePackage } from './shared/save-offline-package';
+import { desktopCommand, isDesktop } from './core/desktop-runtime';
+import { PackageTransferComponent } from './features/camp/package-transfer.component';
 import { AuthenticationApiService, AuthenticatedUser } from './features/authentication/authentication-api.service';
 import { CampAdministratorOption, CampApiService, CampMeal, CampMealType, CampPlanningSummary, CampStageFoodFactor, CampSummary, IngredientCatalogEntry, IngredientConflictType, IngredientScope, MeasurementDimension, ParticipantEstimate, StructureConfiguration, StructureNodeSummary, TenantOption, TenantStageFoodFactor, WeightedStageTotal } from './features/camp/camp-api.service';
 import { IngredientRevisionEditorComponent } from './features/ingredients/ingredient-revision-editor.component';
@@ -32,7 +34,7 @@ type CampSection = 'general' | 'structure' | 'catering';
   standalone: true,
   imports: [FormsModule, MatButtonModule, MatButtonToggleModule, MatCardModule, MatCheckboxModule, MatFormFieldModule, MatInputModule,
     MatProgressSpinnerModule, MatSelectModule, MatToolbarModule, MatTooltipModule, MatDatepickerModule,
-    ActionIconComponent, IngredientRevisionEditorComponent, RecipeEditorComponent, MealPlanningComponent],
+    ActionIconComponent, IngredientRevisionEditorComponent, RecipeEditorComponent, MealPlanningComponent, PackageTransferComponent],
   providers: [provideNativeDateAdapter(), { provide: MAT_DATE_LOCALE, useValue: 'de-AT' }],
   template: `
     <mat-toolbar color="primary" class="app-toolbar">
@@ -41,8 +43,8 @@ type CampSection = 'general' | 'structure' | 'catering';
         <nav class="toolbar-section-toggle" aria-label="Bereich auswählen">
           <button matButton [class.active]="applicationSection() === 'camps'" (click)="showSection('camps')">
             <scp-action-icon name="camp"/>Lager</button>
-          <button matButton [class.active]="applicationSection() === 'organization'" (click)="showSection('organization')">
-            <scp-action-icon name="organization"/>Organisation</button>
+          @if (!localDevice) { <button matButton [class.active]="applicationSection() === 'organization'" (click)="showSection('organization')">
+            <scp-action-icon name="organization"/>Organisation</button> }
           @if (user()?.canManageCentralIngredients) {
             <button matButton [class.active]="applicationSection() === 'centralIngredients'" (click)="showSection('centralIngredients')">
               <scp-action-icon name="planning"/>Zutatenstamm</button>
@@ -56,7 +58,7 @@ type CampSection = 'general' | 'structure' | 'catering';
       <span class="toolbar-spacer"></span>
       @if (user(); as currentUser) {
         <span class="user-email">{{ currentUser.email }}</span>
-        <button matButton (click)="signOut()"><scp-action-icon name="logout"/>Abmelden</button>
+        @if (!localDevice) { <button matButton (click)="signOut()"><scp-action-icon name="logout"/>Abmelden</button> }
       }
     </mat-toolbar>
     <main>
@@ -132,6 +134,7 @@ type CampSection = 'general' | 'structure' | 'catering';
           </header>
           @if (error()) { <p class="message error" role="alert">{{ error() }}</p> }
           @if (notice()) { <p class="message notice" role="status">{{ notice() }}</p> }
+          @if (localDevice && !openedCampId()) { <scp-package-transfer (completed)="reloadAfterPackageImport()"/> }
           @if (applicationSection() === 'organization') {
           @if (selectedTenant(); as tenant) {
             <mat-card class="content-card">
@@ -226,7 +229,7 @@ type CampSection = 'general' | 'structure' | 'catering';
           }
           @if (!openedCampId()) {
           @if (selectedTenant(); as tenant) {
-            <mat-card class="content-card create-camp-card">
+            <mat-card class="content-card create-camp-card" [hidden]="localDevice">
               <mat-card-header>
                 <mat-card-title>Neues Lager anlegen</mat-card-title>
                 <mat-card-subtitle>{{ tenant.name }}</mat-card-subtitle>
@@ -702,14 +705,21 @@ type CampSection = 'general' | 'structure' | 'catering';
               <mat-card-actions>
                 @if (!openedCampId()) {
                   <button matButton="filled" type="button" (click)="openCamp(camp)"><scp-action-icon name="camp"/>Lager öffnen</button>
+                  @if (localDevice) {
+                    <button matButton type="button" [disabled]="submitting()" (click)="removeLocalCopy(camp)">Lokale Lagerkopie entfernen</button>
+                  }
+                  @if (!localDevice && camp.isFrozen && camp.canImport) {
+                    <scp-package-transfer [campId]="camp.id" (completed)="reloadAfterPackageImport()"/>
+                    <button matButton type="button" [disabled]="submitting()" (click)="cancelOfflineTransfer(camp)">Ohne Rückpaket entsperren</button>
+                  }
                   @if (camp.canExport) {
                     <button matButton type="button" [disabled]="camp.isFrozen || !camp.startDate || !camp.endDate"
-                      (click)="exportCamp(camp)"><scp-action-icon name="download"/>Offlinepaket erstellen</button>
+                      (click)="exportCamp(camp)"><scp-action-icon name="download"/>{{ localDevice ? 'Rückpaket speichern' : 'Offlinepaket erstellen' }}</button>
                   }
                 }
               </mat-card-actions>
             </mat-card>
-          } @empty { <div class="empty-state"><h2>Noch keine Lager</h2><p>Lege das erste Lager für diese Organisation an.</p></div> }
+          } @empty { <div class="empty-state"><h2>Noch keine Lager</h2><p>{{ localDevice ? 'Öffne ein Lagerpaket, um lokal weiterzuarbeiten.' : 'Lege das erste Lager für diese Organisation an.' }}</p></div> }
           }
           </div>
         }
@@ -724,6 +734,8 @@ type CampSection = 'general' | 'structure' | 'catering';
   `
 })
 export class AppComponent {
+  readonly localDevice = isDesktop();
+  reloadAfterPackageImport() { const user = this.user(); if (user) this.openApplication(user); }
   private readonly setupApi = inject(SetupApiService);
   private readonly authenticationApi = inject(AuthenticationApiService);
   private readonly campApi = inject(CampApiService);
@@ -843,6 +855,37 @@ export class AppComponent {
     this.authenticationApi.signOut().subscribe({ next: () => this.clearSession(), error: () => this.clearSession() });
   }
 
+  cancelOfflineTransfer(camp: CampSummary) {
+    if (this.submitting() || !window.confirm(`„${camp.name}“ ohne Rückpaket entsperren?\n\nDer bisherige Serverstand bleibt erhalten. Offline-Änderungen werden nicht übernommen. Rückpakete dieses Transfers sind danach ungültig. Die lokale Kopie darf nicht weiterverwendet werden.`)) return;
+    this.submitting.set(true); this.error.set(null); this.notice.set(null);
+    this.campApi.cancelOfflineTransfer(camp).subscribe({
+      next: () => {
+        this.submitting.set(false); this.notice.set('Lager entsperrt. Der bisherige Serverstand bleibt erhalten; der alte Transfer ist ungültig.');
+        this.loadCamps(camp.tenantId);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.submitting.set(false); this.error.set(error.error?.message ?? 'Das Lager konnte nicht entsperrt werden. Bitte Berechtigung und Transferstand prüfen.');
+        this.loadCamps(camp.tenantId);
+      },
+    });
+  }
+
+  removeLocalCopy(camp: CampSummary) {
+    if (this.submitting() || !window.confirm(`Lokale Kopie von „${camp.name}“ endgültig entfernen?\n\nNicht exportierte Änderungen gehen verloren. Speichere vorher bei Bedarf ein Rückpaket. Serverdaten und gespeicherte Paketdateien bleiben unverändert; eine Serversperre wird nicht aufgehoben.`)) return;
+    this.submitting.set(true); this.error.set(null); this.notice.set(null);
+    this.campApi.removeLocalCopy(camp).subscribe({
+      next: () => {
+        this.submitting.set(false); this.camps.set([]); this.openedCampId.set(null);
+        this.notice.set('Lokale Lagerkopie entfernt. Ein neues Lagerpaket kann jetzt importiert werden.');
+        this.reloadAfterPackageImport();
+      },
+      error: (error: HttpErrorResponse) => {
+        this.submitting.set(false);
+        this.error.set(error.error?.message ?? `Die lokale Kopie konnte nicht entfernt werden (HTTP ${error.status}). Bitte die Lagerliste neu laden.`);
+      },
+    });
+  }
+
   async exportCamp(camp: CampSummary) {
     if (this.submitting()) return;
     this.submitting.set(true);
@@ -850,6 +893,12 @@ export class AppComponent {
     this.notice.set(null);
     let transferStarted = false;
     try {
+      if (this.localDevice) {
+        const blob = await firstValueFrom(this.campApi.createReturnPackage(camp.id));
+        const saved = await desktopCommand<boolean>('save_return_package', { bytes: Array.from(new Uint8Array(await blob.arrayBuffer())) });
+        this.notice.set(saved ? 'Rückpaket gespeichert.' : 'Speichern abgebrochen.');
+        return;
+      }
       const saved = await saveOfflinePackage(`camp-${camp.id}.scoutcamp`, () => {
         transferStarted = true;
         return firstValueFrom(this.campApi.startOfflineTransfer(camp.id));
@@ -858,7 +907,8 @@ export class AppComponent {
     } catch (error) {
       this.error.set(transferStarted
         ? 'Das Offlinepaket konnte nicht gespeichert werden. Der Transfer wurde bereits angefordert; bitte den Lagerstatus prüfen. Die Sperre wird nicht automatisch aufgehoben.'
-        : error instanceof Error ? error.message : 'Der Speicherort konnte nicht geöffnet werden.');
+        : error instanceof HttpErrorResponse ? `Das Rückpaket konnte vom Backend nicht erstellt werden (HTTP ${error.status}).`
+        : error instanceof Error ? error.message : typeof error === 'string' ? error : 'Der Speicherort konnte nicht geöffnet werden.');
     } finally {
       this.submitting.set(false);
       const tenant = this.selectedTenant();
@@ -1503,6 +1553,7 @@ export class AppComponent {
     this.selectedAdministratorIds.set(new Set()); this.error.set(null); this.notice.set(null);
     if (!tenant) return;
     this.loadCamps(tenant.id);
+    if (this.localDevice) return;
     this.loadStageTemplate(tenant.id);
     this.campApi.listAdministratorCandidates(tenant.id).subscribe({
       next: candidates => this.administratorCandidates.set(candidates),
@@ -1525,8 +1576,9 @@ export class AppComponent {
         this.tenants.set(tenants);
         const tenant = tenants[0] ?? null;
         this.selectedTenant.set(tenant);
-        if (!tenant) { this.error.set('Für dieses Konto ist kein aktiver Mandant verfügbar.'); return; }
+        if (!tenant) { if (!this.localDevice) this.error.set('Für dieses Konto ist kein aktiver Mandant verfügbar.'); return; }
         this.loadCamps(tenant.id);
+        if (this.localDevice) return;
         this.loadStageTemplate(tenant.id);
         this.campApi.listAdministratorCandidates(tenant.id).subscribe({
           next: candidates => this.administratorCandidates.set(candidates),

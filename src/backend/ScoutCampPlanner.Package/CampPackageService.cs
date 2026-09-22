@@ -19,6 +19,38 @@ public sealed class CampPackageService(
 {
     private static readonly string[] IncludedModules = ["Camp", "Catering"];
 
+    public async Task<bool> RemoveLocalCampAsync(Guid deviceId, Guid campId, Guid transferId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await camp.Database.BeginTransactionAsync(cancellationToken);
+        await EnlistAsync(transaction, cancellationToken);
+        try
+        {
+            var local = await camp.Camps.AsNoTracking().SingleOrDefaultAsync(x => x.Id == campId &&
+                !x.IsFrozen && x.ActiveTransferId == transferId, cancellationToken);
+            if (local is null || transferId == Guid.Empty || !await platform.LocalCampAccessGrants.AnyAsync(
+                x => x.DeviceIdentityId == deviceId && x.CampId == campId && x.TenantId == local.TenantId &&
+                     x.TransferId == transferId, cancellationToken)) return false;
+            await new LocalCampRemovalStore(catering).DeleteAsync(campId, cancellationToken);
+            await camp.ParticipantEstimates.Where(x => x.CampId == campId).ExecuteDeleteAsync(cancellationToken);
+            // Remove children before parents because the tree uses restrictive parent foreign keys.
+            while (await camp.StructureNodes.AnyAsync(x => x.CampId == campId, cancellationToken))
+            {
+                int removed = await camp.StructureNodes.Where(x => x.CampId == campId &&
+                    !camp.StructureNodes.Any(child => child.ParentId == x.Id)).ExecuteDeleteAsync(cancellationToken);
+                if (removed == 0) throw new InvalidOperationException("Invalid local structure.");
+            }
+            await camp.CampStages.Where(x => x.CampId == campId).ExecuteDeleteAsync(cancellationToken);
+            await platform.LocalCampAccessGrants.Where(x => x.CampId == campId).ExecuteDeleteAsync(cancellationToken);
+            await camp.Camps.Where(x => x.Id == campId).ExecuteDeleteAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            camp.ChangeTracker.Clear(); catering.ChangeTracker.Clear(); platform.ChangeTracker.Clear();
+            return true;
+        }
+        catch { await transaction.RollbackAsync(CancellationToken.None); throw; }
+        finally { await DetachEnlistedTransactionsAsync(cancellationToken); }
+    }
+
     public async Task<byte[]> StartOfflineTransferAsync(Guid campId, CancellationToken cancellationToken = default)
     {
         var entity = await camp.Camps.SingleOrDefaultAsync(x => x.Id == campId, cancellationToken)
@@ -43,7 +75,18 @@ public sealed class CampPackageService(
         return await BuildAsync(entity, tenant, CampPackageDirection.LocalToCloud, cancellationToken);
     }
 
-    public async Task ImportInitialPackageAsync(byte[] bytes, CancellationToken cancellationToken = default)
+    public Task ImportInitialPackageAsync(byte[] bytes, CancellationToken cancellationToken = default) =>
+        ImportInitialPackageCoreAsync(bytes, null, cancellationToken);
+
+    public Task ImportInitialPackageForDeviceAsync(byte[] bytes, Guid deviceIdentityId,
+        CancellationToken cancellationToken = default)
+    {
+        if (deviceIdentityId == Guid.Empty) throw new ArgumentException("A local device identity is required.");
+        return ImportInitialPackageCoreAsync(bytes, deviceIdentityId, cancellationToken);
+    }
+
+    private async Task ImportInitialPackageCoreAsync(byte[] bytes, Guid? deviceIdentityId,
+        CancellationToken cancellationToken)
     {
         var package = CampPackageSerializer.Deserialize(bytes);
         if (package.Manifest.Direction != CampPackageDirection.CloudToLocal)
@@ -53,6 +96,9 @@ public sealed class CampPackageService(
         await EnlistAsync(transaction, cancellationToken);
         try
         {
+            if (deviceIdentityId.HasValue && !await platform.LocalDeviceIdentities.AnyAsync(
+                    value => value.Id == deviceIdentityId.Value, cancellationToken))
+                throw new CampPackageValidationException("Local device identity was not found.");
             if (await camp.Camps.AnyAsync(x => x.Id == package.Camp.Id, cancellationToken))
                 throw new CampPackageValidationException("Camp already exists locally.");
             if (!await platform.Tenants.AnyAsync(x => x.Id == package.Tenant.Id, cancellationToken))
@@ -65,6 +111,9 @@ public sealed class CampPackageService(
                 ? package.Camp.StructureLevelNames : []);
             importedCamp.BeginLocalTransfer(package.Manifest.TransferId, package.Manifest.BaselineVersion);
             camp.Camps.Add(importedCamp);
+            if (deviceIdentityId.HasValue)
+                platform.LocalCampAccessGrants.Add(new LocalCampAccess(deviceIdentityId.Value,
+                    package.Camp.TenantId, package.Camp.Id, package.Manifest.TransferId));
             camp.CampStages.AddRange(package.CampStages.Select(x => new CampStage(x.Id, x.CampId, x.Name, x.SortOrder)));
             camp.StructureNodes.AddRange(OrderStructureNodes(package.StructureNodes)
                 .Select(x => new StructureNode(x.Id, x.CampId, x.ParentId, x.Name)));
@@ -103,6 +152,14 @@ public sealed class CampPackageService(
         await EnlistAsync(transaction, cancellationToken);
         try
         {
+            // Serialize return import against explicit cancellation on both providers.
+            int active = await camp.Camps.Where(value => value.Id == package.Camp.Id && value.IsFrozen &&
+                    value.TenantId == package.Manifest.TenantId && value.ActiveTransferId == package.Manifest.TransferId &&
+                    value.BaselineVersion == package.Manifest.BaselineVersion)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(value => value.BaselineVersion,
+                    package.Manifest.BaselineVersion), cancellationToken);
+            if (active != 1)
+                throw new CampPackageValidationException("Return package does not match the active transfer baseline.");
             var existing = await camp.Camps.SingleOrDefaultAsync(x => x.Id == package.Camp.Id, cancellationToken)
                 ?? throw new CampPackageValidationException("Target camp does not exist.");
             if (existing.TenantId != package.Manifest.TenantId ||
@@ -140,6 +197,7 @@ public sealed class CampPackageService(
             await new CampMealPlanningPackageStore(catering).ImportAsync(
                 package.CateringMealPlanningData, package.Camp.Id, cancellationToken);
             existing.CompleteTransfer(package.Manifest.TransferId, package.Manifest.BaselineVersion);
+            existing.UpdateDetails(package.Camp.Name, package.Camp.StartDate, package.Camp.EndDate);
             existing.ConfigureStructure(package.Camp.StructureMode == CampStructureMode.Fixed.ToString()
                 ? package.Camp.StructureLevelNames : []);
             await SaveAllAsync(cancellationToken);

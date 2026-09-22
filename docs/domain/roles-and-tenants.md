@@ -96,6 +96,25 @@ Authentication does not grant access by itself. Tenant membership, camp assignme
 
 ## Identity and membership storage
 
+The single-device foundation stores `LocalDeviceIdentity` independently from
+cloud `UserAccount`. A `LocalCampAccess` grant is keyed by device identity and
+camp and additionally binds the tenant and exact transfer ID. Deliberate import
+through `ImportInitialPackageForDeviceAsync` creates the grant in the same
+transaction as the imported camp data. Unknown local identities are rejected.
+The grant is never included in a return package and creates no cloud roles.
+
+`LocalCampAccessPolicy` uses an explicit allowlist for non-sensitive camp editing,
+recipe/ingredient work and package export. It denies membership administration,
+offline-login preparation, tenant/platform operations and unknown permissions.
+The policy requires explicit single-device mode and a matching active transfer.
+The desktop launcher enables this mode explicitly, creates a random launch token
+and passes it to its loopback-only sidecar. The API requires that token and resolves
+the persistent local device identity; the frontend receives no cloud membership.
+Camp and Catering authorization use the local policy only for matching, writable
+active transfers. Import creates the local grant atomically with the camp data.
+The current desktop implements the passwordless single-device path; the optional
+local password UI remains pending. See `../architecture/desktop-roundtrip.md`.
+
 [ADR-010](../decisions/adr-010-identity-and-tenant-membership.md) separates:
 
 - the global Platform-owned user identity

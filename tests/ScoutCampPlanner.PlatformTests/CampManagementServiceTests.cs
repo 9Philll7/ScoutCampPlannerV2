@@ -27,6 +27,42 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
     private Guid otherMembershipId;
 
     [Fact]
+    public async Task CancelTransferRequiresPermissionConfirmationAndMatchingTransfer()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var created = await service.CreateAsync(ownerUserId, tenantId,
+            new CreateCampRequest("Recovery", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 3), [otherMembershipId]), ct);
+        var camp = await camps.Camps.SingleAsync(ct);
+        var transfer = Guid.NewGuid();
+        camp.Freeze(transfer);
+        await camps.SaveChangesAsync(ct);
+        var request = new CancelOfflineTransferRequest(transfer, camp.BaselineVersion, true);
+        Assert.Equal(CancelOfflineTransferFailure.NotFound,
+            await service.CancelOfflineTransferAsync(ownerUserId, camp.Id, request, ct));
+        Assert.Equal(CancelOfflineTransferFailure.ConfirmationRequired,
+            await service.CancelOfflineTransferAsync(otherUserId, camp.Id, request with { ConfirmLoss = false }, ct));
+        Assert.Equal(CancelOfflineTransferFailure.Conflict,
+            await service.CancelOfflineTransferAsync(otherUserId, camp.Id, request with { TransferId = Guid.NewGuid() }, ct));
+        Assert.Equal(CancelOfflineTransferFailure.Conflict,
+            await service.CancelOfflineTransferAsync(otherUserId, camp.Id, request with { BaselineVersion = 99 }, ct));
+        Assert.True((await service.ListCampsAsync(otherUserId, tenantId, ct)).Single().CanImport);
+        Assert.Equal(CancelOfflineTransferFailure.None,
+            await service.CancelOfflineTransferAsync(otherUserId, camp.Id, request, ct));
+        await camps.Entry(camp).ReloadAsync(ct);
+        Assert.False(camp.IsFrozen);
+        Assert.Null(camp.ActiveTransferId);
+        Assert.Equal(request.BaselineVersion + 1, camp.BaselineVersion);
+        Assert.Equal("Recovery", camp.Name);
+        Assert.Single(await platform.AuditEvents.Where(value => value.Action == "camp.offline-transfer.cancelled").ToArrayAsync(ct));
+        camp.Freeze(Guid.NewGuid());
+        await camps.SaveChangesAsync(ct);
+        Assert.Equal(CancelOfflineTransferFailure.Conflict,
+            await service.CancelOfflineTransferAsync(otherUserId, camp.Id, request, ct));
+        await camps.Entry(camp).ReloadAsync(ct);
+        Assert.True(camp.IsFrozen);
+    }
+
+    [Fact]
     public async Task OwnerCanCreateCampForAnotherActiveTenantMember()
     {
         Assert.Single(await service.ListTenantsAsync(
@@ -100,12 +136,19 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
         UpdateCampResult denied = await service.UpdateAsync(ownerUserId, created.Camp!.Id,
             new UpdateCampRequest("Nicht erlaubt", new DateOnly(2028, 7, 1), new DateOnly(2028, 7, 14)),
             TestContext.Current.CancellationToken);
+        var localCamp = await camps.Camps.SingleAsync(TestContext.Current.CancellationToken);
+        var transferId = Guid.NewGuid();
+        localCamp.BeginLocalTransfer(transferId, 9);
+        await camps.SaveChangesAsync(TestContext.Current.CancellationToken);
         UpdateCampResult updated = await service.UpdateAsync(otherUserId, created.Camp.Id,
             new UpdateCampRequest("Neu", new DateOnly(2028, 7, 1), new DateOnly(2028, 7, 14)),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(UpdateCampFailure.NotFound, denied.Failure);
         Assert.True(updated.IsSuccessful);
+        Assert.Equal(transferId, updated.Camp!.ActiveTransferId);
+        Assert.Equal(9, updated.Camp.BaselineVersion);
+        Assert.True(updated.Camp.CanImport);
         Assert.Equal("Neu", (await camps.Camps.SingleAsync(TestContext.Current.CancellationToken)).Name);
         Assert.Equal(new[] { "camp.created", "camp.updated" },
             await platform.AuditEvents.OrderBy(value => value.Sequence)

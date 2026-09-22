@@ -45,7 +45,8 @@ public sealed class DatabaseMigrationTests
         await AssertBaselineDataAsync(databases, identities);
         await AssertLegacyIngredientMigratedAsync(connection, legacyIngredientId, false);
 
-        Assert.Equal(7, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_platform"));
+        Assert.Equal(8, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_platform"));
+        Assert.Equal(2, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('LocalDeviceIdentities', 'LocalCampAccessGrants')"));
         Assert.Equal(8, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_camp"));
         Assert.Equal(21, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_catering"));
         Assert.Equal(9, await ScalarAsync<long>(connection,
@@ -112,7 +113,8 @@ public sealed class DatabaseMigrationTests
         await AssertBaselineDataAsync(databases, identities);
         await AssertLegacyIngredientMigratedAsync(connection, legacyIngredientId, true);
 
-        Assert.Equal(7, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM platform.\"__EFMigrationsHistory\""));
+        Assert.Equal(8, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM platform.\"__EFMigrationsHistory\""));
+        Assert.Equal(2, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'platform' AND table_name IN ('LocalDeviceIdentities', 'LocalCampAccessGrants')"));
         Assert.Equal(8, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM camp.\"__EFMigrationsHistory\""));
         Assert.Equal(21, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM catering.\"__EFMigrationsHistory\""));
         Assert.Equal(9, await ScalarAsync<long>(connection,

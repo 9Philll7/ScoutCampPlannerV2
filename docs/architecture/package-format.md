@@ -60,6 +60,28 @@ These records are imported idempotently: an existing immutable identity is not u
 
 ## Import rules
 
+Meals outside the current camp period are retained and transferred, as required
+by meal-planning period-change rules. They are operationally excluded, not invalid
+package data. Meal identity, type reference and change-version checks still apply.
+
+### Explicit recovery after a lost package
+
+The source camp card offers return import and, separately, **unlock without a
+return package**. Both require the existing camp-level `camp.import-package`
+permission; single-device operators cannot cancel a source transfer.
+Return import additionally checks the camp selected on the card.
+
+Explicit recovery requires confirmation that offline changes will not be adopted.
+It preserves the current source domain data, clears freeze and active transfer,
+and advances the baseline. The expected transfer ID and baseline are required;
+a stale request cannot cancel a newer transfer. A later recovered package from
+the abandoned transfer is rejected, including after a new outbound transfer.
+The cancellation and `camp.offline-transfer.cancelled` audit event are committed
+atomically. Return import and cancellation serialize on the affected camp row.
+This is not synchronization or recovery of lost offline changes. The disconnected
+local application cannot be remotely stopped; its abandoned copy must not be used
+further. No existing camp is automatically unlocked by deployment of this feature.
+
 The frozen source camp and the writable local copy have distinct transfer
 states: the source has `IsFrozen = true`; the local copy has `IsFrozen = false`
 while retaining the same `ActiveTransferId` and original `BaselineVersion`.

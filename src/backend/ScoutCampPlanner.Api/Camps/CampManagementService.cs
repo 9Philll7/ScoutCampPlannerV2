@@ -15,7 +15,10 @@ public sealed record TenantOption(Guid Id, string Name, bool CanManageIngredient
 public sealed record CampAdministratorOption(Guid MembershipId, Guid UserId, string Email);
 public sealed record CampSummary(
     Guid Id, Guid TenantId, string Name, DateOnly? StartDate, DateOnly? EndDate,
-    bool IsFrozen, bool CanEdit, bool CanExport);
+    bool IsFrozen, bool CanEdit, bool CanExport, bool CanImport = false,
+    Guid? ActiveTransferId = null, long BaselineVersion = 0);
+public sealed record CancelOfflineTransferRequest(Guid TransferId, long BaselineVersion, bool ConfirmLoss);
+public enum CancelOfflineTransferFailure { None, NotFound, Conflict, ConfirmationRequired }
 public sealed record CreateCampRequest(
     string Name, DateOnly StartDate, DateOnly EndDate,
     IReadOnlyCollection<Guid>? InitialAdministratorMembershipIds);
@@ -78,13 +81,20 @@ public sealed class CampManagementService(
     CateringDbContext catering,
     IAuditedOperationExecutor auditedOperation,
     AuditRuntimeState auditRuntime,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    LocalDeviceAccess? localAccess = null)
 {
     private static readonly string[] SuggestedStageNames = ["Biber", "WiWö", "GuSp", "CaEx", "RaRo", "Mitarbeiter"];
 
     public async Task<IReadOnlyList<TenantOption>> ListTenantsAsync(
         Guid userId, CancellationToken cancellationToken = default)
     {
+        if (localAccess?.IsOperator(userId) == true)
+        {
+            Guid[] ids = await localAccess.TenantIdsAsync(userId, cancellationToken);
+            return await platform.Tenants.Where(value => ids.Contains(value.Id)).OrderBy(value => value.Name)
+                .Select(value => new TenantOption(value.Id, value.Name, false)).ToArrayAsync(cancellationToken);
+        }
         var memberships = await platform.TenantMemberships
             .Where(membership => membership.UserId == userId && membership.State == TenantMembershipState.Active)
             .Join(platform.Tenants, membership => membership.TenantId, tenant => tenant.Id,
@@ -256,17 +266,55 @@ public sealed class CampManagementService(
             userId, tenantId, Permissions.Camp.Edit, cancellationToken)).ToHashSet();
         HashSet<Guid> exportableCampIds = (await GetAuthorizedCampIdsAsync(
             userId, tenantId, Permissions.Camp.ExportPackage, cancellationToken)).ToHashSet();
+        HashSet<Guid> importableCampIds = (await GetAuthorizedCampIdsAsync(
+            userId, tenantId, Permissions.Camp.ImportPackage, cancellationToken)).ToHashSet();
 
         var visibleCamps = await camps.Camps.Where(camp => camp.TenantId == tenantId && campIds.Contains(camp.Id))
             .OrderBy(camp => camp.Name)
             .Select(camp => new CampSummary(
-                camp.Id, camp.TenantId, camp.Name, camp.StartDate, camp.EndDate, camp.IsFrozen, false, false))
+                camp.Id, camp.TenantId, camp.Name, camp.StartDate, camp.EndDate, camp.IsFrozen, false, false,
+                false, camp.ActiveTransferId, camp.BaselineVersion))
             .ToListAsync(cancellationToken);
         return visibleCamps.Select(camp => camp with
         {
             CanEdit = editableCampIds.Contains(camp.Id),
             CanExport = exportableCampIds.Contains(camp.Id),
+            CanImport = importableCampIds.Contains(camp.Id),
         }).ToList();
+    }
+
+    public async Task<CancelOfflineTransferFailure> CancelOfflineTransferAsync(
+        Guid actorId, Guid campId, CancelOfflineTransferRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!await HasCampPermissionAsync(actorId, campId, Permissions.Camp.ImportPackage, cancellationToken))
+            return CancelOfflineTransferFailure.NotFound;
+        if (!request.ConfirmLoss) return CancelOfflineTransferFailure.ConfirmationRequired;
+        var current = await camps.Camps.AsNoTracking().SingleAsync(value => value.Id == campId, cancellationToken);
+        try { current.CompleteTransfer(request.TransferId, request.BaselineVersion); }
+        catch (InvalidOperationException) { return CancelOfflineTransferFailure.Conflict; }
+        var auditEvent = new AuditEventDraft(Guid.NewGuid(), timeProvider.GetUtcNow(),
+            "camp.offline-transfer.cancelled", "success", actorId, current.TenantId, campId,
+            "camp", campId, "server", auditRuntime.InstanceId, Guid.NewGuid(), null, null,
+            new Dictionary<string, string> { ["transferId"] = request.TransferId.ToString() });
+        try
+        {
+            await auditedOperation.ExecuteAsync(auditEvent, async ct =>
+            {
+                await camps.Database.UseTransactionAsync(platform.Database.CurrentTransaction!.GetDbTransaction(), ct);
+                try
+                {
+                    int changed = await camps.Camps.Where(value => value.Id == campId && value.IsFrozen &&
+                            value.ActiveTransferId == request.TransferId && value.BaselineVersion == request.BaselineVersion)
+                        .ExecuteUpdateAsync(setters => setters.SetProperty(value => value.IsFrozen, false)
+                            .SetProperty(value => value.ActiveTransferId, (Guid?)null)
+                            .SetProperty(value => value.BaselineVersion, current.BaselineVersion), ct);
+                    if (changed != 1) throw new DbUpdateConcurrencyException();
+                }
+                finally { await camps.Database.UseTransactionAsync(null, CancellationToken.None); }
+            }, cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException) { return CancelOfflineTransferFailure.Conflict; }
+        return CancelOfflineTransferFailure.None;
     }
 
     public async Task<bool> HasCampPermissionAsync(
@@ -856,14 +904,19 @@ public sealed class CampManagementService(
 
         bool canExport = await HasCampPermissionAsync(
             actorUserId, campId, Permissions.Camp.ExportPackage, cancellationToken);
+        bool canImport = await HasCampPermissionAsync(actorUserId, campId, Permissions.Camp.ImportPackage, cancellationToken);
         return new(new CampSummary(
-            camp.Id, camp.TenantId, camp.Name, camp.StartDate, camp.EndDate, camp.IsFrozen, true, canExport),
+            camp.Id, camp.TenantId, camp.Name, camp.StartDate, camp.EndDate, camp.IsFrozen, true, canExport,
+            canImport, camp.ActiveTransferId, camp.BaselineVersion),
             UpdateCampFailure.None);
     }
 
     private async Task<bool> HasTenantPermissionAsync(
         Guid userId, Guid tenantId, string permission, CancellationToken cancellationToken)
     {
+        if (localAccess?.IsOperator(userId) == true)
+            return permission == Permissions.Tenant.View &&
+                (await localAccess.TenantIdsAsync(userId, cancellationToken)).Contains(tenantId);
         string[] roles = await platform.TenantMemberships
             .Where(membership => membership.UserId == userId && membership.TenantId == tenantId &&
                 membership.State == TenantMembershipState.Active)
@@ -878,6 +931,8 @@ public sealed class CampManagementService(
     private async Task<Guid[]> GetAuthorizedCampIdsAsync(
         Guid userId, Guid tenantId, string permission, CancellationToken cancellationToken)
     {
+        if (localAccess?.IsOperator(userId) == true)
+            return await localAccess.CampIdsAsync(userId, tenantId, permission, cancellationToken);
         var assignments = await platform.TenantMemberships
             .Where(tenantMembership => tenantMembership.UserId == userId &&
                 tenantMembership.TenantId == tenantId && tenantMembership.State == TenantMembershipState.Active)

@@ -98,7 +98,7 @@ public static class CampPackageSerializer
             mealTypes.Select(x => x.Name.Trim().ToUpperInvariant()).Distinct().Count() != mealTypes.Count ||
             mealTypes.Select(x => x.SortOrder).Order().Where((value, index) => value != index).Any() ||
             (package.CampMeals ?? []).Any(x => x.Id == Guid.Empty || !mealTypeIds.Contains(x.MealTypeId) ||
-                x.Date < package.Camp.StartDate || x.Date > package.Camp.EndDate || x.ChangeVersion < 0))
+                x.Date == default || x.ChangeVersion < 0))
             throw new CampPackageValidationException("Camp meal schedule is invalid.");
         if (package.CampStages.Count == 0 || package.CampStages.Select(x => x.Id).Distinct().Count() != package.CampStages.Count ||
             package.CampStages.Select(x => x.Name.Trim().ToUpperInvariant()).Distinct().Count() != package.CampStages.Count ||

@@ -1,6 +1,14 @@
 # Desktop-Roundtrip: festgestellte Lücken und nächster Auftrag
 
-Stand: 2026-09-20. Der Benutzer hat die Umsetzung einer aktuellen Desktop-App
+Aktualisierung 2026-09-21: Lokale Identität und Permission-Integration, nativer
+Paketimport/Rückexport, dynamischer Sidecar und neue Windows-Bundles sind umgesetzt.
+Der HTTP-Roundtrip mit temporären Datenbanken ist erfolgreich. Manuelle Desktopabnahme,
+optionales Passwort, Paket-Auditierung und Wiederverwendung derselben lokalen
+Lagerkopie für spätere Transferzyklen bleiben offen. Aktueller Status und Testablauf:
+`docs/architecture/desktop-roundtrip.md`. Die folgenden Befunde und Schritte halten
+den ursprünglichen Auftrag fest und sind kein aktueller Implementierungsrückstand.
+
+Ursprünglicher Stand: 2026-09-20. Der Benutzer hat die Umsetzung einer aktuellen Desktop-App
 mit bedienbarem Paketimport und Rückexport beauftragt. Die folgenden Befunde
 stammen aus Codeprüfung; ein bedienbarer Desktop-Roundtrip ist noch nicht validiert.
 
@@ -52,6 +60,16 @@ Arbeitsstand: Die Domain-/Package-Korrektur für lokale Bearbeitbarkeit und
 Originalbaseline ist implementiert. Die lokale Identität und Zugriffszuordnung,
 Desktop-Dateidialoge, Import-/Exportoberfläche und ein neuer Installer stehen
 noch aus. Die technische Transferkorrektur allein ist keine fertige Desktop-App.
+
+Ergänzter Implementierungsstand: Platform besitzt nun getrennte lokale Identitäts-
+und Lagerzugriffsdatensätze samt SQLite-/PostgreSQL-Migrationen. Die Application-
+Policy prüft Gerätemodus, Identität, Mandant, Lager, Transfer und einen expliziten
+Permission-Katalog. Der neue Package-Use-Case
+`ImportInitialPackageForDeviceAsync` legt Zugriff und Fachdaten atomar an.
+Rückpakete enthalten diese lokalen Datensätze nicht. Noch nicht angeschlossen:
+Erstellung/Authentifizierung der Geräteidentität durch den Desktop und die
+Verwendung dieser Policy in den API-Autorisierungen. Der bestehende allgemeine
+Importendpunkt vergibt weiterhin keine lokale Berechtigung.
 
 1. Lokale führende Instanz von eingefrorenem Quelllager unterscheiden; Transfer-ID
    und Originalbaseline beim Import exakt erhalten. Domain-/Provider-Tests,

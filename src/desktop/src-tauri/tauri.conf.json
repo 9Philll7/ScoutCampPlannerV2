@@ -8,13 +8,15 @@
     "beforeBuildCommand": "npm.cmd --prefix ../frontend run build"
   },
   "app": {
-    "windows": [{ "title": "ScoutCampPlanner", "width": 1200, "height": 800 }],
+    "windows": [],
+    "withGlobalTauri": true,
     "security": { "csp": null }
   },
   "bundle": {
     "active": true,
     "targets": ["msi", "nsis"],
     "icon": ["icons/icon.ico"],
-    "externalBin": ["binaries/ScoutCampPlanner.Api"]
+    "externalBin": ["binaries/ScoutCampPlanner.Api"],
+    "resources": { "../sidecar-publish/reference-data/": "reference-data/" }
   }
 }

@@ -9,6 +9,8 @@ namespace ScoutCampPlanner.Platform.Infrastructure;
 public sealed class PlatformDbContext(DbContextOptions<PlatformDbContext> options) : DbContext(options), ITenantLookup
 {
     public DbSet<Tenant> Tenants => Set<Tenant>();
+    public DbSet<LocalDeviceIdentity> LocalDeviceIdentities => Set<LocalDeviceIdentity>();
+    public DbSet<LocalCampAccess> LocalCampAccessGrants => Set<LocalCampAccess>();
     public DbSet<UserAccount> UserAccounts => Set<UserAccount>();
     public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
     public DbSet<TenantRoleAssignment> TenantRoleAssignments => Set<TenantRoleAssignment>();
@@ -30,6 +32,21 @@ public sealed class PlatformDbContext(DbContextOptions<PlatformDbContext> option
             entity.ToTable("Tenants");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(200);
+        });
+        modelBuilder.Entity<LocalDeviceIdentity>(entity =>
+        {
+            entity.ToTable("LocalDeviceIdentities");
+            entity.HasKey(x => x.Id);
+        });
+        modelBuilder.Entity<LocalCampAccess>(entity =>
+        {
+            entity.ToTable("LocalCampAccessGrants");
+            entity.HasKey(x => new { x.DeviceIdentityId, x.CampId });
+            entity.HasOne<LocalDeviceIdentity>().WithMany().HasForeignKey(x => x.DeviceIdentityId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(x => x.CampId);
         });
         modelBuilder.Entity<UserAccount>(entity =>
         {
