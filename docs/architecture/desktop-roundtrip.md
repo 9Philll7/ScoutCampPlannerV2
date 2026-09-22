@@ -1,7 +1,8 @@
 # Desktop-Roundtrip
 
 Stand: 2026-09-22. Technische Umsetzung für den passwortlosen Einzelgerätmodus;
-kein Produktionsrelease und noch keine abgeschlossene manuelle Desktopabnahme.
+Der unten aufgeführte Kernablauf ist manuell bestätigt; ergänzende Prüfungen
+bleiben offen. Kein Produktionsrelease.
 Grundlage: ADR-009 und ADR-011, bestätigte lokale Importberechtigung.
 
 ## Umsetzung
@@ -45,7 +46,26 @@ Grundlage: ADR-009 und ADR-011, bestätigte lokale Importberechtigung.
   Erfolgreich am 2026-09-21. Nur test-eigene Prozesse werden beendet; Artefakte
   verbleiben im ausgegebenen Temp-Verzeichnis. Kein Test des installierten Webviews.
 
-## Manuelle Abnahme (noch offen)
+## Manueller Prüfstand
+
+Am 2026-09-22 hat der Benutzer folgenden Ablauf ausdrücklich als erfolgreich bestätigt:
+
+1. Offlinepaket online erstellt.
+2. Paket in der lokalen Desktop-App geöffnet.
+3. Lagerdauer lokal geändert.
+4. Rückpaket exportiert.
+5. Rückpaket online erfolgreich importiert.
+6. Lokales Lager entfernt.
+7. Ursprüngliches Offlinepaket erneut lokal geladen.
+
+Damit sind der Kern-Roundtrip mit Zeitraumänderung sowie lokale Bereinigung und
+Wiederimport manuell nachgewiesen. Schritt 7 ist kein neuer Transferzyklus: Das
+ursprüngliche Paket enthält die abgeschlossene Transfer-ID. Ein daraus erzeugtes
+Rückpaket darf online nicht mehr angenommen werden. Für eine neue Offlinephase
+muss online ein neues Paket erstellt werden. Diese Unterscheidung wurde vom
+Benutzer bestätigt; eine manuelle Prüfung der Ablehnung ist damit nicht behauptet.
+
+### Technischer Prüfverlauf
 
 Nachkorrektur 2026-09-22: Die Antwort beim Speichern der Lagergrundeinstellungen
 behält Transfer-ID, Baseline und Importberechtigung bei. Sonst verlor die Oberfläche
@@ -62,8 +82,15 @@ Der zuvor fehlgeschlagene Test enthielt keine Pflichtstufen; die Testdaten
 wurden korrigiert, ohne Produktvalidierung abzuschwächen.
 Historisches NSIS-Artefakt vor dieser Nachkorrektur vom 2026-09-22, 09:31:42 (lokale Zeit), 38.388.835 Bytes,
 SHA-256: `F21C83C8F7C3786B1E46B59F90D91190BAD86C95798E9F540E890F854DF101B9`.
-Das ist keine Produktionsfreigabe und kein Nachweis einer ausgeführten
-Installation oder manuellen Webview-/Dateidialogprüfung.
+Diese automatisierte Freigabe ist von der oben dokumentierten Benutzerprüfung
+getrennt und stellt keine Produktionsfreigabe dar.
+
+### Ergänzende manuelle Prüfungen (noch nicht ausdrücklich bestätigt)
+
+Offen bleiben die Abbruchfälle der Dateidialoge, Zugriffsisolation, Erhalt von
+Änderungen nach App-Neustart, lokale Mahlzeitenplanänderungen im Roundtrip,
+Ablehnung falscher/veralteter Rückpakete und Entsperrung ohne Rückpaket einschließlich
+Abbruch der Warnbestätigung. Der ursprüngliche erweiterte Prüfablauf zur Orientierung:
 
 1. Aktuellen Installer aus
    `src/desktop/src-tauri/target/release/bundle/nsis/ScoutCampPlanner_0.1.0_x64-setup.exe`

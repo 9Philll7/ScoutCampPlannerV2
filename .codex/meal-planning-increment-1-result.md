@@ -1,6 +1,6 @@
 # Ergebnis: Mahlzeitenplanung – Inkrement 1
 
-Stand: 2026-09-20
+Stand: 2026-09-22 (manueller Prüfstand nachgetragen; technische Ausgangsnachweise vom 2026-09-20)
 
 ## 1. Ergebnis
 
@@ -79,13 +79,33 @@ Die Frontend-Testinfrastruktur verwendet Angular 22 `unit-test` mit Vitest 4 und
 
 ## 12. Manueller Prüfstand
 
-Die Korrektur der Strukturabweichung wurde manuell bestätigt. Beim Offlineexport wurde anschließend festgestellt, dass ein abgebrochener Browserdownload das Lager bereits einfriert. Der Speicherdialog wird jetzt vor dem Transferaufruf geöffnet; Abbrechen startet keinen Transfer. Automatisierte Regressionstests sind erfolgreich. Manuelle Nachprüfung und vollständiger Roundtrip bleiben offen.
+Die Korrektur der Strukturabweichung wurde manuell bestätigt. Beim Offlineexport wurde anschließend festgestellt, dass ein abgebrochener Browserdownload das Lager bereits einfriert. Der Speicherdialog wird jetzt vor dem Transferaufruf geöffnet; Abbrechen startet keinen Transfer. Automatisierte Regressionstests sind erfolgreich. Eine ausdrückliche manuelle Bestätigung des Abbruchfalls bleibt offen.
 
-Die ersten beiden manuellen Prüfblöcke wurden vom Benutzer als erfolgreich bestätigt. Dabei wurde ein Fehler beim Deaktivieren einer gespeicherten Strukturabweichung gefunden und korrigiert: Die Oberfläche sendet jetzt eine leere Zuordnung zum Entfernen statt `null` (bestehende Zuordnung beibehalten). Regressionstest erfolgreich; erneute manuelle Prüfung dieses Ablaufs und Offline-Roundtrip stehen noch aus.
+Die ersten beiden manuellen Prüfblöcke wurden vom Benutzer als erfolgreich bestätigt. Dabei wurde ein Fehler beim Deaktivieren einer gespeicherten Strukturabweichung gefunden und korrigiert: Die Oberfläche sendet jetzt eine leere Zuordnung zum Entfernen statt `null` (bestehende Zuordnung beibehalten). Regressionstest und erneute manuelle Prüfung dieses konkreten Ablaufs waren erfolgreich.
 
 Der erste manuelle Prüfblock wurde am 2026-09-20 erfolgreich bestätigt: Anlegen und unvollständiges Speichern, gebündeltes Save mit genau einem Versionsschritt, Cancel, Angebotsgruppen mit Standard und Alternative, zwei Kocheinheiten, `Custom`/`NoSupplyRequired`, Berechnung mit Bedarfs- und Zielbedarfs-Override sowie die blockierte Entfernung einer verwendeten Rezeptrevision funktionieren über die Oberfläche.
 
-Noch offen sind die gezielte Prüfung von FollowStandard-Invalidierung und unveränderten Abweichungen, Struktur-Override und Reset, selektives `Stale`, Meal-Deaktivierung/-Reaktivierung, Zeitraumänderung sowie der vollständige Cloud → Lokal → Cloud-Roundtrip.
+Am 2026-09-22 ausdrücklich vom Benutzer bestätigt:
+
+1. Offlinepaket online erstellt.
+2. Lokal geöffnet.
+3. Lagerdauer lokal geändert.
+4. Rückpaket exportiert.
+5. Rückpaket online erfolgreich importiert.
+6. Lokales Lager entfernt.
+7. Ursprüngliches Paket erneut lokal geladen.
+
+Der Kern-Roundtrip einschließlich Zeitraumänderung und lokaler Bereinigung ist
+damit manuell bestätigt. Das erneute Laden des ursprünglichen Pakets ist kein
+neuer gültiger Offline-Transfer. Für eine weitere Arbeitsphase ist ein neuer
+Onlineexport erforderlich; dies wurde ebenfalls bestätigt.
+
+Noch nicht eindeutig manuell bestätigt sind die gezielte FollowStandard-Invalidierung
+und unveränderte Abweichungen, weitere Struktur-Override-/Reset-Fälle, selektives
+`Stale`, Meal-Deaktivierung/-Reaktivierung und die Auswirkungen von Zeitraumänderungen
+auf sämtliche Planungszustände. Die reine Zeitraumänderung im Roundtrip ist dagegen
+geprüft. Ergänzende Desktopprüfungen stehen separat in
+`docs/architecture/desktop-roundtrip.md`.
 
 ## 13. Dokumentierte Abweichungen und Grenzen
 
@@ -94,7 +114,8 @@ technisch bearbeitet: lokale Identität/Zugriffszuordnung, native Dateidialoge,
 Import/Rückexport und dynamischer Sidecar sind integriert. Der autorisierte
 HTTP-Roundtrip ist mit temporären SQLite-Datenbanken erfolgreich geprüft, auch
 die Rückübernahme lokal geänderter Grundeinstellungen. Aktuelle Grenzen und
-ausstehende manuelle Desktopabnahme: `docs/architecture/desktop-roundtrip.md`.
+inzwischen bestätigter manueller Kernablauf sowie weitere offene Prüfungen:
+`docs/architecture/desktop-roundtrip.md`.
 Die folgenden Desktopbefunde dokumentieren den früheren Prüfstand.
 
 - Nachprüfung des Desktop-Roundtrips: Die lokale API-Bearbeitung ist noch nicht
@@ -116,8 +137,9 @@ Die folgenden Desktopbefunde dokumentieren den früheren Prüfstand.
 
 ## 14. Nächster Schritt und Commit-Punkt
 
-Zuerst den manuellen Prüfablauf vollständig durchführen. Bei erfolgreichem Ergebnis ist ein gemeinsamer Commit sinnvoll:
-
-`Implementiere Mahlzeitenplanung Inkrement 1`
+Die Implementierung wurde laut Benutzer committed. Der manuelle Kern-Roundtrip
+ist bestätigt; die oben explizit offenen Zusatzprüfungen bleiben als Restprüfung
+bestehen. Dieser Nachtrag ist keine vollständige Produktionsfreigabe und behauptet
+keine weiteren durchgeführten Tests.
 
 Danach sollte Inkrement 2 zunächst im hybriden Planungsprozess fachlich definiert werden; insbesondere Anforderungskatalog, Datenschutzgrenzen, eindeutige Ersatzauflösung und Verifikation dürfen nicht aus Inkrement 1 heraus implizit erweitert werden.
