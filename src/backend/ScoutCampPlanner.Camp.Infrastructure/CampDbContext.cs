@@ -4,18 +4,20 @@ using ScoutCampPlanner.Camp.Domain;
 
 namespace ScoutCampPlanner.Camp.Infrastructure;
 
-public sealed class CampDbContext(DbContextOptions<CampDbContext> options) : DbContext(options), ICampLookup, ICampPlanningLookup
+public sealed class CampDbContext(DbContextOptions<CampDbContext> options) : DbContext(options), ICampLookup, ICampPlanningLookup, ICampParticipantLookup, ICampCateringParticipantLookup
 {
     public DbSet<Camp.Domain.Camp> Camps => Set<Camp.Domain.Camp>();
     public DbSet<StructureNode> StructureNodes => Set<StructureNode>();
     public DbSet<TenantStageTemplateEntry> TenantStageTemplateEntries => Set<TenantStageTemplateEntry>();
     public DbSet<CampStage> CampStages => Set<CampStage>();
     public DbSet<ParticipantEstimate> ParticipantEstimates => Set<ParticipantEstimate>();
+    public DbSet<Participant> Participants => Set<Participant>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         if (Database.ProviderName?.Contains("Npgsql", StringComparison.Ordinal) == true)
             modelBuilder.HasDefaultSchema("camp");
+        modelBuilder.ApplyConfiguration(new ParticipantPersistenceConfiguration());
         modelBuilder.Entity<Camp.Domain.Camp>(entity =>
         {
             entity.ToTable("Camps");
@@ -74,6 +76,31 @@ public sealed class CampDbContext(DbContextOptions<CampDbContext> options) : DbC
         await Camps.Where(x => x.Id == campId)
             .Select(x => new CampReference(x.Id, x.TenantId, x.Name, x.IsFrozen))
             .SingleOrDefaultAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<ParticipantPlanningData>> GetParticipantsAsync(
+        Guid campId, CancellationToken cancellationToken = default)
+    {
+        Participant[] participants = await Participants.AsNoTracking()
+            .Where(value => value.CampId == campId).OrderBy(value => value.Id)
+            .ToArrayAsync(cancellationToken);
+        return participants.Select(value => new ParticipantPlanningData(
+            value.Id, value.CampId, value.DisplayName, value.DietTypeId,
+            value.AbsentDays.Select(day => day.Date).Order().ToArray(),
+            value.AbsentMeals.Select(meal => meal.MealId).Order().ToArray(),
+            value.Allergens.Select(allergen => allergen.AllergenId).Order().ToArray(),
+            value.Intolerances.OrderBy(item => item.SubstanceId).Select(item =>
+                new ParticipantIntoleranceData(item.SubstanceId, item.ThresholdGramsPerPortion,
+                    item.ThresholdSource)).ToArray(), value.StructureNodeId)).ToArray();
+    }
+
+    public async Task<IReadOnlyList<CateringParticipantData>> GetMealParticipantsAsync(Guid campId,
+        DateOnly date, Guid mealId, CancellationToken cancellationToken = default) =>
+        await Participants.AsNoTracking().Where(value => value.CampId == campId)
+            .Select(value => new CateringParticipantData(value.Id, value.StructureNodeId,
+                !value.AbsentDays.Any(day => day.Date == date) && !value.AbsentMeals.Any(meal => meal.MealId == mealId),
+                value.DietTypeId, value.Allergens.Select(allergen => allergen.AllergenId).ToArray(),
+                value.Intolerances.Select(item => new CateringIntoleranceData(item.SubstanceId, item.ThresholdGramsPerPortion)).ToArray()))
+            .ToArrayAsync(cancellationToken);
 
     public async Task<CampPlanningData?> GetPlanningDataAsync(
         Guid campId,

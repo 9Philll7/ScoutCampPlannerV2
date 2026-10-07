@@ -1,4 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import {
@@ -53,7 +55,7 @@ describe('MealPlanningComponent', () => {
     };
     TestBed.configureTestingModule({
       imports: [MealPlanningComponent],
-      providers: [{ provide: MealPlanningApiService, useValue: api }],
+      providers: [provideHttpClient(), provideHttpClientTesting(), { provide: MealPlanningApiService, useValue: api }],
     });
     fixture = TestBed.createComponent(MealPlanningComponent);
     fixture.componentRef.setInput('campId', 'camp-1');

@@ -36,7 +36,8 @@ public sealed record CampPackagePayload(
     IReadOnlyList<CampMealTypeData>? CampMealTypes = null,
     IReadOnlyList<CampMealData>? CampMeals = null,
     JsonElement CateringReferenceData = default,
-    JsonElement CateringMealPlanningData = default);
+    JsonElement CateringMealPlanningData = default,
+    CampParticipantPackageData? Participants = null);
 
 public sealed record TenantData(Guid Id, string Name);
 public sealed record CampData(

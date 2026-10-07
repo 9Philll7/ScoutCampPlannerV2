@@ -242,6 +242,9 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("ParticipantFilter")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("SortOrder")
                         .HasColumnType("INTEGER");
 
@@ -375,6 +378,9 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.Property<Guid>("CookingUnitId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("DemandBasis")
+                        .HasColumnType("INTEGER");
+
                     b.Property<decimal?>("DemandOverride")
                         .HasPrecision(18, 4)
                         .HasColumnType("TEXT");
@@ -457,6 +463,10 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -467,10 +477,25 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.HasIndex("NormalizedName")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("\"TenantId\" IS NULL");
+
+                    b.HasIndex("TenantId", "NormalizedName")
+                        .IsUnique()
+                        .HasFilter("\"TenantId\" IS NOT NULL");
 
                     b.ToTable("DietaryRequirements", (string)null);
                 });
@@ -680,6 +705,28 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.ToTable("MealPlanSnapshots", (string)null);
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.MealPlanningParticipantConfiguration", b =>
+                {
+                    b.Property<Guid>("CampId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AssignmentsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("DemandMode")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("CampId");
+
+                    b.ToTable("MealPlanningParticipantConfigurations", (string)null);
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.MeasurementUnit", b =>
                 {
                     b.Property<Guid>("Id")
@@ -751,6 +798,62 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .IsUnique();
 
                     b.ToTable("TenantStageFoodFactors", (string)null);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.DietaryRequirementContributionRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("CentralDietaryRequirementId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("DietaryRequirementId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("ReviewedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ReviewedBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("SubmittedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SubmittedBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DietaryRequirementId", "Version")
+                        .IsUnique();
+
+                    b.ToTable("DietaryRequirementContributions", (string)null);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.DietaryRequirementRevisionRecord", b =>
+                {
+                    b.Property<Guid>("DietaryRequirementId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("DietaryRequirementId", "Version");
+
+                    b.ToTable("DietaryRequirementRevisions", (string)null);
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientAllergenDefinitionRecord", b =>
@@ -1334,6 +1437,18 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal?>("DefaultThresholdGramsPerPortion")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DefaultThresholdSource")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DefaultThresholdVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("IsQuantityDependent")
                         .HasColumnType("INTEGER");
 
@@ -1357,6 +1472,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         {
                             Id = new Guid("31111111-1111-1111-1111-000000000001"),
                             Code = "LACTOSE",
+                            DefaultThresholdVersion = 0,
                             IsQuantityDependent = true,
                             Name = "Laktose",
                             Status = 0
@@ -1365,6 +1481,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         {
                             Id = new Guid("31111111-1111-1111-1111-000000000002"),
                             Code = "FRUCTOSE",
+                            DefaultThresholdVersion = 0,
                             IsQuantityDependent = true,
                             Name = "Fruktose",
                             Status = 0
@@ -1373,6 +1490,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         {
                             Id = new Guid("31111111-1111-1111-1111-000000000003"),
                             Code = "SORBITOL",
+                            DefaultThresholdVersion = 0,
                             IsQuantityDependent = true,
                             Name = "Sorbit",
                             Status = 0
@@ -1381,6 +1499,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         {
                             Id = new Guid("31111111-1111-1111-1111-000000000004"),
                             Code = "HISTAMINE",
+                            DefaultThresholdVersion = 0,
                             IsQuantityDependent = false,
                             Name = "Histamin",
                             Status = 0
@@ -1389,6 +1508,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         {
                             Id = new Guid("31111111-1111-1111-1111-000000000005"),
                             Code = "GLUTEN",
+                            DefaultThresholdVersion = 0,
                             IsQuantityDependent = false,
                             Name = "Gluten",
                             Status = 0
@@ -1397,6 +1517,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         {
                             Id = new Guid("31111111-1111-1111-1111-000000000006"),
                             Code = "FRUCTANS",
+                            DefaultThresholdVersion = 0,
                             IsQuantityDependent = true,
                             Name = "Fruktane",
                             Status = 0
@@ -1405,6 +1526,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         {
                             Id = new Guid("31111111-1111-1111-1111-000000000007"),
                             Code = "GALACTANS",
+                            DefaultThresholdVersion = 0,
                             IsQuantityDependent = true,
                             Name = "Galaktane",
                             Status = 0
@@ -1413,6 +1535,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         {
                             Id = new Guid("31111111-1111-1111-1111-000000000008"),
                             Code = "MANNITOL",
+                            DefaultThresholdVersion = 0,
                             IsQuantityDependent = true,
                             Name = "Mannit",
                             Status = 0
@@ -1421,6 +1544,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         {
                             Id = new Guid("31111111-1111-1111-1111-000000000009"),
                             Code = "XYLITOL",
+                            DefaultThresholdVersion = 0,
                             IsQuantityDependent = true,
                             Name = "Xylit",
                             Status = 0
@@ -1429,6 +1553,7 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         {
                             Id = new Guid("31111111-1111-1111-1111-000000000010"),
                             Code = "OTHER_POLYOLS",
+                            DefaultThresholdVersion = 0,
                             IsQuantityDependent = true,
                             Name = "Andere Polyole",
                             Status = 0
@@ -3030,6 +3155,38 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.DietaryRequirement", b =>
+                {
+                    b.OwnsMany("ScoutCampPlanner.Catering.Domain.DietaryOriginRule", "OriginRules", b1 =>
+                        {
+                            b1.Property<Guid>("DietaryRequirementId")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<Guid>("OriginId")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<int>("Decision")
+                                .HasColumnType("INTEGER");
+
+                            b1.HasKey("DietaryRequirementId", "OriginId");
+
+                            b1.HasIndex("OriginId");
+
+                            b1.ToTable("DietaryOriginRules", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("DietaryRequirementId");
+
+                            b1.HasOne("ScoutCampPlanner.Catering.Infrastructure.Ingredients.IngredientOriginPropertyRecord", null)
+                                .WithMany()
+                                .HasForeignKey("OriginId")
+                                .OnDelete(DeleteBehavior.Restrict)
+                                .IsRequired();
+                        });
+
+                    b.Navigation("OriginRules");
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.IngredientUnitConversion", b =>
                 {
                     b.HasOne("ScoutCampPlanner.Catering.Domain.BaseIngredient", null)
@@ -3083,6 +3240,24 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.HasOne("ScoutCampPlanner.Catering.Domain.MealPlan", null)
                         .WithMany()
                         .HasForeignKey("MealPlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.DietaryRequirementContributionRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Infrastructure.DietaryRequirementRevisionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("DietaryRequirementId", "Version")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Infrastructure.DietaryRequirementRevisionRecord", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Catering.Domain.DietaryRequirement", null)
+                        .WithMany()
+                        .HasForeignKey("DietaryRequirementId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

@@ -17,7 +17,7 @@ using Xunit;
 
 namespace ScoutCampPlanner.DatabaseMigrationTests;
 
-public sealed class DatabaseMigrationTests
+public sealed partial class DatabaseMigrationTests
 {
     private const string SqlitePlatformV1 = "20260808204812_InitialPlatform";
     private const string SqliteCampV1 = "20260808204825_InitialCamp";
@@ -45,10 +45,11 @@ public sealed class DatabaseMigrationTests
         await AssertBaselineDataAsync(databases, identities);
         await AssertLegacyIngredientMigratedAsync(connection, legacyIngredientId, false);
 
-        Assert.Equal(8, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_platform"));
+        await AssertParticipantPersistenceAsync(databases.Camp);
+        Assert.Equal(9, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_platform"));
         Assert.Equal(2, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('LocalDeviceIdentities', 'LocalCampAccessGrants')"));
-        Assert.Equal(8, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_camp"));
-        Assert.Equal(21, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_catering"));
+        Assert.Equal(10, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_camp"));
+        Assert.Equal(24, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory_catering"));
         Assert.Equal(9, await ScalarAsync<long>(connection,
             "SELECT COUNT(*) FROM MeasurementUnits WHERE NormalizedName IN ('GRAMM', 'KILOGRAMM', 'MILLILITER', 'LITER', 'STÜCK', 'TEELÖFFEL', 'ESSLÖFFEL', 'PRISE', 'BUND')"));
         Assert.Equal(18, await ScalarAsync<long>(connection,
@@ -113,10 +114,11 @@ public sealed class DatabaseMigrationTests
         await AssertBaselineDataAsync(databases, identities);
         await AssertLegacyIngredientMigratedAsync(connection, legacyIngredientId, true);
 
-        Assert.Equal(8, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM platform.\"__EFMigrationsHistory\""));
+        await AssertParticipantPersistenceAsync(databases.Camp);
+        Assert.Equal(9, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM platform.\"__EFMigrationsHistory\""));
         Assert.Equal(2, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'platform' AND table_name IN ('LocalDeviceIdentities', 'LocalCampAccessGrants')"));
-        Assert.Equal(8, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM camp.\"__EFMigrationsHistory\""));
-        Assert.Equal(21, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM catering.\"__EFMigrationsHistory\""));
+        Assert.Equal(10, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM camp.\"__EFMigrationsHistory\""));
+        Assert.Equal(24, await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM catering.\"__EFMigrationsHistory\""));
         Assert.Equal(9, await ScalarAsync<long>(connection,
             "SELECT COUNT(*) FROM catering.\"MeasurementUnits\" WHERE \"NormalizedName\" IN ('GRAMM', 'KILOGRAMM', 'MILLILITER', 'LITER', 'STÜCK', 'TEELÖFFEL', 'ESSLÖFFEL', 'PRISE', 'BUND')"));
         Assert.Equal(18, await ScalarAsync<long>(connection,

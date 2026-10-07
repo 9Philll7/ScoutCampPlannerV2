@@ -8,6 +8,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActionIconComponent } from '../../shared/action-icon.component';
+import { ParticipantPlanningComponent } from './participant-planning.component';
 import {
   CookingUnit, CookingUnitGroup, CookingUnitMeal, MealPlanDocument, MealPlanEntryDocument,
   MealPlanOfferGroupDocument, MealPlanningApiService, MealPlanningOverview, MealSlot,
@@ -27,19 +28,20 @@ interface MealDraft {
   selector: 'scp-meal-planning',
   standalone: true,
   imports: [FormsModule, MatButtonModule, MatCardModule, MatCheckboxModule, MatFormFieldModule,
-    MatInputModule, MatSelectModule, MatTooltipModule, ActionIconComponent],
+    MatInputModule, MatSelectModule, MatTooltipModule, ActionIconComponent, ParticipantPlanningComponent],
   template: `
     <section class="meal-planning">
       <div class="section-heading">
-        <div><p class="eyebrow">Inkrement 1</p><h3>Mahlzeitenplanung</h3></div>
+        <div><p class="eyebrow">Mahlzeiten und Bedarf</p><h3>Mahlzeitenplanung</h3></div>
         <button matIconButton type="button" matTooltip="Neu laden" aria-label="Neu laden" (click)="load()">
           <scp-action-icon name="refresh"/>
         </button>
       </div>
-      <p class="context-info">Plane veröffentlichte Rezeptrevisionen und berechne den anonymen Bedarf je Kocheinheit. Persönliche Anforderungen sind noch nicht Teil dieses Schritts.</p>
+      <p class="context-info">Plane veröffentlichte Rezeptrevisionen und berechne den Bedarf aus Schätzungen oder realen Teilnehmern. Die Versorgungseignung ist noch nicht vollständig integriert.</p>
       @if (error()) { <p class="message error">{{ error() }}</p> }
       @if (notice()) { <p class="message success">{{ notice() }}</p> }
       @if (overview(); as data) {
+        <scp-participant-planning [campId]="campId()" [units]="data.cookingUnits" [meals]="data.meals" [disabled]="disabled()" (changed)="load()"/>
         @if (data.coverageWarnings.length) {
           <div class="warning-panel"><strong>Strukturabdeckung prüfen</strong>
             @for (warning of data.coverageWarnings; track warning) { <p>{{ warning }}</p> }
@@ -142,6 +144,10 @@ interface MealDraft {
           @for (unit of data.cookingUnits; track unit.id) {
             <mat-card class="unit-card"><mat-card-header><mat-card-title>{{ unit.name }}</mat-card-title></mat-card-header>
               <mat-card-content>
+                <mat-form-field><mat-label>Verpflegungsfilter</mat-label><mat-select [(ngModel)]="unit.participantFilter" [disabled]="disabled()">
+                  <mat-option [value]="0">Alle Teilnehmer</mat-option><mat-option [value]="1">Nur Sonderverpflegung</mat-option>
+                  <mat-option [value]="2">Ohne Sonderverpflegung</mat-option>
+                </mat-select></mat-form-field>
                 <div class="unit-form"><mat-form-field appearance="outline"><mat-label>Gruppe</mat-label><mat-select [(ngModel)]="unit.groupId" [name]="'unit-group-' + unit.id" [disabled]="disabled()">
                   <mat-option [value]="null">Keine</mat-option>@for (group of data.cookingUnitGroups; track group.id) { <mat-option [value]="group.id">{{ group.name }}</mat-option> }
                 </mat-select></mat-form-field><mat-form-field appearance="outline"><mat-label>Standardplan</mat-label><mat-select [(ngModel)]="unit.standardMealPlanId" [name]="'unit-plan-' + unit.id" [disabled]="disabled()">
@@ -174,7 +180,17 @@ interface MealDraft {
                         <button matButton type="button" (click)="addChoice(draft, data)" [disabled]="disabled() || !data.recipeOptions.length"><scp-action-icon name="add"/>Rezept</button>
                       </div> }
                       <p>Berechnet: {{ stateFor(data, unit.id, meal.id)?.calculatedDemand ?? '–' }} · Wirksam: {{ stateFor(data, unit.id, meal.id)?.effectiveDemand ?? '–' }}</p>
+                      <p>Basis: {{ stateFor(data, unit.id, meal.id)?.demandBasis === 1 ? 'Reale Teilnehmer' : stateFor(data, unit.id, meal.id)?.demandBasis === 2 ? 'Schätzung (Fallback)' : 'Schätzung' }}</p>
+                      @if (stateFor(data, unit.id, meal.id)?.unassignedParticipantIds?.length) {
+                        <p class="message error">Anwesende Teilnehmer sind nicht zugeordnet. Bitte Teilnehmerzuordnung prüfen.</p>
+                      }
+                      @if (stateFor(data, unit.id, meal.id)?.requirementGroups?.length) {
+                        <p>{{ stateFor(data, unit.id, meal.id)?.requirementGroups?.length }} Anforderungsgruppe(n) aus der aktuellen Teilnehmerbasis.</p>
+                      }
                       @for (warning of stateFor(data, unit.id, meal.id)?.warnings || []; track warning) { <p class="status stale">{{ warning }}</p> }
+                      @for (problem of stateFor(data, unit.id, meal.id)?.participantProblems || []; track problem.reasonCode) {
+                        <p class="status stale">{{ problem.reasonCode === 'OverlappingCookingUnits' ? 'Überlappende Kocheinheiten: keine eindeutige Zuordnung.' : problem.reasonCode === 'ParticipantStructureMigrationRequired' ? 'Alte Teilnehmerzuordnungen müssen migriert werden.' : 'Anwesende Teilnehmer sind keiner Kocheinheit zugeordnet.' }}</p>
+                      }
                       <footer><button matButton type="button" (click)="saveMeal(unit, meal, draft)" [disabled]="disabled()"><scp-action-icon name="save"/>Einstellungen</button>
                         @if (draft.subscriptionState !== 0) { <button matButton type="button" (click)="resetPlan(unit, meal, draft)" [disabled]="disabled()">Auf Standardplan zurücksetzen</button> }
                         @if (draft.useStructureOverride) { <button matButton type="button" (click)="resetStructure(unit.id, meal.id)" [disabled]="disabled()">Struktur zurücksetzen</button> }

@@ -152,7 +152,45 @@ Every access to camp content requires an active camp membership. Tenant ownershi
 
 Sensitive health data will require a separate explicit permission and decision before implementation. It is never implied by `TenantOwner`, `TenantAdmin`, or `CampAdmin`.
 
-### Extensibility
+### Participant requirements (confirmed 2026-09-23)
+
+Sensitive participant requirements use separate camp-scoped permissions:
+
+- `health.participant-requirements.read`
+- `health.participant-requirements.edit`
+
+Meal-planning edit does not grant either permission. No existing role gains
+these permissions automatically, including CampAdmin, CampEditor and
+PlatformAdmin. Reading and editing require explicit authorized grants in the
+relevant tenant/camp context. Meal-planning verification remains separately
+authorized by `catering.meal-planning.verify`; verification is not an implicit
+health-data grant.
+
+The dummy-data package decision permits development transport, not access.
+Local sensitive dummy-data operations also require the corresponding explicit
+health permissions. Extend LocalCampAccessPolicy only through permission-bound,
+camp-scoped access, never by granting these rights to every local importer or
+meal-planning editor. Existing tenant/camp isolation and non-sensitive import
+access remain unchanged. There is no blanket dummy-development bypass and no
+production release for real sensitive offline data.
+
+### Explicit grant administration (confirmed 2026-10-05)
+
+Online, an active camp member holding `camp.members.manage` may deliberately
+grant or revoke the three increment-2 Health/Verify permissions for an active
+membership in the same tenant and camp. This includes a deliberate grant to
+the administrator's own membership; no grant is automatic or implied by the
+role. Every grant/revocation is audited atomically with identifiers only.
+
+On a single-device instance, these rights may only be provisioned or revoked
+through an explicitly invoked local administration command. There is no HTTP
+endpoint for local self-elevation. The command targets the existing device,
+camp and active transfer, validates local access and audits the operation.
+No permission grants are read from camp-package payloads or returned to cloud.
+Command execution is an intentional local OS-operator administration action,
+not a right gained merely by opening/importing a package.
+
+### Further extensibility
 
 The initial catalogue is intentionally not complete.
 

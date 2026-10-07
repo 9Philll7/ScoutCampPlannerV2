@@ -143,7 +143,7 @@ public sealed class CateringDbContext(DbContextOptions<CateringDbContext> option
         });
         ConfigureConflictCatalog(modelBuilder.Entity<Allergen>(), "Allergens");
         ConfigureConflictCatalog(modelBuilder.Entity<Intolerance>(), "Intolerances");
-        ConfigureConflictCatalog(modelBuilder.Entity<DietaryRequirement>(), "DietaryRequirements");
+        DietaryRequirementPersistenceConfiguration.Configure(modelBuilder);
         modelBuilder.Entity<BaseIngredientAllergen>(entity =>
         {
             entity.ToTable("BaseIngredientAllergens");
@@ -183,6 +183,8 @@ public sealed class CateringDbContext(DbContextOptions<CateringDbContext> option
 
     private void EnsurePublishedSnapshotsAreImmutable()
     {
+        if (ChangeTracker.Entries<DietaryRequirementRevisionRecord>().Any(value => value.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Dietary requirement revisions are immutable.");
         if (ChangeTracker.Entries<RecipeRevisionRecord>().Any(value => value.State == EntityState.Modified) ||
             ChangeTracker.Entries<RecipeRevisionWarningRecord>().Any(value => value.State == EntityState.Modified))
             throw new InvalidOperationException("Published recipe revisions and warning snapshots are immutable.");

@@ -10,7 +10,7 @@ using Xunit;
 
 namespace ScoutCampPlanner.CateringTests;
 
-public sealed class MealPlanningTests
+public sealed partial class MealPlanningTests
 {
     [Fact]
     public async Task Plan_requires_exactly_one_standard_and_no_duplicate_revision_per_group()
@@ -225,6 +225,14 @@ public sealed class MealPlanningTests
 
     private sealed class RecordingStore(MealPlanningData data) : IMealPlanningStore
     {
+        public Task<MealPlanningMutationResult> SaveParticipantConfigurationAsync(Guid campId, int expectedVersion,
+            MealPlanningDemandMode mode, string assignmentsJson, CancellationToken ct = default)
+        {
+            if ((data.ParticipantConfiguration?.Version ?? 0) != expectedVersion) return Task.FromResult(new MealPlanningMutationResult(MealPlanningMutationStatus.Conflict));
+            var configuration = data.ParticipantConfiguration ?? new MealPlanningParticipantConfiguration(campId);
+            configuration.Update(mode, assignmentsJson); data = data with { ParticipantConfiguration = configuration };
+            return Success(version: configuration.Version);
+        }
         public int SavePlanCalls { get; private set; }
         public decimal? LastCalculatedDemand { get; private set; }
         public bool LastCalculationComplete { get; private set; }
@@ -250,6 +258,13 @@ public sealed class MealPlanningTests
             LastCalculationComplete = complete;
             LastCalculationPlanId = mealPlanId;
             LastCalculationPlanVersion = mealPlanVersion;
+            var state = data.MealStates.SingleOrDefault(value => value.CookingUnitId == cookingUnitId && value.CampMealId == mealId)
+                ?? new CookingUnitMealState(Guid.NewGuid(), campId, cookingUnitId, mealId);
+            using var json = System.Text.Json.JsonDocument.Parse(calculationJson);
+            state.ApplyCalculation(calculatedDemand, mealPlanId, mealPlanVersion, snapshotId, calculationJson, sourceFingerprint,
+                System.Text.Json.JsonSerializer.Serialize(warnings), calculatedAtUtc, complete,
+                (EffectiveDemandBasis)json.RootElement.GetProperty("demandBasis").GetInt32());
+            data = data with { MealStates = data.MealStates.Where(value => value.Id != state.Id).Append(state).ToArray() };
             return Task.CompletedTask;
         }
         private static Task<MealPlanningMutationResult> Success(Guid? id = null, int? version = null) => Task.FromResult(new MealPlanningMutationResult(MealPlanningMutationStatus.Success, Id: id, Version: version));

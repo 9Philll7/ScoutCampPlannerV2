@@ -15,23 +15,29 @@ public sealed class CampPackageService(
     PlatformDbContext platform,
     CampDbContext camp,
     CateringDbContext catering,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ICampPackageParticipantAccess? participantAccess = null)
 {
     private static readonly string[] IncludedModules = ["Camp", "Catering"];
+    private bool externalTransaction;
 
     public async Task<bool> RemoveLocalCampAsync(Guid deviceId, Guid campId, Guid transferId,
         CancellationToken cancellationToken = default)
     {
-        await using var transaction = await camp.Database.BeginTransactionAsync(cancellationToken);
-        await EnlistAsync(transaction, cancellationToken);
+        await using var transaction = await BeginTransactionAsync(cancellationToken);
         try
         {
+            await camp.Camps.Where(value => value.Id == campId).ExecuteUpdateAsync(
+                setters => setters.SetProperty(value => value.BaselineVersion, value => value.BaselineVersion), cancellationToken);
             var local = await camp.Camps.AsNoTracking().SingleOrDefaultAsync(x => x.Id == campId &&
                 !x.IsFrozen && x.ActiveTransferId == transferId, cancellationToken);
             if (local is null || transferId == Guid.Empty || !await platform.LocalCampAccessGrants.AnyAsync(
                 x => x.DeviceIdentityId == deviceId && x.CampId == campId && x.TenantId == local.TenantId &&
                      x.TransferId == transferId, cancellationToken)) return false;
+            if (await ContainsParticipantPlanningAsync(campId, cancellationToken))
+                await DemandParticipantEditAsync(campId, cancellationToken);
             await new LocalCampRemovalStore(catering).DeleteAsync(campId, cancellationToken);
+            await camp.Participants.Where(x => x.CampId == campId).ExecuteDeleteAsync(cancellationToken);
             await camp.ParticipantEstimates.Where(x => x.CampId == campId).ExecuteDeleteAsync(cancellationToken);
             // Remove children before parents because the tree uses restrictive parent foreign keys.
             while (await camp.StructureNodes.AnyAsync(x => x.CampId == campId, cancellationToken))
@@ -44,7 +50,8 @@ public sealed class CampPackageService(
             await platform.LocalCampAccessGrants.Where(x => x.CampId == campId).ExecuteDeleteAsync(cancellationToken);
             await camp.Camps.Where(x => x.Id == campId).ExecuteDeleteAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            camp.ChangeTracker.Clear(); catering.ChangeTracker.Clear(); platform.ChangeTracker.Clear();
+            camp.ChangeTracker.Clear(); catering.ChangeTracker.Clear();
+            if (!externalTransaction) platform.ChangeTracker.Clear();
             return true;
         }
         catch { await transaction.RollbackAsync(CancellationToken.None); throw; }
@@ -53,8 +60,15 @@ public sealed class CampPackageService(
 
     public async Task<byte[]> StartOfflineTransferAsync(Guid campId, CancellationToken cancellationToken = default)
     {
+        await using var transaction = await BeginTransactionAsync(cancellationToken);
+        try
+        {
+        int available = await camp.Camps.Where(value => value.Id == campId && !value.IsFrozen && value.ActiveTransferId == null)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(value => value.BaselineVersion, value => value.BaselineVersion), cancellationToken);
+        if (available != 1) throw new InvalidOperationException("Camp is unavailable or already has an active transfer.");
         var entity = await camp.Camps.SingleOrDefaultAsync(x => x.Id == campId, cancellationToken)
             ?? throw new KeyNotFoundException("Camp was not found.");
+        await camp.Entry(entity).ReloadAsync(cancellationToken);
         var tenant = await platform.Tenants.SingleOrDefaultAsync(x => x.Id == entity.TenantId, cancellationToken)
             ?? throw new InvalidOperationException("Camp tenant was not found.");
 
@@ -62,17 +76,38 @@ public sealed class CampPackageService(
         entity.Freeze(transferId);
         await camp.SaveChangesAsync(cancellationToken);
 
-        return await BuildAsync(entity, tenant, CampPackageDirection.CloudToLocal, cancellationToken);
+        byte[] bytes = await BuildAsync(entity, tenant, CampPackageDirection.CloudToLocal, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return bytes;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            camp.ChangeTracker.Clear();
+            throw;
+        }
+        finally { await DetachEnlistedTransactionsAsync(CancellationToken.None); }
     }
 
     public async Task<byte[]> CreateReturnPackageAsync(Guid campId, CancellationToken cancellationToken = default)
     {
+        await using var transaction = await BeginTransactionAsync(cancellationToken);
+        try
+        {
+        // Serialize with participant edits and transfer state changes on both providers.
+        await camp.Camps.Where(value => value.Id == campId).ExecuteUpdateAsync(
+            setters => setters.SetProperty(value => value.BaselineVersion, value => value.BaselineVersion), cancellationToken);
         var entity = await camp.Camps.SingleOrDefaultAsync(x => x.Id == campId, cancellationToken)
             ?? throw new KeyNotFoundException("Camp was not found.");
         if (entity.IsFrozen || entity.ActiveTransferId is null)
             throw new InvalidOperationException("Camp has no active offline transfer.");
         var tenant = await platform.Tenants.SingleAsync(x => x.Id == entity.TenantId, cancellationToken);
-        return await BuildAsync(entity, tenant, CampPackageDirection.LocalToCloud, cancellationToken);
+        byte[] bytes = await BuildAsync(entity, tenant, CampPackageDirection.LocalToCloud, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return bytes;
+        }
+        catch { await transaction.RollbackAsync(CancellationToken.None); throw; }
+        finally { await DetachEnlistedTransactionsAsync(CancellationToken.None); }
     }
 
     public Task ImportInitialPackageAsync(byte[] bytes, CancellationToken cancellationToken = default) =>
@@ -92,8 +127,7 @@ public sealed class CampPackageService(
         if (package.Manifest.Direction != CampPackageDirection.CloudToLocal)
             throw new CampPackageValidationException("Expected a cloud-to-local package.");
 
-        await using var transaction = await camp.Database.BeginTransactionAsync(cancellationToken);
-        await EnlistAsync(transaction, cancellationToken);
+        await using var transaction = await BeginTransactionAsync(cancellationToken);
         try
         {
             if (deviceIdentityId.HasValue && !await platform.LocalDeviceIdentities.AnyAsync(
@@ -125,15 +159,20 @@ public sealed class CampPackageService(
             catering.CampMeals.AddRange((package.CampMeals ?? []).Select(x => new CampMeal(
                 x.Id, x.CampId, x.MealTypeId, x.Date, x.IsActive, x.ChangeVersion)));
             await new CampOfflineReferenceStore(catering).ImportAsync(
-                package.CateringReferenceData, package.Camp.Id, cancellationToken);
+                package.CateringReferenceData, package.Camp.Id, cancellationToken,
+                CampMealPlanningPackageStore.ReadRecipeRevisionIds(package.CateringMealPlanningData, package.Camp.Id));
             await new CampMealPlanningPackageStore(catering).ImportAsync(
                 package.CateringMealPlanningData, package.Camp.Id, cancellationToken);
+            // Persist catalogue closure before resolving participant references in this transaction.
+            await catering.SaveChangesAsync(cancellationToken);
+            await ImportParticipantsAsync(package, initial: true, cancellationToken);
             await SaveAllAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
         catch
         {
-            await transaction.RollbackAsync(cancellationToken);
+            await transaction.RollbackAsync(CancellationToken.None);
+            camp.ChangeTracker.Clear(); catering.ChangeTracker.Clear(); platform.ChangeTracker.Clear();
             throw;
         }
         finally
@@ -148,8 +187,7 @@ public sealed class CampPackageService(
         if (package.Manifest.Direction != CampPackageDirection.LocalToCloud)
             throw new CampPackageValidationException("Expected a local-to-cloud package.");
 
-        await using var transaction = await camp.Database.BeginTransactionAsync(cancellationToken);
-        await EnlistAsync(transaction, cancellationToken);
+        await using var transaction = await BeginTransactionAsync(cancellationToken);
         try
         {
             // Serialize return import against explicit cancellation on both providers.
@@ -167,6 +205,24 @@ public sealed class CampPackageService(
                 existing.BaselineVersion != package.Manifest.BaselineVersion ||
                 !existing.IsFrozen)
                 throw new CampPackageValidationException("Return package does not match the active transfer baseline.");
+
+            bool hasParticipants = await camp.Participants.AnyAsync(value => value.CampId == existing.Id, cancellationToken);
+            if (await catering.Set<MealPlanningParticipantConfiguration>().AnyAsync(value => value.CampId == existing.Id, cancellationToken) &&
+                CampMealPlanningPackageStore.ReadPackageData(package.CateringMealPlanningData, package.Camp.Id).ParticipantConfiguration is null)
+                throw new CampPackageValidationException("Return package is missing participant planning configuration; replacement was cancelled.");
+            if (hasParticipants && package.Participants is null)
+                throw new CampPackageValidationException("Return package is missing participant data; replacement was cancelled.");
+            if (await ContainsParticipantPlanningAsync(existing.Id, cancellationToken) || package.Participants?.Items.Count > 0 ||
+                CampMealPlanningPackageStore.ReadPackageData(package.CateringMealPlanningData, package.Camp.Id).ParticipantConfiguration is not null)
+                await DemandParticipantEditAsync(existing.Id, cancellationToken);
+            if (package.Participants is not null)
+            {
+                // Tracked owned entities must also be discarded before replacing stable participant IDs.
+                foreach (var participant in await camp.Participants.Where(value => value.CampId == existing.Id).ToArrayAsync(cancellationToken))
+                    camp.Participants.Remove(participant);
+                await camp.SaveChangesAsync(cancellationToken);
+                await ImportParticipantsAsync(package, initial: false, cancellationToken);
+            }
 
             await camp.ParticipantEstimates.Where(x => x.CampId == existing.Id).ExecuteDeleteAsync(cancellationToken);
             await camp.StructureNodes.Where(x => x.CampId == existing.Id).ExecuteDeleteAsync(cancellationToken);
@@ -205,7 +261,8 @@ public sealed class CampPackageService(
         }
         catch
         {
-            await transaction.RollbackAsync(cancellationToken);
+            await transaction.RollbackAsync(CancellationToken.None);
+            camp.ChangeTracker.Clear(); catering.ChangeTracker.Clear(); platform.ChangeTracker.Clear();
             throw;
         }
         finally
@@ -216,6 +273,17 @@ public sealed class CampPackageService(
 
     private async Task<byte[]> BuildAsync(Camp.Domain.Camp entity, Tenant tenant, CampPackageDirection direction, CancellationToken cancellationToken)
     {
+        if (await ContainsParticipantPlanningAsync(entity.Id, cancellationToken))
+        {
+            if (participantAccess is null) throw new CampPackageParticipantAccessException();
+            await participantAccess.DemandReadAsync(entity.Id, cancellationToken);
+        }
+        var participants = await camp.GetParticipantsAsync(entity.Id, cancellationToken);
+        Guid[] dietIds = participants.Where(value => value.DietTypeId.HasValue).Select(value => value.DietTypeId!.Value).Distinct().ToArray();
+        var dietRows = await catering.DietaryRequirements.AsNoTracking().Where(value => dietIds.Contains(value.Id) &&
+            (value.TenantId == null || value.TenantId == entity.TenantId)).ToArrayAsync(cancellationToken);
+        var diets = dietRows.Select(value => new ParticipantDietReference(value.Id, value.Name, value.TenantId,
+            value.Description, value.SortOrder, value.Version, DietaryCatalogStore.Document(value).Rules)).ToArray();
         var structureNodes = await camp.StructureNodes.Where(x => x.CampId == entity.Id)
             .Select(x => new StructureNodeData(x.Id, x.CampId, x.ParentId, x.Name)).ToListAsync(cancellationToken);
         var stages = await camp.CampStages.Where(x => x.CampId == entity.Id).OrderBy(x => x.SortOrder)
@@ -239,10 +307,11 @@ public sealed class CampPackageService(
         var campMeals = await catering.CampMeals.Where(x => x.CampId == entity.Id)
             .Select(x => new CampMealData(
                 x.Id, x.CampId, x.MealTypeId, x.Date, x.IsActive, x.ChangeVersion)).ToListAsync(cancellationToken);
-        JsonElement cateringReferenceData = await new CampOfflineReferenceStore(catering)
-            .ExportAsync(entity.Id, cancellationToken);
         JsonElement cateringMealPlanningData = await new CampMealPlanningPackageStore(catering)
             .ExportAsync(entity.Id, cancellationToken);
+        JsonElement cateringReferenceData = await new CampOfflineReferenceStore(catering)
+            .ExportAsync(entity.Id, cancellationToken,
+                CampMealPlanningPackageStore.ReadRecipeRevisionIds(cateringMealPlanningData, entity.Id));
         var manifest = new CampPackageManifest(CampPackageVersions.Current, tenant.Id, entity.Id,
             entity.ActiveTransferId!.Value, entity.BaselineVersion, direction, IncludedModules,
             timeProvider.GetUtcNow());
@@ -252,19 +321,78 @@ public sealed class CampPackageService(
                 entity.StartDate ?? throw new InvalidOperationException("Legacy camps without a period cannot be exported."),
                 entity.EndDate ?? throw new InvalidOperationException("Legacy camps without a period cannot be exported."),
                 entity.StructureMode.ToString(), entity.GetStructureLevelNames()), stages, estimates, foodFactors,
-            structureNodes, mealTypes, campMeals, cateringReferenceData, cateringMealPlanningData));
+            structureNodes, mealTypes, campMeals, cateringReferenceData, cateringMealPlanningData,
+            new CampParticipantPackageData(2, true, participants, diets)));
     }
 
-    private async Task EnlistAsync(IDbContextTransaction transaction, CancellationToken cancellationToken)
+    private async Task DemandParticipantEditAsync(Guid campId, CancellationToken ct)
     {
-        await platform.Database.UseTransactionAsync(transaction.GetDbTransaction(), cancellationToken);
+        if (participantAccess is null) throw new CampPackageParticipantAccessException();
+        await participantAccess.DemandEditAsync(campId, ct);
+    }
+
+    private async Task<bool> ContainsParticipantPlanningAsync(Guid campId, CancellationToken ct) =>
+        await camp.Participants.AnyAsync(value => value.CampId == campId, ct) ||
+        await catering.Set<MealPlanningParticipantConfiguration>().AnyAsync(value => value.CampId == campId, ct) ||
+        await catering.CookingUnitMealStates.AnyAsync(value => value.CampId == campId && value.DemandBasis == EffectiveDemandBasis.ActualParticipants, ct);
+
+    private async Task ImportParticipantsAsync(CampPackagePayload package, bool initial, CancellationToken ct)
+    {
+        if (package.Participants is not { } data) return;
+        if (initial)
+        {
+            foreach (var diet in data.DietTypes)
+            {
+                var imported = DietaryRequirement.Restore(diet.Id, diet.Name, diet.TenantId,
+                    diet.Description, diet.SortOrder, diet.Version,
+                    (diet.Rules ?? []).Select(rule => new DietaryOriginRule(rule.OriginId, rule.Decision)));
+                var existing = await catering.DietaryRequirements.SingleOrDefaultAsync(value => value.Id == diet.Id, ct);
+                if (existing is null) catering.DietaryRequirements.Add(imported);
+                else if (JsonSerializer.Serialize(DietaryCatalogStore.Document(existing)) !=
+                         JsonSerializer.Serialize(DietaryCatalogStore.Document(imported)))
+                    throw new CampPackageValidationException("The local dietary catalogue conflicts with the package reference.");
+            }
+            await catering.SaveChangesAsync(ct);
+        }
+        var catalog = new ParticipantRequirementCatalogStore(catering);
+        foreach (var item in data.Items)
+        {
+            if (!await catalog.ContainsAsync(item.DietTypeId, item.AllergenIds,
+                    item.Intolerances.Select(value => value.SubstanceId).ToArray(), ct, package.Camp.TenantId))
+                throw new CampPackageValidationException("Participant catalogue reference is unavailable.");
+            camp.Participants.Add(CampParticipantPackageValidation.Restore(item));
+        }
+    }
+
+    private async Task<PackageTransaction> BeginTransactionAsync(CancellationToken cancellationToken)
+    {
+        externalTransaction = platform.Database.CurrentTransaction is not null;
+        IDbContextTransaction transaction;
+        if (externalTransaction)
+            transaction = (await camp.Database.UseTransactionAsync(
+                platform.Database.CurrentTransaction!.GetDbTransaction(), cancellationToken))!;
+        else
+        {
+            transaction = await camp.Database.BeginTransactionAsync(cancellationToken);
+            await platform.Database.UseTransactionAsync(transaction.GetDbTransaction(), cancellationToken);
+        }
         await catering.Database.UseTransactionAsync(transaction.GetDbTransaction(), cancellationToken);
+        return new PackageTransaction(transaction, !externalTransaction);
     }
 
     private async Task DetachEnlistedTransactionsAsync(CancellationToken cancellationToken)
     {
-        await platform.Database.UseTransactionAsync(null, cancellationToken);
+        if (!externalTransaction) await platform.Database.UseTransactionAsync(null, cancellationToken);
         await catering.Database.UseTransactionAsync(null, cancellationToken);
+        if (externalTransaction) await camp.Database.UseTransactionAsync(null, cancellationToken);
+    }
+
+    // An outer audited operation owns its commit: package writes must not commit before the audit.
+    private sealed class PackageTransaction(IDbContextTransaction transaction, bool ownsCommit) : IAsyncDisposable
+    {
+        public Task CommitAsync(CancellationToken ct) => ownsCommit ? transaction.CommitAsync(ct) : Task.CompletedTask;
+        public Task RollbackAsync(CancellationToken ct) => ownsCommit ? transaction.RollbackAsync(ct) : Task.CompletedTask;
+        public ValueTask DisposeAsync() => transaction.DisposeAsync();
     }
 
     private async Task SaveAllAsync(CancellationToken cancellationToken)

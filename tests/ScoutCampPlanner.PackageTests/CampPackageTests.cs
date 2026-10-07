@@ -16,7 +16,7 @@ using Xunit;
 
 namespace ScoutCampPlanner.PackageTests;
 
-public sealed class CampPackageTests
+public sealed partial class CampPackageTests
 {
     static CampPackageTests() => SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_winsqlite3());
 
@@ -82,7 +82,7 @@ public sealed class CampPackageTests
         await cloud.Packages.StartOfflineTransferAsync(campId);
         await Assert.ThrowsAsync<CampPackageValidationException>(() => cloud.Packages.ImportReturnPackageAsync(abandoned));
         Assert.Equal("Preserved", camp.Name);
-        Assert.True(camp.IsFrozen);
+        Assert.True((await cloud.Camp.Camps.AsNoTracking().SingleAsync()).IsFrozen);
     }
 
     [Fact]
@@ -198,8 +198,10 @@ public sealed class CampPackageTests
         Assert.Contains("final fixed structure level", exception.Message);
     }
 
-    [Fact]
-    public async Task Round_trip_preserves_ids_and_atomically_replaces_included_data()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Round_trip_preserves_ids_and_atomically_replaces_included_data(bool includeLibraryEntry)
     {
         await using var cloud = await DatabaseHarness.CreateAsync();
         var tenantId = Guid.NewGuid();
@@ -273,6 +275,8 @@ public sealed class CampPackageTests
             });
         await cloud.SaveAsync();
 
+        if (!includeLibraryEntry)
+            await cloud.Catering.Set<CampRecipeEntryRecord>().ExecuteDeleteAsync();
         var initialPackage = await cloud.Packages.StartOfflineTransferAsync(campId);
         var frozenCloudCamp = await cloud.Camp.Camps.SingleAsync();
         Assert.True(frozenCloudCamp.IsFrozen);
@@ -370,6 +374,19 @@ public sealed class CampPackageTests
             {
                 Id = variantId, IngredientRevisionId = ingredientRevisionId, VariantKey = "GLUTENFREI",
                 Name = "Glutenfrei", NormalizedName = "GLUTENFREI", Status = 0, SortOrder = 0,
+            },
+            new IngredientRevisionSubstanceContentRecord
+            {
+                IngredientRevisionId = ingredientRevisionId,
+                SubstanceId = Guid.Parse("31111111-1111-1111-1111-000000000001"),
+                Amount = 4.8m, AmountUnitId = unitId, ReferenceQuantity = 100m, ReferenceUnitId = unitId,
+                SourceType = 2, SourceReference = "Synthetic test", ReviewState = 0,
+            },
+            new IngredientVariantIntoleranceOverrideRecord
+            {
+                VariantRevisionId = variantId,
+                IntoleranceId = Guid.Parse("31111111-1111-1111-1111-000000000001"),
+                State = (int)IngredientPropertyState.Unknown, Source = (int)IngredientPropertySource.ManuallyVerified,
             });
 
         var unit = new MeasurementUnitSnapshot(unitId, "Testgramm", "tg", MeasurementDimension.Mass, 1m);
@@ -419,6 +436,9 @@ public sealed class CampPackageTests
         Assert.Equal(ingredientRevisionId, importedIngredient.Id);
         Assert.Equal("BLS 4.0, Testquelle", importedIngredient.SourceSummary);
         Assert.Equal(variantId, (await local.Catering.Set<IngredientVariantRevisionRecord>().SingleAsync()).Id);
+        Assert.Equal(4.8m, (await local.Catering.Set<IngredientRevisionSubstanceContentRecord>().SingleAsync()).Amount);
+        Assert.Equal((int)IngredientPropertyState.Unknown,
+            (await local.Catering.Set<IngredientVariantIntoleranceOverrideRecord>().SingleAsync()).State);
         IngredientRevisionNutritionProfileRecord importedNutrition = await local.Catering
             .Set<IngredientRevisionNutritionProfileRecord>().SingleAsync();
         Assert.Equal(1_500m, importedNutrition.EnergyKilojoules);
@@ -465,7 +485,7 @@ public sealed class CampPackageTests
             CateringMealPlanningData: CampMealPlanningPackageStore.CreateEmptyPackageData(campId));
     }
 
-    private sealed class DatabaseHarness : IAsyncDisposable
+    internal sealed class DatabaseHarness : IAsyncDisposable
     {
         private readonly SqliteConnection connection;
         public PlatformDbContext Platform { get; }

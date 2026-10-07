@@ -693,6 +693,33 @@ public sealed class IngredientRevisionWorkflowPersistenceTests
         Assert.Equal(4.8m, Assert.Single(copy.SubstanceContents!).Amount);
     }
 
+    [Fact]
+    public async Task Substance_modes_persist_variant_unknown_and_reject_ambiguous_input()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Seed seed = await fixture.SeedDraftAsync(reviewed: true);
+        var store = new IngredientRevisionWorkflowStore(fixture.Database);
+        Guid substance = Guid.Parse("31111111-1111-1111-1111-000000000001");
+        var content = new IngredientSubstanceContent(substance, 4.8m, seed.UnitId, 100, seed.UnitId,
+            IngredientSubstanceContentSourceType.ManualEstimate, "Synthetic", IngredientSubstanceContentReviewState.Unreviewed);
+        var unknown = new IngredientPropertyValue(substance, IngredientPropertyState.Unknown, IngredientPropertySource.ManuallyVerified);
+        var draft = IngredientRevisionDraftContent.Create("Test", seed.CategoryId, seed.UnitId,
+            IngredientPropertyReviewState.Unreviewed, IngredientPropertyReviewState.Unreviewed, IngredientPropertyReviewState.Unreviewed,
+            substanceContents: [content], variants: [new(Guid.NewGuid(), "unknown", "Unknown variant", true, 0, intoleranceOverrides: [unknown])]);
+        Assert.Equal(IngredientRevisionMutationStatus.Saved,
+            (await store.SaveDraftAsync(seed.RevisionId, draft, 1, seed.ActorId, DateTimeOffset.UtcNow, ct)).Status);
+        fixture.Database.ChangeTracker.Clear();
+        var saved = (await store.GetAsync(seed.RevisionId, ct))!;
+        Assert.Equal(4.8m, Assert.Single(saved.SubstanceContents!).Amount);
+        Assert.Equal(IngredientPropertyState.Unknown, Assert.Single(Assert.Single(saved.Variants!).IntoleranceOverrides).State);
+        var ambiguous = IngredientRevisionDraftContent.Create("Test", seed.CategoryId, seed.UnitId,
+            IngredientPropertyReviewState.Unreviewed, IngredientPropertyReviewState.Unreviewed, IngredientPropertyReviewState.Unreviewed,
+            substanceContents: [content], intolerances: [unknown]);
+        Assert.Equal(IngredientRevisionMutationStatus.Invalid,
+            (await store.SaveDraftAsync(seed.RevisionId, ambiguous, saved.RowVersion, seed.ActorId, DateTimeOffset.UtcNow, ct)).Status);
+    }
+
     private static IngredientNutritionProfile Nutrition(Guid unitId, decimal energyKilojoules) => new(
         100m, unitId, energyKilojoules, 10m, 2m, 20m, 3m, 8m, 1m, 4m,
         IngredientNutritionSourceType.Manufacturer, "Herstelleretikett",

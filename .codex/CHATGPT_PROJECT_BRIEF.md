@@ -1,6 +1,6 @@
 # ScoutCampPlanner – kompakte Projektübergabe
 
-Stand: 2026-09-19
+Stand: 2026-10-05 (Inkrement 2: laufende Teilimplementierung)
 
 ## Zweck
 
@@ -54,8 +54,18 @@ vorbereitete Offline-Anmeldung und Tauri-Entsperrung fehlen noch.
 - anonyme `KiJu`-/`Leiter`-Schätzungen nur an zulässigen Blättern
 - aggregierte Planungsübersichten
 
-Personalisierte Teilnehmer- und Gesundheitsdaten sind bewusst noch nicht
-implementiert.
+Der minimale personalisierte Teilnehmerkern ist inzwischen als Camp-Domain,
+Contract und Persistenz für beide Provider angelegt. Interne CRUD-Anwendungsfälle
+mit expliziten Rechten, Referenz-/Freeze-/Bearbeitungsstandprüfung und atomarem
+Dummy-Entwicklungsaudit sind umgesetzt. HTTP/API, Teilnehmeroberfläche,
+explizite Online-/lokale Rechtevergabe und Dummy-Teilnehmer-Package-Roundtrip
+sind angebunden. Der zentrale/mandanteneigene DietType-Katalog besitzt jetzt
+versionierte Herkunftsregeln und geprüfte Beiträge. Direkte Catering-Zuordnungen
+sind durch Camp-Strukturzuordnung und CookingUnit-Filter ersetzt. Die tatsächliche
+Bedarfsbasis ist in MealPlanningService,
+Oberfläche und Dummy-Paket integriert; der operative Versorgungs-/Verifikationsschnitt
+bleibt offen. Aktuelle Prüfergebnisse stehen im Inkrement-2-Ergebnisbericht. Keine Freigabe
+für echte Teilnehmer-/Gesundheitsdaten.
 
 ### Catering
 
@@ -99,11 +109,16 @@ vollständige Camp-Package-Replace. Der konkrete Prüfnachweis steht in
 
 ## Wichtigste offene Produktphase
 
-Mahlzeitenplanung Inkrement 1 ist umgesetzt. Als nächstes ist Inkrement 2
-fachlich zu definieren: personalisierte Anforderungen, eindeutige direkte
-Ersatzauflösung und spätere Verifikation. Dabei dürfen keine medizinischen
-Grenzwerte erfunden und keine sensiblen Personendaten vor den noch offenen
-Datenschutz-/Paket-Sicherheitsentscheidungen eingeführt werden.
+Mahlzeitenplanung Inkrement 1 ist umgesetzt. Inkrement 2 ist fachlich bestätigt
+und teilweise implementiert, aber noch kein nutzbarer Vertikalschnitt.
+Die drei Rückfragen zu Stoffmodi, expliziten Health-/Verify-Rechten und
+Tenant-DietTypes sind entschieden und in ADR-026/011/018 konsolidiert.
+Nicht erneut zur Entscheidung stellen. Verbindlicher Fortsetzungsstand:
+`.codex/meal-planning-increment-2-result.md`; Auftrag und Fachmodell stehen in
+`.codex/meal-planning-increment-2.md` und
+`docs/domain/catering-meal-planning-increment-2.md`.
+Teilnehmer-/Sonderverpflegungs-Offlineentwicklung ist ausschließlich mit
+Dummy-/Testdaten erlaubt, keine Produktionsfreigabe.
 
 ## Weitere offene Punkte
 
@@ -132,7 +147,7 @@ Datenschutz-/Paket-Sicherheitsentscheidungen eingeführt werden.
 
 ### Spätere Module
 
-- personalisierte Teilnehmer und Gesundheitsdaten
+- erweiterte Teilnehmerverwaltung außerhalb des minimalen Inkrement-2-Kerns
 - Finance
 - Program
 - Material
@@ -140,9 +155,10 @@ Datenschutz-/Paket-Sicherheitsentscheidungen eingeführt werden.
 ## Bekannte Grenzen und nicht zu treffende Annahmen
 
 - Keine medizinischen Grenzwerte erfinden.
-- Allergene bleiben qualitativ; dosisabhängige Inhaltsstoffe werden
-  quantitativ gespeichert. Personentoleranzen gehören in einen getrennten
-  Anforderungs-/Regelkatalog.
+- Allergene bleiben qualitativ. Dosisabhängige Inhaltsstoffe unterstützen nach
+  ADR-026 Quantitative, Qualitative und Unknown, ohne erfundene Mengen.
+  Personentoleranzen stehen getrennt von der Zutat am Teilnehmer;
+  zentrale Defaults werden später beim Anlegen kopiert, nicht live vererbt.
 - Rezeptpositionen wählen keine Zutatenvariante. Varianten werden erst im
   konkreten Verpflegungs-/Kocheinheitenkontext ausgewählt.
 - Margarine ist beispielsweise eine eigene Basiszutat, keine Buttervariante.

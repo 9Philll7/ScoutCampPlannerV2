@@ -45,6 +45,20 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Platform
                     b.ToTable("CampMemberships", (string)null);
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.CampPermissionGrant", b =>
+                {
+                    b.Property<Guid>("MembershipId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Permission")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("MembershipId", "Permission");
+
+                    b.ToTable("CampPermissionGrants", (string)null);
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.CampRoleAssignment", b =>
                 {
                     b.Property<Guid>("MembershipId")
@@ -80,6 +94,29 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Platform
                     b.HasIndex("TenantId");
 
                     b.ToTable("LocalCampAccessGrants", (string)null);
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.LocalCampPermissionGrant", b =>
+                {
+                    b.Property<Guid>("DeviceIdentityId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CampId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("TransferId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Permission")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("DeviceIdentityId", "CampId", "TransferId", "Permission");
+
+                    b.ToTable("LocalCampPermissionGrants", (string)null);
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.LocalDeviceIdentity", b =>
@@ -429,6 +466,15 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Platform
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.CampPermissionGrant", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Platform.Domain.CampMembership", null)
+                        .WithMany()
+                        .HasForeignKey("MembershipId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.CampRoleAssignment", b =>
                 {
                     b.HasOne("ScoutCampPlanner.Platform.Domain.CampMembership", null)
@@ -450,6 +496,15 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Platform
                         .WithMany()
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.LocalCampPermissionGrant", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Platform.Domain.LocalCampAccess", null)
+                        .WithMany()
+                        .HasForeignKey("DeviceIdentityId", "CampId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

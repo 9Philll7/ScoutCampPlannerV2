@@ -31,6 +31,13 @@ public static class Permissions
     public static class Catering
     {
         public const string EditMealPlanning = "catering.meal-planning.edit";
+        public const string VerifyMealPlanning = "catering.meal-planning.verify";
+    }
+
+    public static class Health
+    {
+        public const string ReadParticipantRequirements = "health.participant-requirements.read";
+        public const string EditParticipantRequirements = "health.participant-requirements.edit";
     }
 
     public static class Platform
@@ -87,7 +94,7 @@ public sealed record RoleDefinition(
 
 public static class AuthorizationCatalogue
 {
-    public const int DefinitionVersion = 5;
+    public const int DefinitionVersion = 6;
 
     private static readonly FrozenSet<string> PlatformPermissions = new[]
     {
@@ -119,7 +126,8 @@ public static class AuthorizationCatalogue
         Permissions.Ingredients.Manage,
     }.ToFrozenSet(StringComparer.Ordinal);
 
-    private static readonly FrozenSet<string> CampPermissions = new[]
+    // Roles keep the non-sensitive permission bundle they had before increment 2.
+    private static readonly FrozenSet<string> CampRolePermissions = new[]
     {
         Permissions.Camp.View,
         Permissions.Camp.Edit,
@@ -140,6 +148,13 @@ public static class AuthorizationCatalogue
         Permissions.Ingredients.Manage,
         Permissions.Catering.EditMealPlanning,
     }.ToFrozenSet(StringComparer.Ordinal);
+
+    private static readonly FrozenSet<string> CampPermissions = CampRolePermissions.Concat(new[]
+    {
+        Permissions.Health.ReadParticipantRequirements,
+        Permissions.Health.EditParticipantRequirements,
+        Permissions.Catering.VerifyMealPlanning,
+    }).ToFrozenSet(StringComparer.Ordinal);
 
     private static readonly FrozenDictionary<string, RoleDefinition> Definitions =
         new RoleDefinition[]
@@ -167,7 +182,7 @@ public static class AuthorizationCatalogue
             Define(Roles.TenantAuditor, AuthorizationScope.Tenant,
                 Permissions.Tenant.ViewAudit,
                 Permissions.Tenant.ExportAudit),
-            Define(Roles.CampAdmin, AuthorizationScope.Camp, CampPermissions),
+            Define(Roles.CampAdmin, AuthorizationScope.Camp, CampRolePermissions),
             Define(Roles.CampEditor, AuthorizationScope.Camp,
                 Permissions.Camp.View,
                 Permissions.Camp.Edit,

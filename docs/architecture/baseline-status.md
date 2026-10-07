@@ -2,7 +2,7 @@
 
 Architecture-spike evaluation: 2026-08-08
 
-Last product-status review: 2026-09-19
+Last product-status review: 2026-10-04 (increment 2 foundation only)
 
 ## Current state
 
@@ -65,4 +65,12 @@ The recipe and ingredient foundation is also implemented: scoped recipe librarie
 
 Mahlzeitenplanung Inkrement 1 ist umgesetzt: veröffentlichte Rezeptrevisionen können in versionierten Plänen konkreten Mahlzeiten zugeordnet, von Catering-eigenen Kocheinheiten abonniert oder je Slot individuell gewählt und aus anonymen Camp-Planungszahlen berechnet werden. Struktur- und Bedarfsabweichungen, nachvollziehbare Snapshots, Veraltungsstatus, Löschblockaden und der vollständige Offline-Replace sind enthalten.
 
-Der nächste fachliche Schritt ist ein getrennt zu planendes Inkrement 2 für personalisierte Anforderungen und eindeutige Ersatzauflösung. Es darf erst begonnen werden, wenn dessen Anforderungskatalog und Datenschutzgrenzen bestätigt sind. Personalisierte Teilnehmer- und Gesundheitsdaten bleiben bis zur Klärung der Datenschutz- und Paketsicherheitsentscheidungen außerhalb des Scopes. Finance, Program, Material und erweiterte Teilnehmer-/Gesundheitsfunktionen bleiben spätere eigene Inkremente.
+Inkrement 2 ist fachlich bestätigt und in Umsetzung. Der Teilnehmerkern,
+Provider-Migrationen, explizite Berechtigungsgrundlage und isolierte
+Ableitungs-/Bewertungsbausteine sind angelegt. Teilnehmerzuordnung und tatsächliche
+Bedarfsbasis sind operativ mit API/UI und Dummy-Paket integriert; der Vertikalschnitt ist noch nicht
+vollständig. Die bestätigte Offlineentscheidung erlaubt ausschließlich
+Dummy-/Testdaten und hebt weder Zugriffsrechte noch produktive Schutzpflichten
+auf. Maßgeblich ist der [aktuelle Ergebnisbericht](../../.codex/meal-planning-increment-2-result.md).
+Finance, Program, Material und erweiterte Teilnehmer-/Gesundheitsfunktionen
+bleiben spätere eigene Inkremente.

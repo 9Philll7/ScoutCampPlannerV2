@@ -1,5 +1,22 @@
 # ScoutCampPlanner Architecture Overview
 
+## Increment 2 implementation status — 2026-10-04
+
+Meal-planning increment 2 is partially implemented, not released. Camp owns the
+new participant aggregate and persistence; Catering consumes the Camp contract
+for a pure participant projection. No foreign Infrastructure dependency or
+parallel SupplyPlan aggregate has been introduced. Platform persists explicit
+participant-health and verification grants without granting them to existing
+roles. As of 2026-10-05 internal composition-level participant CRUD and
+metadata-only development auditing are present, including reference, freeze and
+stale-edit checks. Participant HTTP/API and Angular UI, explicit online/local
+grant administration and dummy participant package transport are implemented.
+The central/tenant dietary catalogue now has versioned origin rules and reviewed
+contributions. Complete operative calculation and verification remain unfinished.
+No production health-audit
+retention is established by the dummy-development catalogue. See the
+[increment 2 result](../../.codex/meal-planning-increment-2-result.md).
+
 ## Validation status
 
 The target architecture defined by ADR-005 was technically validated by the Architecture Spike on 2026-08-08. The validation and its evidence are recorded in [ADR-006](../decisions/adr-006-architecture-spike-validation.md) and the [spike report](../spike/results.md).

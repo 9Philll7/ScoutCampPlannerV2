@@ -1,5 +1,20 @@
 # Ingredients and Recipes
 
+## Increment 2 substance assessment status — 2026-10-04
+
+ADR-026 now permits quantitative, qualitative and unknown substance data for new
+entries as well as existing data. An isolated per-portion evaluator is present:
+unknown/qualitative-contained contributions cannot produce an exact total, and
+missing thresholds produce a distinct warning rather than an invented limit.
+The ingredient and variant editors now select quantitative, qualitative or
+unknown input, using the existing revision property/content tables. Explicit
+variant values replace the entire base assessment; absent overrides inherit it.
+New ambiguous input (a quantity and a qualitative value for the same substance)
+is rejected. Historical ambiguous values and MayContain resolve to Unknown,
+without rewriting published revisions or inventing quantities. The transitive
+operative recipe evaluation is still pending. See the
+[increment 2 result](../../.codex/meal-planning-increment-2-result.md).
+
 ## Stage-based food factors
 
 Catering owns food-planning factors; Camp owns stage names and anonymous participant estimates. A tenant food factor is matched to a tenant stage by its invariant-normalized name without creating a cross-module database foreign key.

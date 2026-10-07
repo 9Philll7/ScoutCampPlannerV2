@@ -183,6 +183,12 @@ public sealed class CookingUnit
     public int SortOrder { get; private set; }
     public Guid? GroupId { get; private set; }
     public Guid? StandardMealPlanId { get; private set; }
+    public CookingUnitParticipantFilter ParticipantFilter { get; private set; }
+    public void SetParticipantFilter(CookingUnitParticipantFilter filter)
+    {
+        if (!Enum.IsDefined(filter)) throw new ArgumentOutOfRangeException(nameof(filter));
+        ParticipantFilter = filter;
+    }
 
     public void Update(string name, int sortOrder, Guid? groupId, Guid? standardMealPlanId)
     {
@@ -250,6 +256,7 @@ public sealed class CookingUnitMealState
     public MealPlanSubscriptionState SubscriptionState { get; private set; }
     public decimal? DemandOverride { get; private set; }
     public decimal? CalculatedDemand { get; private set; }
+    public EffectiveDemandBasis DemandBasis { get; private set; }
     public decimal? EffectiveDemand { get; private set; }
     public OperationalMealPlanStatus Status { get; private set; }
     public Guid? MealPlanId { get; private set; }
@@ -277,10 +284,12 @@ public sealed class CookingUnitMealState
     public void ApplyCalculation(
         decimal? calculatedDemand, Guid? mealPlanId, int? mealPlanVersion, Guid? mealPlanSnapshotId,
         string calculationSnapshotJson, string sourceFingerprint, string warningsJson, DateTimeOffset calculatedAtUtc,
-        bool prerequisitesComplete)
+        bool prerequisitesComplete, EffectiveDemandBasis demandBasis = EffectiveDemandBasis.Estimated)
     {
         if (calculatedDemand is < 0) throw new ArgumentOutOfRangeException(nameof(calculatedDemand));
         CalculatedDemand = calculatedDemand;
+        if (!Enum.IsDefined(demandBasis)) throw new ArgumentOutOfRangeException(nameof(demandBasis));
+        DemandBasis = demandBasis;
         EffectiveDemand = DemandOverride ?? calculatedDemand;
         MealPlanId = mealPlanId;
         MealPlanVersion = mealPlanVersion;

@@ -8,10 +8,10 @@ public sealed class AuthorizationCatalogueTests
     [Fact]
     public void CatalogueContainsTheDocumentedStableIdentifiers()
     {
-        Assert.Equal(5, AuthorizationCatalogue.DefinitionVersion);
+        Assert.Equal(6, AuthorizationCatalogue.DefinitionVersion);
         Assert.Equal(4, AuthorizationCatalogue.AllPlatformPermissions.Count);
         Assert.Equal(18, AuthorizationCatalogue.AllTenantPermissions.Count);
-        Assert.Equal(18, AuthorizationCatalogue.AllCampPermissions.Count);
+        Assert.Equal(21, AuthorizationCatalogue.AllCampPermissions.Count);
         Assert.Equal(8, AuthorizationCatalogue.AllRoles.Count);
         Assert.Contains(Permissions.Platform.ReviewCentralRecipeChanges, AuthorizationCatalogue.AllPlatformPermissions);
         Assert.Contains(Permissions.Tenant.ManageAuditLegalHold, AuthorizationCatalogue.AllTenantPermissions);
@@ -52,7 +52,9 @@ public sealed class AuthorizationCatalogueTests
         AssertRole(Roles.TenantAuditor, AuthorizationScope.Tenant,
             Permissions.Tenant.ViewAudit,
             Permissions.Tenant.ExportAudit);
-        AssertRole(Roles.CampAdmin, AuthorizationScope.Camp, AuthorizationCatalogue.AllCampPermissions);
+        AssertRole(Roles.CampAdmin, AuthorizationScope.Camp,
+            AuthorizationCatalogue.AllCampPermissions.Where(permission =>
+                !LocalCampAccessPolicy.IsExplicitPermission(permission)).ToHashSet());
         AssertRole(Roles.CampEditor, AuthorizationScope.Camp,
             Permissions.Camp.View,
             Permissions.Camp.Edit,

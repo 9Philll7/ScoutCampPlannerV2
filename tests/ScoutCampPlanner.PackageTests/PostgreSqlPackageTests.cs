@@ -16,6 +16,66 @@ namespace ScoutCampPlanner.PackageTests;
 public sealed class PostgreSqlPackageTests
 {
     [Fact]
+    public async Task Dummy_participants_roundtrip_PostgreSql_to_Sqlite_with_atomic_return_replacement()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("SCOUTCAMPPLANNER_POSTGRES_TEST");
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await ResetSchemasAsync(connection);
+        await using var platform = new PlatformDbContext(new DbContextOptionsBuilder<PlatformDbContext>().UseNpgsql(connection).Options);
+        await using var camp = new CampDbContext(new DbContextOptionsBuilder<CampDbContext>().UseNpgsql(connection).Options);
+        await using var catering = new CateringDbContext(new DbContextOptionsBuilder<CateringDbContext>().UseNpgsql(connection).Options);
+        await platform.Database.ExecuteSqlRawAsync(platform.Database.GenerateCreateScript());
+        await camp.Database.ExecuteSqlRawAsync(camp.Database.GenerateCreateScript());
+        await catering.Database.ExecuteSqlRawAsync(catering.Database.GenerateCreateScript());
+        var tenantId = Guid.NewGuid();
+        var campId = Guid.NewGuid();
+        platform.Tenants.Add(new Tenant(tenantId, "Dummy tenant"));
+        camp.Camps.Add(new Camp.Domain.Camp(campId, tenantId, "Dummy camp", new(2027, 7, 1), new(2027, 7, 3)));
+        camp.CampStages.Add(new CampStage(Guid.NewGuid(), campId, "GuSp", 0));
+        var catalog = await new ParticipantRequirementCatalogStore(catering).ReadAsync();
+        var participant = new Participant(Guid.NewGuid(), campId, "Dummy person");
+        participant.SetRequirements(null, [catalog.Allergens[0].Id],
+            [new(catalog.Substances.First(value => value.Code == "LACTOSE").Id, 0.123456m, "Dummy source")]);
+        camp.Participants.Add(participant);
+        await platform.SaveChangesAsync();
+        await camp.SaveChangesAsync();
+        var packages = new CampPackageService(platform, camp, catering, TimeProvider.System, new CampPackageTests.TestParticipantAccess());
+        byte[] initial = await packages.StartOfflineTransferAsync(campId);
+        SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_winsqlite3());
+        await using var local = await CampPackageTests.DatabaseHarness.CreateAsync();
+        await local.Packages.ImportInitialPackageAsync(initial);
+        var imported = await local.Camp.Participants.SingleAsync();
+        imported.Rename("Edited dummy person");
+        imported.SetDayAbsent(new(2027, 7, 2), true);
+        await local.SaveAsync();
+        var localPackages = new CampPackageService(local.Platform, local.Camp, local.Catering,
+            TimeProvider.System, new CampPackageTests.TestParticipantAccess());
+        byte[] returned = await localPackages.CreateReturnPackageAsync(campId);
+        // Force a failure after deleting the old participant, not merely during deserialization.
+        var payload = CampPackageSerializer.Deserialize(returned);
+        var invalid = payload with { Participants = payload.Participants! with
+        {
+            DietTypes = [new(Guid.NewGuid(), "Unavailable cloud diet")]
+        } };
+        invalid = invalid with { Participants = invalid.Participants! with
+        {
+            Items = [invalid.Participants.Items[0] with { DietTypeId = invalid.Participants.DietTypes[0].Id }]
+        } };
+        await Assert.ThrowsAsync<CampPackageValidationException>(() => packages.ImportReturnPackageAsync(CampPackageSerializer.Serialize(invalid)));
+        Assert.Equal("Dummy person", (await camp.Participants.AsNoTracking().SingleAsync()).DisplayName);
+        Assert.True((await camp.Camps.AsNoTracking().SingleAsync()).IsFrozen);
+        await packages.ImportReturnPackageAsync(returned);
+        var actual = Assert.Single(await camp.GetParticipantsAsync(campId));
+        Assert.Equal(participant.Id, actual.Id);
+        Assert.Equal("Edited dummy person", actual.DisplayName);
+        Assert.Equal(new DateOnly(2027, 7, 2), Assert.Single(actual.AbsentDays));
+        Assert.Equal(0.123456m, Assert.Single(actual.Intolerances).ThresholdGramsPerPortion);
+        Assert.False((await camp.Camps.AsNoTracking().SingleAsync()).IsFrozen);
+    }
+
+    [Fact]
     public async Task Return_import_uses_module_schemas_and_rolls_back_all_modules_atomically()
     {
         var connectionString = Environment.GetEnvironmentVariable("SCOUTCAMPPLANNER_POSTGRES_TEST");

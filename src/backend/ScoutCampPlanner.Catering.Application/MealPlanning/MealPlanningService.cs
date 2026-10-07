@@ -35,7 +35,7 @@ public sealed record CookingUnitGroupDocument(Guid Id, Guid CampId, string Name,
 
 public sealed record CookingUnitDocument(
     Guid Id, Guid CampId, string Name, int SortOrder, Guid? GroupId, Guid? StandardMealPlanId,
-    IReadOnlyList<Guid> DefaultStructureNodeIds);
+    IReadOnlyList<Guid> DefaultStructureNodeIds, CookingUnitParticipantFilter ParticipantFilter = CookingUnitParticipantFilter.All);
 
 public sealed record CookingUnitMealDocument(
     Guid Id, Guid CookingUnitId, Guid CampMealId, MealPlanSubscriptionState SubscriptionState,
@@ -43,7 +43,10 @@ public sealed record CookingUnitMealDocument(
     OperationalMealPlanStatus Status, Guid? MealPlanId, int? MealPlanVersion,
     DateTimeOffset? CalculatedAtUtc, IReadOnlyList<Guid> StructureOverrideNodeIds,
     IReadOnlyList<OfferTargetDocument> OfferTargets, IReadOnlyList<RecipeChoiceDocument> RecipeChoices,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings,
+    EffectiveDemandBasis DemandBasis = EffectiveDemandBasis.Estimated,
+    IReadOnlyList<RequirementGroup>? RequirementGroups = null,
+    IReadOnlyList<Guid>? UnassignedParticipantIds = null, IReadOnlyList<ParticipantPlanningProblem>? ParticipantProblems = null);
 
 public sealed record OfferTargetDocument(Guid Id, Guid OfferGroupId, decimal? TargetOverride);
 
@@ -64,7 +67,8 @@ public sealed record SaveMealPlanRequest(
 
 public sealed record SaveCookingUnitRequest(
     string Name, int SortOrder, Guid? GroupId, Guid? StandardMealPlanId,
-    IReadOnlyList<Guid>? DefaultStructureNodeIds, Guid? InitialStructureNodeId = null);
+    IReadOnlyList<Guid>? DefaultStructureNodeIds, Guid? InitialStructureNodeId = null,
+    CookingUnitParticipantFilter ParticipantFilter = CookingUnitParticipantFilter.All);
 
 public sealed record SaveCookingUnitGroupRequest(string Name, int SortOrder);
 
@@ -107,10 +111,13 @@ public sealed record MealPlanningData(
     IReadOnlyList<CookingUnitStructureAssignment> StructureAssignments,
     IReadOnlyList<CookingUnitMealState> MealStates,
     IReadOnlyList<CookingUnitMealOfferTarget> OfferTargets,
-    IReadOnlyList<CookingUnitMealRecipeChoice> RecipeChoices);
+    IReadOnlyList<CookingUnitMealRecipeChoice> RecipeChoices,
+    MealPlanningParticipantConfiguration? ParticipantConfiguration = null);
 
 public interface IMealPlanningStore
 {
+    Task<MealPlanningMutationResult> SaveParticipantConfigurationAsync(Guid campId, int expectedVersion,
+        MealPlanningDemandMode mode, string assignmentsJson, CancellationToken ct = default);
     Task<MealPlanningData> LoadAsync(Guid campId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<MealPlanningRecipeOption>> ListAccessibleRecipesAsync(
         Guid campId, Guid tenantId, CancellationToken cancellationToken = default);
@@ -151,19 +158,21 @@ public interface IMealPlanningStore
         DateTimeOffset calculatedAtUtc, CancellationToken cancellationToken = default);
 }
 
-public sealed class MealPlanningService(
+public sealed partial class MealPlanningService(
     IMealPlanningStore store,
     ICampPlanningLookup campPlanning,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ICampCateringParticipantLookup? participants = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task<MealPlanningOverview?> GetOverviewAsync(
-        Guid campId, CancellationToken cancellationToken = default)
+        Guid campId, CancellationToken cancellationToken = default, bool allowParticipantData = true)
     {
         CampPlanningData? camp = await campPlanning.GetPlanningDataAsync(campId, cancellationToken);
         if (camp is null) return null;
         MealPlanningData data = await store.LoadAsync(campId, cancellationToken);
+        if (!allowParticipantData && RequiresParticipantAccess(data)) return null;
         IReadOnlyList<MealPlanningRecipeOption> recipes = await store.ListAccessibleRecipesAsync(
             campId, camp.TenantId, cancellationToken);
         var mealTypes = data.MealTypes.ToDictionary(value => value.Id);
@@ -188,9 +197,13 @@ public sealed class MealPlanningService(
             new CookingUnitDocument(value.Id, value.CampId, value.Name, value.SortOrder, value.GroupId,
                 value.StandardMealPlanId, data.StructureAssignments
                     .Where(item => item.CookingUnitId == value.Id && item.CampMealId is null)
-                    .Select(item => item.StructureNodeId).ToArray())).ToArray();
+                    .Select(item => item.StructureNodeId).ToArray(), value.ParticipantFilter)).ToArray();
+        var people = new Dictionary<Guid, IReadOnlyList<CateringParticipantData>>();
+        if (data.ParticipantConfiguration?.DemandMode == MealPlanningDemandMode.UseActualParticipants)
+            foreach (var meal in data.Meals)
+                people[meal.Id] = await ReadMealParticipantsAsync(campId, meal, cancellationToken);
         CookingUnitMealDocument[] operational = data.MealStates.Select(state =>
-            MapOperationalMeal(state, data, camp)).ToArray();
+            MapOperationalMeal(state, data, camp, people.GetValueOrDefault(state.CampMealId) ?? [])).ToArray();
         StructureNodeOption[] nodes = camp.Nodes.Select(value =>
             new StructureNodeOption(value.Id, value.ParentId, value.Name)).ToArray();
         MealPlanDocument[] documents = data.MealPlans.Select(value => ToDocument(value, data)).ToArray();
@@ -295,6 +308,19 @@ public sealed class MealPlanningService(
                 name = camp.Nodes.Single(value => value.Id == sourceId).Name;
             var unit = new CookingUnit(cookingUnitId ?? Guid.NewGuid(), campId, name, request.SortOrder,
                 request.GroupId, request.StandardMealPlanId);
+            unit.SetParticipantFilter(request.ParticipantFilter);
+            var data = await store.LoadAsync(campId, cancellationToken);
+            if (participants is not null)
+                foreach (var meal in data.Meals.Where(value => value.IsActive && IsInsideCamp(value.Date, camp)))
+                {
+                    var selections = data.CookingUnits.Where(value => value.Id != unit.Id)
+                        .Select(value => new StructureParticipantSelection(value.Id, EffectiveStructureNodes(value.Id, meal.Id, data), value.ParticipantFilter))
+                        .Append(new StructureParticipantSelection(unit.Id,
+                            data.StructureAssignments.Any(value => value.CookingUnitId == unit.Id && value.CampMealId == meal.Id)
+                                ? EffectiveStructureNodes(unit.Id, meal.Id, data) : nodeIds, unit.ParticipantFilter)).ToArray();
+                    if (StructureParticipantProjection.Derive(camp.Nodes, await ReadMealParticipantsAsync(campId, meal, cancellationToken), selections).Overlapping.Count > 0)
+                        return Invalid("overlapping_cooking_units", "Anwesende Teilnehmer würden mehreren Kocheinheiten zugeordnet.");
+                }
             return await store.SaveCookingUnitAsync(unit, nodeIds, cancellationToken);
         }
         catch (ArgumentException exception) { return Invalid("cooking_unit_invalid", exception.Message); }
@@ -347,6 +373,14 @@ public sealed class MealPlanningService(
                 return Invalid("recipe_choice_reference_invalid", "Eine individuelle Rezeptauswahl verweist nicht auf den wirksamen MealPlan-Eintrag.");
         }
         Guid[] revisions = choices.Select(value => value.RecipeRevisionId).Distinct().ToArray();
+        if (participants is not null && request.StructureOverrideNodeIds is not null)
+        {
+            var effective = nodes.Length > 0 ? nodes : data.StructureAssignments.Where(value => value.CookingUnitId == unit.Id && value.CampMealId is null).Select(value => value.StructureNodeId).ToArray();
+            var selections = data.CookingUnits.Select(value => new StructureParticipantSelection(value.Id,
+                value.Id == unit.Id ? effective : EffectiveStructureNodes(value.Id, meal.Id, data), value.ParticipantFilter)).ToArray();
+            if (StructureParticipantProjection.Derive(camp.Nodes, await ReadMealParticipantsAsync(campId, meal, cancellationToken), selections).Overlapping.Count > 0)
+                return Invalid("overlapping_cooking_units", "Anwesende Teilnehmer würden mehreren Kocheinheiten zugeordnet.");
+        }
         if (!await store.AreRecipeRevisionsAccessibleAsync(campId, camp.TenantId, revisions, cancellationToken))
             return Invalid("recipe_revision_unavailable", "Mindestens eine individuelle Rezeptrevision ist nicht zugänglich.");
         MealPlanningMutationResult result = await store.ConfigureCookingUnitMealAsync(
@@ -361,18 +395,33 @@ public sealed class MealPlanningService(
         return result;
     }
 
-    public Task<MealPlanningMutationResult> ResetStructureOverrideAsync(
-        Guid campId, Guid cookingUnitId, Guid mealId, CancellationToken cancellationToken = default) =>
-        store.ResetStructureOverrideAsync(campId, cookingUnitId, mealId, cancellationToken);
+    public async Task<MealPlanningMutationResult> ResetStructureOverrideAsync(
+        Guid campId, Guid cookingUnitId, Guid mealId, CancellationToken cancellationToken = default)
+    {
+        var data = await store.LoadAsync(campId, cancellationToken);
+        var camp = await campPlanning.GetPlanningDataAsync(campId, cancellationToken);
+        var meal = data.Meals.SingleOrDefault(value => value.Id == mealId);
+        if (camp is null || meal is null) return NotFound();
+        if (participants is not null)
+        {
+            var selections = data.CookingUnits.Select(value => new StructureParticipantSelection(value.Id,
+                value.Id == cookingUnitId ? data.StructureAssignments.Where(item => item.CookingUnitId == value.Id && item.CampMealId is null)
+                    .Select(item => item.StructureNodeId).ToArray() : EffectiveStructureNodes(value.Id, mealId, data), value.ParticipantFilter)).ToArray();
+            if (StructureParticipantProjection.Derive(camp.Nodes, await ReadMealParticipantsAsync(campId, meal, cancellationToken), selections).Overlapping.Count > 0)
+                return Invalid("overlapping_cooking_units", "Rücksetzen würde Teilnehmer mehreren Kocheinheiten zuordnen.");
+        }
+        return await store.ResetStructureOverrideAsync(campId, cookingUnitId, mealId, cancellationToken);
+    }
 
     public async Task<MealPlanningMutationResult> CalculateAsync(
-        Guid campId, Guid cookingUnitId, Guid mealId, CancellationToken cancellationToken = default)
+        Guid campId, Guid cookingUnitId, Guid mealId, CancellationToken cancellationToken = default, bool allowParticipantData = true)
     {
         CampPlanningData? camp = await campPlanning.GetPlanningDataAsync(campId, cancellationToken);
         if (camp is null) return NotFound();
         MealPlanningData data = await store.LoadAsync(campId, cancellationToken);
         CookingUnit? unit = data.CookingUnits.SingleOrDefault(value => value.Id == cookingUnitId);
         CampMeal? meal = data.Meals.SingleOrDefault(value => value.Id == mealId);
+        if (!allowParticipantData && RequiresParticipantAccess(data)) return NotFound();
         if (unit is null || meal is null) return NotFound();
         CookingUnitMealState? state = data.MealStates.SingleOrDefault(
             value => value.CookingUnitId == cookingUnitId && value.CampMealId == mealId);
@@ -381,19 +430,29 @@ public sealed class MealPlanningService(
         decimal? demand = subscription == MealPlanSubscriptionState.NoSupplyRequired
             ? 0m
             : CalculateDemand(assignedNodes, camp, data.FoodFactors);
+        IReadOnlyList<CateringParticipantData> people = data.ParticipantConfiguration?.DemandMode == MealPlanningDemandMode.UseActualParticipants
+            ? await ReadMealParticipantsAsync(campId, meal, cancellationToken) : [];
+        OperationalParticipantDemand participantDemand = ParticipantDemand(data, camp, unit, meal, people, demand);
+        if (subscription != MealPlanSubscriptionState.NoSupplyRequired) demand = participantDemand.Demand;
         MealPlan? plan = subscription == MealPlanSubscriptionState.FollowStandard && unit.StandardMealPlanId.HasValue
             ? data.MealPlans.SingleOrDefault(value => value.Id == unit.StandardMealPlanId)
             : null;
         MealPlanSnapshot? snapshot = plan is null ? null : data.Snapshots
             .Where(value => value.MealPlanId == plan.Id && value.Version == plan.Version).SingleOrDefault();
         bool complete = meal.IsActive && IsInsideCamp(meal.Date, camp) &&
-            (subscription == MealPlanSubscriptionState.NoSupplyRequired || assignedNodes.Length > 0 && demand.HasValue) &&
+            (subscription == MealPlanSubscriptionState.NoSupplyRequired ||
+                participantDemand.Complete && (participantDemand.Basis == EffectiveDemandBasis.ActualParticipants || assignedNodes.Length > 0) && demand.HasValue) &&
             (subscription != MealPlanSubscriptionState.FollowStandard || plan is not null && snapshot is not null &&
                 data.OfferGroups.Any(value => value.MealPlanId == plan.Id && value.CampMealId == meal.Id &&
                     data.Entries.Count(entry => entry.OfferGroupId == value.Id && entry.IsStandard) == 1)) &&
             (subscription != MealPlanSubscriptionState.Custom || state is not null &&
                 data.RecipeChoices.Any(value => value.CookingUnitMealStateId == state.Id));
         List<string> warnings = BuildSlotWarnings(unit, meal, assignedNodes, data, camp);
+        if (participantDemand.Problems?.Any(value => value.ReasonCode is "OverlappingCookingUnits" or "ParticipantStructureMigrationRequired") == true)
+            complete = false;
+        if (participantDemand.UnassignedParticipantIds.Count > 0) warnings.Add("UnassignedParticipant: Anwesende Teilnehmer sind keiner Kocheinheit zugeordnet.");
+        if (!participantDemand.Complete && participantDemand.Basis == EffectiveDemandBasis.ActualParticipants)
+            warnings.Add("ParticipantDataIncomplete: Die reale Teilnehmerbasis ist unvollständig.");
         MealPlanOfferGroup[] effectiveGroups = plan is null ? [] : data.OfferGroups
             .Where(value => value.MealPlanId == plan.Id && value.CampMealId == meal.Id).ToArray();
         var effectiveTargets = effectiveGroups.Select(group => new
@@ -424,6 +483,10 @@ public sealed class MealPlanningService(
             foodFactors = data.FoodFactors.OrderBy(value => value.CampStageId)
                 .Select(value => new { value.CampStageId, value.Factor }),
             calculatedDemand = demand,
+            demandBasis = participantDemand.Basis,
+            requirementGroups = participantDemand.RequirementGroups,
+            unassignedParticipantIds = participantDemand.UnassignedParticipantIds,
+            participantProblems = participantDemand.Problems ?? [],
             effectiveDemand = state?.DemandOverride ?? demand,
             mealPlanId = plan?.Id,
             mealPlanVersion = plan?.Version,
@@ -438,7 +501,7 @@ public sealed class MealPlanningService(
                     value.CampMealId == mealId),
             },
         }, JsonOptions);
-        string fingerprint = Fingerprint(BuildSourceFingerprint(unit, meal, subscription, assignedNodes, plan, camp, data));
+        string fingerprint = Fingerprint(BuildSourceFingerprint(unit, meal, subscription, assignedNodes, plan, camp, data, participantDemand));
         await store.SaveCalculationAsync(campId, cookingUnitId, mealId, demand, plan?.Id, plan?.Version,
             snapshot?.Id, calculationJson, fingerprint, warnings, complete, timeProvider.GetUtcNow(), cancellationToken);
         return new MealPlanningMutationResult(MealPlanningMutationStatus.Success);
@@ -542,7 +605,7 @@ public sealed class MealPlanningService(
     }
 
     private static CookingUnitMealDocument MapOperationalMeal(
-        CookingUnitMealState state, MealPlanningData data, CampPlanningData camp)
+        CookingUnitMealState state, MealPlanningData data, CampPlanningData camp, IReadOnlyList<CateringParticipantData> people)
     {
         CookingUnit unit = data.CookingUnits.Single(value => value.Id == state.CookingUnitId);
         CampMeal meal = data.Meals.Single(value => value.Id == state.CampMealId);
@@ -550,7 +613,8 @@ public sealed class MealPlanningService(
         MealPlan? plan = state.SubscriptionState == MealPlanSubscriptionState.FollowStandard && unit.StandardMealPlanId.HasValue
             ? data.MealPlans.SingleOrDefault(value => value.Id == unit.StandardMealPlanId)
             : null;
-        string currentFingerprint = Fingerprint(BuildSourceFingerprint(unit, meal, state.SubscriptionState, nodes, plan, camp, data));
+        var demand = ParticipantDemand(data, camp, unit, meal, people, CalculateDemand(nodes, camp, data.FoodFactors));
+        string currentFingerprint = Fingerprint(BuildSourceFingerprint(unit, meal, state.SubscriptionState, nodes, plan, camp, data, demand));
         OperationalMealPlanStatus status = state.Status;
         if (state.CalculatedAtUtc.HasValue && state.SourceFingerprint != currentFingerprint)
             status = OperationalMealPlanStatus.Stale;
@@ -567,12 +631,13 @@ public sealed class MealPlanningService(
                 .Select(value => new OfferTargetDocument(value.Id, value.OfferGroupId, value.TargetOverride)).ToArray(),
             data.RecipeChoices.Where(value => value.CookingUnitMealStateId == state.Id)
                 .Select(value => new RecipeChoiceDocument(value.Id, value.RecipeRevisionId,
-                    value.OfferGroupId, value.MealPlanEntryId, value.SortOrder)).ToArray(), warnings);
+                    value.OfferGroupId, value.MealPlanEntryId, value.SortOrder)).ToArray(), warnings,
+            state.DemandBasis, demand.RequirementGroups, demand.UnassignedParticipantIds, demand.Problems ?? []);
     }
 
     private static string BuildSourceFingerprint(
         CookingUnit unit, CampMeal meal, MealPlanSubscriptionState subscription,
-        IReadOnlyCollection<Guid> nodes, MealPlan? plan, CampPlanningData camp, MealPlanningData data) =>
+        IReadOnlyCollection<Guid> nodes, MealPlan? plan, CampPlanningData camp, MealPlanningData data, OperationalParticipantDemand demand) =>
         JsonSerializer.Serialize(new
         {
             meal.Id,
@@ -582,10 +647,13 @@ public sealed class MealPlanningService(
             camp.StartDate,
             camp.EndDate,
             subscription,
-            structure = nodes.Order().ToArray(),
-            estimates = camp.Estimates.Where(value => IsCovered(value.StructureNodeId, nodes, camp.Nodes))
+            demand.Basis,
+            participantSignature = demand.RelevantSignature,
+            structure = demand.Basis == EffectiveDemandBasis.ActualParticipants ? [] : nodes.Order().ToArray(),
+            estimates = camp.Estimates.Where(value => demand.Basis != EffectiveDemandBasis.ActualParticipants && IsCovered(value.StructureNodeId, nodes, camp.Nodes))
                 .OrderBy(value => value.StructureNodeId).ThenBy(value => value.CampStageId).ToArray(),
-            factors = data.FoodFactors.OrderBy(value => value.CampStageId)
+            factors = data.FoodFactors.Where(value => demand.Basis != EffectiveDemandBasis.ActualParticipants &&
+                camp.Estimates.Any(estimate => estimate.CampStageId == value.CampStageId && IsCovered(estimate.StructureNodeId, nodes, camp.Nodes))).OrderBy(value => value.CampStageId)
                 .Select(value => new { value.CampStageId, value.Factor }).ToArray(),
             standardMealPlanId = unit.StandardMealPlanId,
             planVersion = subscription == MealPlanSubscriptionState.FollowStandard ? plan?.Version : null,

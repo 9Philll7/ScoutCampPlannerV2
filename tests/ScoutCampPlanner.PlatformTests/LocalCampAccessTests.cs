@@ -6,6 +6,40 @@ namespace ScoutCampPlanner.PlatformTests;
 
 public sealed class LocalCampAccessTests
 {
+    [Theory]
+    [InlineData(Permissions.Health.ReadParticipantRequirements)]
+    [InlineData(Permissions.Health.EditParticipantRequirements)]
+    [InlineData(Permissions.Catering.VerifyMealPlanning)]
+    public void Sensitive_and_verification_permissions_require_explicit_exactly_scoped_grants(string permission)
+    {
+        var access = new LocalCampAccess(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var explicitGrant = new LocalCampPermissionGrant(access.DeviceIdentityId, access.TenantId,
+            access.CampId, access.TransferId, permission);
+        bool Allows(params LocalCampPermissionGrant[] grants) => LocalCampAccessPolicy.Allows(true, access,
+            access.DeviceIdentityId, access.TenantId, access.CampId, access.TransferId,
+            AuthorizationScope.Camp, permission, grants);
+        Assert.False(Allows());
+        Assert.True(Allows(explicitGrant));
+        Assert.False(Allows(new LocalCampPermissionGrant(access.DeviceIdentityId, Guid.NewGuid(), access.CampId, access.TransferId, permission)));
+        Assert.False(Allows(new LocalCampPermissionGrant(access.DeviceIdentityId, access.TenantId, Guid.NewGuid(), access.TransferId, permission)));
+        Assert.False(Allows(new LocalCampPermissionGrant(access.DeviceIdentityId, access.TenantId, access.CampId, Guid.NewGuid(), permission)));
+        Assert.False(Allows(new LocalCampPermissionGrant(Guid.NewGuid(), access.TenantId, access.CampId, access.TransferId, permission)));
+        Assert.False(Allows(new LocalCampPermissionGrant(access.DeviceIdentityId, access.TenantId, access.CampId, access.TransferId, "future.permission")));
+        foreach (var role in AuthorizationCatalogue.AllRoles.Values)
+            Assert.DoesNotContain(permission, role.Permissions);
+    }
+
+    [Fact]
+    public void Health_read_does_not_imply_edit_or_verification()
+    {
+        var access = new LocalCampAccess(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var grant = new LocalCampPermissionGrant(access.DeviceIdentityId, access.TenantId, access.CampId,
+            access.TransferId, Permissions.Health.ReadParticipantRequirements);
+        foreach (string permission in new[] { Permissions.Health.EditParticipantRequirements, Permissions.Catering.VerifyMealPlanning })
+            Assert.False(LocalCampAccessPolicy.Allows(true, access, access.DeviceIdentityId, access.TenantId,
+                access.CampId, access.TransferId, AuthorizationScope.Camp, permission, [grant]));
+    }
+
     [Fact]
     public void Local_access_is_bound_to_device_tenant_camp_and_transfer()
     {

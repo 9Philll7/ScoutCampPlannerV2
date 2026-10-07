@@ -45,7 +45,21 @@ public sealed class MealPlanningStore(CateringDbContext database) : IMealPlannin
         await (from choice in database.CookingUnitMealRecipeChoices.AsNoTracking()
             join state in database.CookingUnitMealStates.AsNoTracking()
                 on choice.CookingUnitMealStateId equals state.Id
-            where state.CampId == campId select choice).ToArrayAsync(cancellationToken));
+            where state.CampId == campId select choice).ToArrayAsync(cancellationToken),
+        await database.Set<MealPlanningParticipantConfiguration>().AsNoTracking()
+            .SingleOrDefaultAsync(value => value.CampId == campId, cancellationToken));
+
+    public async Task<MealPlanningMutationResult> SaveParticipantConfigurationAsync(Guid campId, int expectedVersion,
+        MealPlanningDemandMode mode, string assignmentsJson, CancellationToken ct = default)
+    {
+        var current = await database.Set<MealPlanningParticipantConfiguration>().SingleOrDefaultAsync(value => value.CampId == campId, ct);
+        if ((current?.Version ?? 0) != expectedVersion) return new(MealPlanningMutationStatus.Conflict);
+        var configuration = current ?? new MealPlanningParticipantConfiguration(campId);
+        configuration.Update(mode, assignmentsJson);
+        if (current is null) database.Add(configuration);
+        try { await database.SaveChangesAsync(ct); return new(MealPlanningMutationStatus.Success, Version: configuration.Version); }
+        catch (DbUpdateException) { database.ChangeTracker.Clear(); return new(MealPlanningMutationStatus.Conflict); }
+    }
 
     public async Task<IReadOnlyList<MealPlanningRecipeOption>> ListAccessibleRecipesAsync(
         Guid campId, Guid tenantId, CancellationToken cancellationToken = default)
@@ -326,14 +340,19 @@ public sealed class MealPlanningStore(CateringDbContext database) : IMealPlannin
             .Select(value => value.StructureNodeId).ToArrayAsync(cancellationToken);
         bool structureChanged = !previousNodes.Order().SequenceEqual(defaultStructureNodeIds.Order());
         bool standardPlanChanged = existing is not null && existing.StandardMealPlanId != unit.StandardMealPlanId;
+        bool filterChanged = existing is not null && existing.ParticipantFilter != unit.ParticipantFilter;
         if (existing is null) database.CookingUnits.Add(unit);
-        else existing.Update(unit.Name, unit.SortOrder, unit.GroupId, unit.StandardMealPlanId);
+        else
+        {
+            existing.Update(unit.Name, unit.SortOrder, unit.GroupId, unit.StandardMealPlanId);
+            existing.SetParticipantFilter(unit.ParticipantFilter);
+        }
         await database.CookingUnitStructureAssignments.Where(value =>
                 value.CookingUnitId == unit.Id && value.CampMealId == null)
             .ExecuteDeleteAsync(cancellationToken);
         database.CookingUnitStructureAssignments.AddRange(defaultStructureNodeIds.Select(nodeId =>
             new CookingUnitStructureAssignment(Guid.NewGuid(), unit.CampId, unit.Id, null, nodeId)));
-        if (structureChanged || standardPlanChanged)
+        if (structureChanged || standardPlanChanged || filterChanged)
         {
             CookingUnitMealState[] states = await database.CookingUnitMealStates
                 .Where(value => value.CookingUnitId == unit.Id).ToArrayAsync(cancellationToken);
@@ -343,8 +362,9 @@ public sealed class MealPlanningStore(CateringDbContext database) : IMealPlannin
                     .Select(value => value.CampMealId!.Value).Distinct().ToArrayAsync(cancellationToken)
                 : [];
             foreach (CookingUnitMealState state in states)
-                if (standardPlanChanged && state.SubscriptionState == MealPlanSubscriptionState.FollowStandard ||
-                    structureChanged && !overriddenMeals.Contains(state.CampMealId))
+                if (filterChanged || standardPlanChanged && state.SubscriptionState == MealPlanSubscriptionState.FollowStandard ||
+                    structureChanged &&
+                    !overriddenMeals.Contains(state.CampMealId))
                     state.MarkStale();
         }
         await database.SaveChangesAsync(cancellationToken);
@@ -357,6 +377,15 @@ public sealed class MealPlanningStore(CateringDbContext database) : IMealPlannin
         CookingUnit? unit = await database.CookingUnits.SingleOrDefaultAsync(
             value => value.Id == cookingUnitId && value.CampId == campId, cancellationToken);
         if (unit is null) return NotFound();
+        var configuration = await database.Set<MealPlanningParticipantConfiguration>()
+            .SingleOrDefaultAsync(value => value.CampId == campId, cancellationToken);
+        if (configuration is not null)
+        {
+            var assignments = JsonSerializer.Deserialize<CookingUnitParticipantAssignments[]>(
+                configuration.AssignmentsJson, JsonOptions) ?? [];
+            if (assignments.Any(value => value.CookingUnitId == cookingUnitId && (value.DefaultParticipantIds.Count > 0 || value.MealOverrides.Count > 0)))
+                return new(MealPlanningMutationStatus.Blocked, "participant_structure_migration_required", "Alte Zuordnungen zuerst migrieren; keine Daten wurden gelöscht.");
+        }
         database.CookingUnits.Remove(unit);
         await database.SaveChangesAsync(cancellationToken);
         return Success(cookingUnitId);
@@ -450,9 +479,12 @@ public sealed class MealPlanningStore(CateringDbContext database) : IMealPlannin
             state = new CookingUnitMealState(Guid.NewGuid(), campId, cookingUnitId, mealId);
             database.CookingUnitMealStates.Add(state);
         }
+        using var calculation = JsonDocument.Parse(calculationJson);
+        var basis = calculation.RootElement.TryGetProperty("demandBasis", out var basisValue)
+            ? (EffectiveDemandBasis)basisValue.GetInt32() : EffectiveDemandBasis.Estimated;
         state.ApplyCalculation(calculatedDemand, mealPlanId, mealPlanVersion, snapshotId,
             calculationJson, sourceFingerprint, JsonSerializer.Serialize(warnings, JsonOptions),
-            calculatedAtUtc, complete);
+            calculatedAtUtc, complete, basis);
         await database.SaveChangesAsync(cancellationToken);
     }
 

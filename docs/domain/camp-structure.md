@@ -33,7 +33,12 @@ All structure changes require `camp.edit`, are blocked while the camp is frozen,
 
 ## Catering separation
 
-Cooking units are not Camp structure nodes. The Catering module owns its own cooking-unit model and assigns participants independently of their position in the Camp tree. The former spike-only Camp `CookingUnit` model and its package-v1 payload are removed before the first product release; no released package compatibility promise is affected.
+Cooking units are not Camp structure nodes. Catering owns cooking units and their
+references to one or more Camp nodes. Participants are assigned to leaves by Camp;
+Catering derives its effective participants from structure, attendance and catering
+filters, never from a separate direct assignment. See the
+[confirmed correction](../decisions/meal-planning-participant-structure-correction.md).
+The former spike-only Camp CookingUnit model remains removed.
 
 ## Module use
 

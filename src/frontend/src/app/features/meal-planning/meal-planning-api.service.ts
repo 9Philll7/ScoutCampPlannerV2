@@ -14,7 +14,7 @@ export interface MealPlanEntryDocument { id: string; recipeRevisionId: string; i
 export interface MealPlanOfferGroupDocument { id: string; campMealId: string; name: string | null; sortOrder: number; entries: MealPlanEntryDocument[]; }
 export interface MealPlanDocument { id: string; campId: string; name: string; sortOrder: number; version: number; offerGroups: MealPlanOfferGroupDocument[]; }
 export interface CookingUnitGroup { id: string; campId: string; name: string; sortOrder: number; }
-export interface CookingUnit { id: string; campId: string; name: string; sortOrder: number; groupId: string | null; standardMealPlanId: string | null; defaultStructureNodeIds: string[]; }
+export interface CookingUnit { id: string; campId: string; name: string; sortOrder: number; groupId: string | null; standardMealPlanId: string | null; defaultStructureNodeIds: string[]; participantFilter?: number; }
 export interface OfferTarget { id: string; offerGroupId: string; targetOverride: number | null; }
 export interface RecipeChoice { id: string; recipeRevisionId: string; offerGroupId: string | null; mealPlanEntryId: string | null; sortOrder: number; }
 export interface CookingUnitMeal {
@@ -23,6 +23,10 @@ export interface CookingUnitMeal {
   status: OperationalStatus; mealPlanId: string | null; mealPlanVersion: number | null;
   calculatedAtUtc: string | null; structureOverrideNodeIds: string[]; offerTargets: OfferTarget[];
   recipeChoices: RecipeChoice[]; warnings: string[];
+  demandBasis?: number;
+  requirementGroups?: { requirements: { key: string }; portions: number }[];
+  unassignedParticipantIds?: string[];
+  participantProblems?: { reasonCode: string; participantReferences: string[] }[];
 }
 export interface MealPlanningOverview {
   campId: string; meals: MealSlot[]; structureNodes: StructureNodeOption[]; mealPlans: MealPlanSummary[];

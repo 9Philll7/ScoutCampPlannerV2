@@ -13,13 +13,20 @@ namespace ScoutCampPlanner.Catering.Infrastructure.Offline;
 /// </summary>
 public sealed class CampOfflineReferenceStore(CateringDbContext database)
 {
+    public static (IReadOnlySet<Guid> Allergens, IReadOnlySet<Guid> Substances) ReadParticipantRequirementIds(JsonElement json)
+    {
+        Payload payload = Read(json);
+        return (payload.Allergens.Select(value => value.Id).ToHashSet(),
+            payload.Intolerances.Select(value => value.Id).ToHashSet());
+    }
+
     private const int SchemaVersion = 2;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public static JsonElement CreateEmptyPackageData() => JsonSerializer.SerializeToElement(new Payload(
         SchemaVersion, [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], []), JsonOptions);
 
-    public static void Validate(JsonElement json, Guid campId)
+    public static void Validate(JsonElement json, Guid campId, IEnumerable<Guid>? planningRevisionIds = null)
     {
         Payload payload = Read(json);
         if (payload.SchemaVersion != SchemaVersion || payload.Entries.Any(value => value.CampId != campId))
@@ -91,7 +98,10 @@ public sealed class CampOfflineReferenceStore(CateringDbContext database)
 
         var reachableRecipeRevisions = new HashSet<Guid>();
         var referencedIngredients = new HashSet<Guid>();
-        var pending = new Queue<Guid>(payload.Entries.Select(value => value.RevisionId));
+        Guid[] roots = payload.Entries.Select(value => value.RevisionId).Concat(planningRevisionIds ?? []).Distinct().ToArray();
+        if (roots.Any(id => !recipeRevisionIds.Contains(id)))
+            throw new InvalidDataException("Catering meal planning references a missing recipe revision.");
+        var pending = new Queue<Guid>(roots);
         while (pending.TryDequeue(out Guid revisionId))
         {
             if (!reachableRecipeRevisions.Add(revisionId)) continue;
@@ -121,7 +131,8 @@ public sealed class CampOfflineReferenceStore(CateringDbContext database)
     public static IReadOnlySet<Guid> ReadRecipeRevisionIds(JsonElement json) =>
         Read(json).RecipeRevisions.Select(value => value.Id).ToHashSet();
 
-    public async Task<JsonElement> ExportAsync(Guid campId, CancellationToken cancellationToken = default)
+    public async Task<JsonElement> ExportAsync(Guid campId, CancellationToken cancellationToken = default,
+        IEnumerable<Guid>? planningRevisionIds = null)
     {
         CampRecipeEntryRecord[] entries = await database.Set<CampRecipeEntryRecord>().AsNoTracking()
             .Where(value => value.CampId == campId)
@@ -139,7 +150,7 @@ public sealed class CampOfflineReferenceStore(CateringDbContext database)
                 entry.CreatedBy, entry.CreatedAtUtc, entry.UpdatedBy, entry.UpdatedAtUtc));
         }
 
-        var revisionIds = new HashSet<Guid>(entryData.Select(value => value.RevisionId));
+        var revisionIds = new HashSet<Guid>(entryData.Select(value => value.RevisionId).Concat(planningRevisionIds ?? []));
         var pending = new Queue<Guid>(revisionIds);
         var revisions = new List<RecipeRevisionRecord>();
         while (pending.TryDequeue(out Guid revisionId))
@@ -207,9 +218,10 @@ public sealed class CampOfflineReferenceStore(CateringDbContext database)
         return JsonSerializer.SerializeToElement(payload, JsonOptions);
     }
 
-    public async Task ImportAsync(JsonElement json, Guid campId, CancellationToken cancellationToken = default)
+    public async Task ImportAsync(JsonElement json, Guid campId, CancellationToken cancellationToken = default,
+        IEnumerable<Guid>? planningRevisionIds = null)
     {
-        Validate(json, campId);
+        Validate(json, campId, planningRevisionIds);
         Payload payload = Read(json);
 
         await AddMissingAsync(payload.Units, value => value.Id, value => new MeasurementUnit(value.Id, value.Name, value.Symbol, (MeasurementDimension)value.Dimension, value.BaseUnitFactor), value => value.Id, cancellationToken);

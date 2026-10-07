@@ -1076,6 +1076,9 @@ public sealed class IngredientRevisionWorkflowStore(CateringDbContext database)
         CancellationToken cancellationToken)
     {
         IReadOnlyList<IngredientVariantDraftContent> variants = content.Variants ?? [];
+        if (!IngredientSubstanceProfile.HasExclusiveModes(content.SubstanceContents, content.Intolerances) ||
+            variants.Any(value => !IngredientSubstanceProfile.HasExclusiveModes(value.SubstanceContentOverrides, value.IntoleranceOverrides)))
+            return false;
         IngredientRevisionUnitConversion[] allConversions = content.UnitConversions
             .Concat(variants.SelectMany(value => value.UnitConversionOverrides))
             .ToArray();

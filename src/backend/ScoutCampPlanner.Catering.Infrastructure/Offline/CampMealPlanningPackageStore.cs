@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using ScoutCampPlanner.Catering.Domain;
+using ScoutCampPlanner.Catering.Application.MealPlanning;
 
 namespace ScoutCampPlanner.Catering.Infrastructure.Offline;
 
@@ -16,7 +17,11 @@ public sealed record MealPlanningPackageData(
     IReadOnlyList<StructureAssignmentPackageRecord> StructureAssignments,
     IReadOnlyList<CookingUnitMealStatePackageRecord> MealStates,
     IReadOnlyList<OfferTargetPackageRecord> OfferTargets,
-    IReadOnlyList<RecipeChoicePackageRecord> RecipeChoices);
+    IReadOnlyList<RecipeChoicePackageRecord> RecipeChoices,
+    ParticipantConfigurationPackageRecord? ParticipantConfiguration = null);
+
+public sealed record ParticipantConfigurationPackageRecord(int Version, MealPlanningDemandMode DemandMode,
+    IReadOnlyList<CookingUnitParticipantAssignments> Assignments);
 
 public sealed record MealPlanPackageRecord(Guid Id, Guid CampId, string Name, int SortOrder, int Version);
 public sealed record MealPlanSnapshotPackageRecord(
@@ -28,7 +33,8 @@ public sealed record MealPlanEntryPackageRecord(
     int? Role, string? Note, int SortOrder);
 public sealed record CookingUnitGroupPackageRecord(Guid Id, Guid CampId, string Name, int SortOrder);
 public sealed record CookingUnitPackageRecord(
-    Guid Id, Guid CampId, string Name, int SortOrder, Guid? GroupId, Guid? StandardMealPlanId);
+    Guid Id, Guid CampId, string Name, int SortOrder, Guid? GroupId, Guid? StandardMealPlanId,
+    CookingUnitParticipantFilter ParticipantFilter = CookingUnitParticipantFilter.All);
 public sealed record StructureAssignmentPackageRecord(
     Guid Id, Guid CampId, Guid CookingUnitId, Guid? CampMealId, Guid StructureNodeId);
 public sealed record CookingUnitMealStatePackageRecord(
@@ -36,7 +42,7 @@ public sealed record CookingUnitMealStatePackageRecord(
     decimal? DemandOverride, decimal? CalculatedDemand, decimal? EffectiveDemand, int Status,
     Guid? MealPlanId, int? MealPlanVersion, Guid? MealPlanSnapshotId,
     string? CalculationSnapshotJson, string? SourceFingerprint, string? WarningsJson,
-    DateTimeOffset? CalculatedAtUtc);
+    DateTimeOffset? CalculatedAtUtc, EffectiveDemandBasis DemandBasis = EffectiveDemandBasis.Estimated);
 public sealed record OfferTargetPackageRecord(
     Guid Id, Guid CookingUnitMealStateId, Guid OfferGroupId, decimal? TargetOverride);
 public sealed record RecipeChoicePackageRecord(
@@ -45,7 +51,7 @@ public sealed record RecipeChoicePackageRecord(
 
 public sealed class CampMealPlanningPackageStore(CateringDbContext database)
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 3;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public static JsonElement CreateEmptyPackageData(Guid campId) => JsonSerializer.SerializeToElement(
@@ -54,6 +60,13 @@ public sealed class CampMealPlanningPackageStore(CateringDbContext database)
 
     public static MealPlanningPackageData ReadPackageData(JsonElement json, Guid campId) =>
         DeserializeAndValidate(json, campId);
+
+    public static IEnumerable<Guid> ReadRecipeRevisionIds(JsonElement json, Guid campId)
+    {
+        var data = ReadPackageData(json, campId);
+        return data.Entries.Select(value => value.RecipeRevisionId)
+            .Concat(data.RecipeChoices.Select(value => value.RecipeRevisionId)).Distinct();
+    }
 
     public static JsonElement CreatePackageData(MealPlanningPackageData data)
     {
@@ -94,7 +107,7 @@ public sealed class CampMealPlanningPackageStore(CateringDbContext database)
         CookingUnitPackageRecord[] units = await database.CookingUnits.AsNoTracking()
             .Where(value => value.CampId == campId)
             .Select(value => new CookingUnitPackageRecord(
-                value.Id, value.CampId, value.Name, value.SortOrder, value.GroupId, value.StandardMealPlanId))
+                value.Id, value.CampId, value.Name, value.SortOrder, value.GroupId, value.StandardMealPlanId, value.ParticipantFilter))
             .ToArrayAsync(cancellationToken);
         StructureAssignmentPackageRecord[] assignments = await database.CookingUnitStructureAssignments.AsNoTracking()
             .Where(value => value.CampId == campId)
@@ -107,7 +120,7 @@ public sealed class CampMealPlanningPackageStore(CateringDbContext database)
                 value.Id, value.CampId, value.CookingUnitId, value.CampMealId, (int)value.SubscriptionState,
                 value.DemandOverride, value.CalculatedDemand, value.EffectiveDemand, (int)value.Status,
                 value.MealPlanId, value.MealPlanVersion, value.MealPlanSnapshotId,
-                value.CalculationSnapshotJson, value.SourceFingerprint, value.WarningsJson, value.CalculatedAtUtc))
+                value.CalculationSnapshotJson, value.SourceFingerprint, value.WarningsJson, value.CalculatedAtUtc, value.DemandBasis))
             .ToArrayAsync(cancellationToken);
         Guid[] stateIds = states.Select(value => value.Id).ToArray();
         OfferTargetPackageRecord[] targets = await database.CookingUnitMealOfferTargets.AsNoTracking()
@@ -121,14 +134,20 @@ public sealed class CampMealPlanningPackageStore(CateringDbContext database)
                 value.Id, value.CookingUnitMealStateId, value.RecipeRevisionId, value.OfferGroupId,
                 value.MealPlanEntryId, value.SortOrder))
             .ToArrayAsync(cancellationToken);
+        var configuration = await database.Set<MealPlanningParticipantConfiguration>().AsNoTracking().SingleOrDefaultAsync(value => value.CampId == campId, cancellationToken);
         var payload = new MealPlanningPackageData(CurrentSchemaVersion, campId, plans, snapshots, offerGroups,
-            entries, unitGroups, units, assignments, states, targets, choices);
+            entries, unitGroups, units, assignments, states, targets, choices, configuration is null ? null :
+            new(configuration.Version, configuration.DemandMode,
+                JsonSerializer.Deserialize<CookingUnitParticipantAssignments[]>(configuration.AssignmentsJson, JsonOptions) ?? []));
         return JsonSerializer.SerializeToElement(payload, JsonOptions);
     }
 
     public async Task ImportAsync(JsonElement json, Guid campId, CancellationToken cancellationToken = default)
     {
         MealPlanningPackageData data = DeserializeAndValidate(json, campId);
+        if (data.ParticipantConfiguration is { } configuration)
+            database.Add(MealPlanningParticipantConfiguration.Restore(campId, configuration.Version,
+                configuration.DemandMode, JsonSerializer.Serialize(configuration.Assignments, JsonOptions)));
         database.MealPlans.AddRange(data.MealPlans.Select(value =>
             new MealPlan(value.Id, value.CampId, value.Name, value.SortOrder, value.Version)));
         database.MealPlanSnapshots.AddRange(data.Snapshots.Select(value =>
@@ -143,8 +162,10 @@ public sealed class CampMealPlanningPackageStore(CateringDbContext database)
         database.CookingUnitGroups.AddRange(data.CookingUnitGroups.Select(value =>
             new CookingUnitGroup(value.Id, value.CampId, value.Name, value.SortOrder)));
         database.CookingUnits.AddRange(data.CookingUnits.Select(value =>
-            new CookingUnit(value.Id, value.CampId, value.Name, value.SortOrder,
-                value.GroupId, value.StandardMealPlanId)));
+        {
+            var unit = new CookingUnit(value.Id, value.CampId, value.Name, value.SortOrder, value.GroupId, value.StandardMealPlanId);
+            unit.SetParticipantFilter(value.ParticipantFilter); return unit;
+        }));
         database.CookingUnitStructureAssignments.AddRange(data.StructureAssignments.Select(value =>
             new CookingUnitStructureAssignment(value.Id, value.CampId, value.CookingUnitId,
                 value.CampMealId, value.StructureNodeId)));
@@ -156,7 +177,7 @@ public sealed class CampMealPlanningPackageStore(CateringDbContext database)
                 state.ApplyCalculation(value.CalculatedDemand, value.MealPlanId, value.MealPlanVersion,
                     value.MealPlanSnapshotId, value.CalculationSnapshotJson, value.SourceFingerprint,
                     value.WarningsJson ?? "[]", value.CalculatedAtUtc.Value,
-                    value.Status != (int)OperationalMealPlanStatus.Incomplete);
+                    value.Status != (int)OperationalMealPlanStatus.Incomplete, value.DemandBasis);
             if (value.Status == (int)OperationalMealPlanStatus.Stale) state.MarkStale();
             database.CookingUnitMealStates.Add(state);
         }
@@ -171,6 +192,7 @@ public sealed class CampMealPlanningPackageStore(CateringDbContext database)
 
     public async Task DeleteCampDataAsync(Guid campId, CancellationToken cancellationToken = default)
     {
+        await database.Set<MealPlanningParticipantConfiguration>().Where(value => value.CampId == campId).ExecuteDeleteAsync(cancellationToken);
         Guid[] planIds = await database.MealPlans.Where(value => value.CampId == campId)
             .Select(value => value.Id).ToArrayAsync(cancellationToken);
         Guid[] offerGroupIds = await database.MealPlanOfferGroups.Where(value => planIds.Contains(value.MealPlanId))
@@ -199,8 +221,15 @@ public sealed class CampMealPlanningPackageStore(CateringDbContext database)
             throw new InvalidOperationException("Catering meal-planning package data is missing.");
         MealPlanningPackageData data = json.Deserialize<MealPlanningPackageData>(JsonOptions)
             ?? throw new InvalidOperationException("Catering meal-planning package data is empty.");
-        if (data.SchemaVersion != CurrentSchemaVersion || data.CampId != campId)
+        if (data.SchemaVersion is not (1 or 2 or CurrentSchemaVersion) || data.CampId != campId)
             throw new InvalidOperationException("Catering meal-planning package identity or schema is invalid.");
+        if (data.ParticipantConfiguration is { } configuration &&
+            (configuration.Version < 0 || !Enum.IsDefined(configuration.DemandMode) || configuration.Assignments is null) ||
+            data.MealStates.Any(value => !Enum.IsDefined(value.DemandBasis)))
+            throw new InvalidOperationException("Participant planning configuration is invalid.");
+        if (data.CookingUnits.Any(value => !Enum.IsDefined(value.ParticipantFilter)) ||
+            data.SchemaVersion >= 3 && (data.ParticipantConfiguration?.Assignments ?? []).Any(value => value.DefaultParticipantIds.Count > 0 || value.MealOverrides.Count > 0))
+            throw new InvalidOperationException("Direct participant assignments require explicit structure migration before package export.");
         if (data.MealPlans.Any(value => value.CampId != campId) ||
             data.Snapshots.Any(value => value.CampId != campId) ||
             data.CookingUnitGroups.Any(value => value.CampId != campId) ||

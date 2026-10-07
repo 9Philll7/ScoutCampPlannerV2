@@ -1,5 +1,54 @@
 # Database Migration Workflow
 
+## Camp structure ownership correction — 2026-10-07
+
+AddParticipantStructure: SQLite 20261006213153, PostgreSQL 20261006213201.
+Adds nullable Camp-owned StructureNodeId with a restrictive Camp-internal FK.
+StructureBasedParticipantPlanning: SQLite 20261006213157, PostgreSQL 20261006213205.
+Adds CookingUnit participant filter, default All.
+
+At startup the composition-level ParticipantStructureMigration converts unambiguous
+development assignments transactionally. Frozen source camps are skipped. Ambiguous
+references or individual meal overrides are retained as migration-only JSON and
+are not used by normal planning; completeness/export remain blocked until resolved.
+No participant or structure node is invented or discarded. Old assignment JSON is
+cleared only after the equivalent Camp structure reference is persisted successfully.
+
+## Operational participant planning — 2026-10-06
+
+`OperationalParticipantPlanning` adds the versioned camp-scoped Catering assignment
+configuration and `CookingUnitMealState.DemandBasis`. SQLite migration
+`20261006144611`, PostgreSQL `20261006201822`. Existing states default to Estimated;
+no participants or medical values are generated. Both providers pass the current
+migration suite. New source fingerprints require recalculation of older snapshots.
+
+## Dietary catalogue extension — 2026-10-06
+
+`ExtendDietaryCatalog` extends Catering for both providers (SQLite
+`20261006062548`, PostgreSQL `20261006062602`). Existing dietary entries remain
+central at version 0 with no inferred origin rules. New optional substance
+threshold defaults start as NULL, not zero. New tables store origin rules,
+immutable dietary revision documents and explicitly reviewed contributions.
+Normalized names are unique separately for the central catalogue and per tenant.
+The current validation evidence and remaining work are listed in
+[the increment-2 result](../../.codex/meal-planning-increment-2-result.md).
+
+## Increment 2 foundation — 2026-10-04
+
+Additive migrations are available for both providers:
+
+- Camp: `AddParticipantRequirements` adds the participant table and owned
+  absent-day, absent-meal, allergen and intolerance tables. Child rows cascade
+  with the participant; no foreign-module EF relations are introduced.
+- Platform: `AddExplicitCampPermissions` adds membership-bound cloud grants and
+  device/camp/transfer-bound local grants. No grants are automatically seeded.
+
+These Camp/Platform foundations are supplemented by the Catering migrations above.
+No ingredient substance data rewrite is included.
+This is a partial increment, not a completed production upgrade. Upgrade tests
+cover the direct increment-1 baseline and the older initial-schema path; see
+the [result report](../../.codex/meal-planning-increment-2-result.md) for actual runs.
+
 ## Restore the repository tool
 
 From the repository root:

@@ -59,12 +59,15 @@ public sealed class LocalDeviceAccess(
         var grants = await platform.LocalCampAccessGrants.AsNoTracking()
             .Where(value => value.DeviceIdentityId == actorId && value.TenantId == tenantId)
             .ToArrayAsync(cancellationToken);
+        var explicitGrants = await platform.LocalCampPermissionGrants.AsNoTracking()
+            .Where(value => value.DeviceIdentityId == actorId && value.TenantId == tenantId)
+            .ToArrayAsync(cancellationToken);
         var current = await camps.Camps.AsNoTracking().Where(value => value.TenantId == tenantId &&
                 !value.IsFrozen && value.ActiveTransferId != null)
             .Select(value => new { value.Id, value.ActiveTransferId }).ToArrayAsync(cancellationToken);
         return current.Where(camp => LocalCampAccessPolicy.Allows(true,
                 grants.SingleOrDefault(grant => grant.CampId == camp.Id), actorId, tenantId,
-                camp.Id, camp.ActiveTransferId!.Value, AuthorizationScope.Camp, permission))
+                camp.Id, camp.ActiveTransferId!.Value, AuthorizationScope.Camp, permission, explicitGrants))
             .Select(value => value.Id).ToArray();
     }
 

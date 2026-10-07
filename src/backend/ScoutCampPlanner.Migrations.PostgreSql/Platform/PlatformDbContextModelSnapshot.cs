@@ -51,6 +51,20 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Platform
                     b.ToTable("CampMemberships", "platform");
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.CampPermissionGrant", b =>
+                {
+                    b.Property<Guid>("MembershipId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Permission")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("MembershipId", "Permission");
+
+                    b.ToTable("CampPermissionGrants", "platform");
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.CampRoleAssignment", b =>
                 {
                     b.Property<Guid>("MembershipId")
@@ -86,6 +100,29 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Platform
                     b.HasIndex("TenantId");
 
                     b.ToTable("LocalCampAccessGrants", "platform");
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.LocalCampPermissionGrant", b =>
+                {
+                    b.Property<Guid>("DeviceIdentityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CampId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TransferId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Permission")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("DeviceIdentityId", "CampId", "TransferId", "Permission");
+
+                    b.ToTable("LocalCampPermissionGrants", "platform");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.LocalDeviceIdentity", b =>
@@ -435,6 +472,15 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Platform
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.CampPermissionGrant", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Platform.Domain.CampMembership", null)
+                        .WithMany()
+                        .HasForeignKey("MembershipId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.CampRoleAssignment", b =>
                 {
                     b.HasOne("ScoutCampPlanner.Platform.Domain.CampMembership", null)
@@ -456,6 +502,15 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Platform
                         .WithMany()
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Platform.Domain.LocalCampPermissionGrant", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Platform.Domain.LocalCampAccess", null)
+                        .WithMany()
+                        .HasForeignKey("DeviceIdentityId", "CampId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

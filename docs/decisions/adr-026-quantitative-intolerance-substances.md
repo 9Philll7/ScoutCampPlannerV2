@@ -2,7 +2,7 @@
 
 ## Status
 
-Angenommen am 16.09.2026.
+Angenommen am 16.09.2026; gezielt erweitert am 23.09.2026 für Mahlzeitenplanung Inkrement 2.
 
 ## Kontext
 
@@ -20,7 +20,17 @@ Personenbezogene Unverträglichkeiten, Grenzwerte und Toleranzen sind nicht Teil
 
 ## Bestehende Daten
 
-Vorhandene qualitative Angaben zu dosisabhängigen Stoffen werden nicht in Mengen umgerechnet, weil daraus kein belastbarer Gehalt abgeleitet werden kann. Sie bleiben als Legacy-Angaben erhalten. Neue Eingaben erfolgen quantitativ; eine fachlich geprüfte Überführung muss Menge und eine revisionsweite Quellenangabe ausdrücklich ergänzen.
+Vorhandene qualitative Angaben zu dosisabhängigen Stoffen werden nicht automatisch in Mengen umgerechnet. Unbekannte Werte werden nicht als sichere Negativangaben migriert. Eine fachlich geprüfte quantitative Überführung muss Menge, Bezugsgröße und eine revisionsweite Quellenangabe ausdrücklich ergänzen.
+
+## Bewertungsmodi (Erweiterung Inkrement 2)
+
+Für jede konkrete Zutatenrevision/Stoff-Zuordnung gilt genau ein Modus:
+
+- `Quantitative`: bevorzugt, wenn ein belastbarer Gehalt pro definierter Bezugsmenge bekannt ist.
+- `Qualitative`: enthalten oder nicht enthalten, wenn nur diese Aussage belastbar bekannt ist. Auch für neue Eingaben regulär zulässig, nicht nur für Legacy-Daten.
+- `Unknown`: keine belastbare Aussage; bedeutet weder enthalten noch nicht enthalten.
+
+Fehlende Stoffmengen werden nicht erfunden oder geschätzt. Qualitative Angaben erhalten keine künstliche Menge. Allergene, Gluten, Histamin und die Trennung von personenbezogenen Grenzwerten bleiben wie oben definiert. Diese Erweiterung ersetzt ausschließlich die frühere Beschränkung neuer Eingaben auf quantitative Werte.
 
 ## Konsequenzen
 

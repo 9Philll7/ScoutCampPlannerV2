@@ -1,3 +1,4 @@
+param([switch]$IncludeParticipants)
 $ErrorActionPreference = 'Stop'
 $repository = Split-Path -Parent $PSScriptRoot
 $executable = Join-Path $repository 'src/desktop/sidecar-publish/ScoutCampPlanner.Api.exe'
@@ -56,6 +57,24 @@ try {
     $body = @{ name = 'Roundtrip'; startDate = '2026-10-01'; endDate = '2026-10-03'; initialAdministratorMembershipIds = @($candidates[0].membershipId) } | ConvertTo-Json
     $camp = Invoke-RestMethod "$cloud/api/tenants/$tenantId/camps" -Method Post -ContentType 'application/json' -Body $body -WebSession $session
     $campId = $camp.id
+    if ($IncludeParticipants) {
+        $members = @(Invoke-RestMethod "$cloud/api/camps/$campId/explicit-permissions" -WebSession $session)
+        foreach ($permission in @('health.participant-requirements.read', 'health.participant-requirements.edit')) {
+            $grant = @{ permission = $permission; granted = $true } | ConvertTo-Json
+            Invoke-RestMethod "$cloud/api/camps/$campId/explicit-permissions/$($members[0].membershipId)" -Method Put -WebSession $session -ContentType 'application/json' -Body $grant | Out-Null
+        }
+        $nodeBody = @{ name = 'Dummy leaf'; parentId = $null } | ConvertTo-Json
+        $node = Invoke-RestMethod "$cloud/api/camps/$campId/structure" -Method Post -WebSession $session -ContentType 'application/json' -Body $nodeBody
+        $dummy = @{ displayName = 'Dummy participant'; structureNodeId = $node.id; dietTypeId = $null; absentDays = @(); absentMealIds = @(); allergenIds = @(); intolerances = @() } | ConvertTo-Json
+        Invoke-RestMethod "$cloud/api/camps/$campId/participants" -Method Post -WebSession $session -ContentType 'application/json' -Body $dummy | Out-Null
+        $people = Invoke-RestMethod "$cloud/api/camps/$campId/participants" -WebSession $session
+        $unitBody = @{ name = 'Dummy kitchen'; sortOrder = 0; defaultStructureNodeIds = @($node.id); participantFilter = 0 } | ConvertTo-Json
+        Invoke-RestMethod "$cloud/api/camps/$campId/cooking-units" -Method Post -WebSession $session -ContentType 'application/json' -Body $unitBody | Out-Null
+        $planning = Invoke-RestMethod "$cloud/api/camps/$campId/meal-planning" -WebSession $session
+        $unitId = $planning.cookingUnits[0].id
+        $planningBody = @{ expectedVersion = 0; demandMode = 1 } | ConvertTo-Json
+        Invoke-RestMethod "$cloud/api/camps/$campId/meal-planning/participants" -Method Put -WebSession $session -ContentType 'application/json' -Body $planningBody | Out-Null
+    }
     $outbound = Join-Path $testDirectory 'outbound.scoutcamp'
     Invoke-WebRequest "$cloud/api/camps/$campId/offline-package" -Method Post -WebSession $session -OutFile $outbound -UseBasicParsing
     $changed = @{ name = 'Locally edited'; startDate = '2026-10-01'; endDate = '2026-10-03' } | ConvertTo-Json
@@ -63,6 +82,36 @@ try {
     Invoke-RestMethod "$local/api/packages/import-initial" -Method Post -Headers $headers -ContentType 'application/octet-stream' -InFile $outbound | Out-Null
     $visible = @(Invoke-RestMethod "$local/api/tenants/$tenantId/camps" -Headers $headers)
     if ($visible.Count -ne 1 -or -not $visible[0].canEdit) { throw 'Imported camp is not editable.' }
+    if ($IncludeParticipants) {
+        Assert-Status 404 { Invoke-RestMethod "$local/api/camps/$campId/participants" -Headers $headers }
+        Assert-Status 404 { Invoke-RestMethod "$local/api/camps/$campId/meal-planning" -Headers $headers }
+        foreach ($permission in @('health.participant-requirements.read', 'health.participant-requirements.edit')) {
+            $commandArguments = @('--Database:Provider=Sqlite',
+                ('"--Database:ConnectionString=Data Source=' + (Join-Path $testDirectory 'local.db') + '"'),
+                ('"--Audit:Directory=' + (Join-Path $testDirectory 'local-audit') + '"'),
+                '--local-permission-command', 'grant', '--local-permission-camp', $campId,
+                '--local-permission-transfer', $visible[0].activeTransferId,
+                '--local-permission-name', $permission, '--local-permission-confirm', 'true')
+            $commandProcess = Start-Process -FilePath $executable -ArgumentList $commandArguments -WindowStyle Hidden -Wait -PassThru `
+                -RedirectStandardOutput (Join-Path $testDirectory "$permission.log") -RedirectStandardError (Join-Path $testDirectory "$permission.err")
+            if ($commandProcess.ExitCode -ne 0) { throw 'Explicit local participant grant failed.' }
+        }
+        $participantView = Invoke-RestMethod "$local/api/camps/$campId/participants" -Headers $headers
+        $document = $participantView.participants[0]
+        $document.data.displayName = 'Locally edited dummy participant'
+        $document.data.absentDays = @('2026-10-02')
+        $participantUpdate = @{ expectedStateToken = $document.stateToken; data = $document.data } | ConvertTo-Json -Depth 8
+        Invoke-RestMethod "$local/api/camps/$campId/participants/$($document.data.id)" -Method Put -Headers $headers -ContentType 'application/json' -Body $participantUpdate | Out-Null
+        $configuration = Invoke-RestMethod "$local/api/camps/$campId/meal-planning/participants" -Headers $headers
+        if ($configuration.demandMode -ne 1 -or $document.data.structureNodeId -ne $node.id) { throw 'Camp participant structure import failed.' }
+        $localPlanning = Invoke-RestMethod "$local/api/camps/$campId/meal-planning" -Headers $headers
+        if (($localPlanning | ConvertTo-Json -Depth 20) -match 'Locally edited dummy participant') { throw 'Name leaked into catering planning.' }
+        $localUnit = $localPlanning.cookingUnits[0]
+        $localUnit.participantFilter = 2
+        Invoke-RestMethod "$local/api/camps/$campId/cooking-units/$unitId" -Method Put -Headers $headers -ContentType 'application/json' -Body ($localUnit | ConvertTo-Json -Depth 8) | Out-Null
+        $configurationUpdate = @{ expectedVersion = $configuration.version; demandMode = 1 } | ConvertTo-Json
+        Invoke-RestMethod "$local/api/camps/$campId/meal-planning/participants" -Method Put -Headers $headers -ContentType 'application/json' -Body $configurationUpdate | Out-Null
+    }
     Invoke-RestMethod "$local/api/camps/$campId" -Method Put -Headers $headers -ContentType 'application/json' -Body $changed | Out-Null
     Assert-Status 403 { Invoke-RestMethod "$local/api/tenants/$tenantId/camps" -Method Post -Headers $headers -ContentType 'application/json' -Body $body }
     $returned = Join-Path $testDirectory 'return.scoutcamp'
@@ -77,6 +126,16 @@ try {
     Invoke-RestMethod "$cloud/api/packages/import-return?expectedCampId=$campId" -Method Post -WebSession $session -ContentType 'application/octet-stream' -InFile $returned | Out-Null
     $result = @(Invoke-RestMethod "$cloud/api/tenants/$tenantId/camps" -WebSession $session)
     if ($result[0].isFrozen -or $result[0].name -ne 'Locally edited') { throw 'Returned changes or unfreeze missing.' }
+    if ($IncludeParticipants) {
+        $participantResult = Invoke-RestMethod "$cloud/api/camps/$campId/participants" -WebSession $session
+        if ($participantResult.participants[0].data.displayName -ne 'Locally edited dummy participant' -or
+            $participantResult.participants[0].data.absentDays[0] -ne '2026-10-02') { throw 'Participant roundtrip failed.' }
+        $planningResult = Invoke-RestMethod "$cloud/api/camps/$campId/meal-planning/participants" -WebSession $session
+        $planningOverview = Invoke-RestMethod "$cloud/api/camps/$campId/meal-planning" -WebSession $session
+        if ($planningResult.version -ne 2 -or $planningOverview.cookingUnits[0].participantFilter -ne 2 -or
+            $participantResult.participants[0].data.structureNodeId -ne $node.id) { throw 'Camp structure and cooking filter roundtrip failed.' }
+        Assert-Status 404 { Invoke-RestMethod "$local/api/camps/$campId/participants" -Headers $headers }
+    }
     Assert-Status 409 { Invoke-RestMethod "$cloud/api/packages/import-return?expectedCampId=$campId" -Method Post -WebSession $session -ContentType 'application/octet-stream' -InFile $returned }
     Invoke-WebRequest "$cloud/api/camps/$campId/offline-package" -Method Post -WebSession $session -OutFile $outbound -UseBasicParsing
     $frozen = @(Invoke-RestMethod "$cloud/api/tenants/$tenantId/camps" -WebSession $session)[0]

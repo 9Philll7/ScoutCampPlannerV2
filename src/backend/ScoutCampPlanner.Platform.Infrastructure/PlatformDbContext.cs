@@ -11,6 +11,8 @@ public sealed class PlatformDbContext(DbContextOptions<PlatformDbContext> option
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<LocalDeviceIdentity> LocalDeviceIdentities => Set<LocalDeviceIdentity>();
     public DbSet<LocalCampAccess> LocalCampAccessGrants => Set<LocalCampAccess>();
+    public DbSet<LocalCampPermissionGrant> LocalCampPermissionGrants => Set<LocalCampPermissionGrant>();
+    public DbSet<CampPermissionGrant> CampPermissionGrants => Set<CampPermissionGrant>();
     public DbSet<UserAccount> UserAccounts => Set<UserAccount>();
     public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
     public DbSet<TenantRoleAssignment> TenantRoleAssignments => Set<TenantRoleAssignment>();
@@ -55,6 +57,23 @@ public sealed class PlatformDbContext(DbContextOptions<PlatformDbContext> option
             entity.Property(x => x.Email).HasMaxLength(320);
             entity.Property(x => x.NormalizedEmail).HasMaxLength(320);
             entity.HasIndex(x => x.NormalizedEmail).IsUnique();
+        });
+        modelBuilder.Entity<CampPermissionGrant>(entity =>
+        {
+            entity.ToTable("CampPermissionGrants");
+            entity.HasKey(value => new { value.MembershipId, value.Permission });
+            entity.Property(value => value.Permission).HasMaxLength(100);
+            entity.HasOne<CampMembership>().WithMany().HasForeignKey(value => value.MembershipId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<LocalCampPermissionGrant>(entity =>
+        {
+            entity.ToTable("LocalCampPermissionGrants");
+            entity.HasKey(value => new { value.DeviceIdentityId, value.CampId, value.TransferId, value.Permission });
+            entity.Property(value => value.Permission).HasMaxLength(100);
+            entity.HasOne<LocalCampAccess>().WithMany()
+                .HasForeignKey(value => new { value.DeviceIdentityId, value.CampId })
+                .OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<TenantMembership>(entity =>
         {

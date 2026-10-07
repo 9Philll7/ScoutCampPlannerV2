@@ -10,7 +10,19 @@ Central, tenant and camp recipes require stable ingredient, unit and conflict re
 
 ## Decision
 
-Measurement units, allergens, intolerances and dietary requirements are platform-wide master data.
+Measurement units, allergens, intolerance/substance catalogues and origin properties are platform-wide master data.
+
+### DietType scope extension (confirmed 2026-09-23)
+
+DietTypes use two scopes: central and tenant. Central DietTypes are maintained
+platform-wide and cannot be modified by tenants. Tenants may create additional
+DietTypes restricted to their own tenant, without overriding central definitions.
+Both scopes refer to the same central main-origin identifiers. Tenant proposals
+may use the contribution workflow for explicit central review; no automatic
+promotion occurs. This extends the previous central-only dietary-requirement
+catalogue rule, without changing allergen, substance or origin catalogue scopes.
+No parallel generic RequirementType is introduced; participants reference
+allergens and intolerances directly.
 
 Base ingredients use the same explicit scopes as recipes:
 

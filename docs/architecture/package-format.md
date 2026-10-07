@@ -1,5 +1,28 @@
 # Camp Package Format
 
+## Increment 2 integration status — 2026-10-07
+
+The optional participant section (schema 2, DummyDataOnly) transports Camp
+participants, attendance, requirements and referenced dietary rules, including
+tenant scope and rule version. Grants are never imported. Export requires explicit
+read permission; return replace and local removal require explicit edit permission.
+Atomic replacement and rollback have automated tests. Conflicting existing local
+dietary references reject the import instead of silently changing the rules.
+Supply/verification transport is not implemented. Do not transfer real participant
+or health data using this development feature.
+The confirmed [development decision](../decisions/meal-planning-increment-2-offline-sensitive-data.md)
+permits dummy/test-data integration, but grants no read/edit permission and no
+production security release. The outer container format and Freeze/Replace are unchanged.
+
+Participant schema 2 includes the Camp-owned leaf structure reference. Meal-planning
+schema 3 carries the camp-wide demand mode, calculated basis and CookingUnit filters;
+existing structure references remain authoritative. It does not accept operational
+direct participant assignments. Old schema 1/2 packages are upgraded only when the
+direct references resolve to an unambiguous leaf without individual meal overrides;
+otherwise import fails atomically with a migration message. Existing packages are
+never overwritten. A return cannot silently drop existing planning configuration.
+This is not the protected production package format version 2 described in ADR-012.
+
 ## Purpose
 
 A camp package transfers one camp and the camp-related data of explicitly listed modules between a server instance and a single-device instance. It is a domain-level interchange format and not a database backup.
@@ -33,7 +56,7 @@ Version 1 requires the `Camp` and `Catering` module payloads. Platform data is l
 The Catering payload includes the camp-specific meal labels and every dated meal with its active state, so arrival/departure-day adjustments survive Cloud → Local → Cloud replacement.
 
 Package format version 1 also contains the mandatory, independently versioned
-`cateringMealPlanningData` object. Its embedded schema version 1 transfers the
+`cateringMealPlanningData` object. Its embedded schema version 3 transfers the
 complete mutable state of meal planning increment 1: plans and immutable
 snapshots, offer groups and entries, cooking-unit groups and units, default and
 meal-specific structure assignments, subscription states, demand and target
@@ -43,7 +66,7 @@ structure nodes and participates in the same atomic replacement transaction.
 The former development-only duplicate `mealPlans` payload was removed; there is
 one authoritative meal-planning representation.
 
-Before the first product release, version 1 was additionally extended with a versioned `cateringReferenceData` module object. It contains the immutable dependency closure of every upstream recipe revision included in the camp recipe library:
+Before the first product release, version 1 was additionally extended with a versioned `cateringReferenceData` module object. It contains the immutable dependency closure of every recipe revision included in the camp recipe library or referenced by meal-plan entries and cooking-unit recipe choices. Planning references remain pinned to their exact revisions, even when the library has changed. Export, validation and import use the same roots; unrelated revisions remain disallowed:
 
 - the camp-library reference needed to expose the recipe locally
 - the exact published recipe revision and all recursively referenced subrecipe revisions

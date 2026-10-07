@@ -98,6 +98,9 @@ internal sealed class IngredientIntoleranceDefinitionRecord
     public string Code { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public bool IsQuantityDependent { get; set; }
+    public decimal? DefaultThresholdGramsPerPortion { get; set; }
+    public string? DefaultThresholdSource { get; set; }
+    public int DefaultThresholdVersion { get; set; }
     public int Status { get; set; }
 }
 

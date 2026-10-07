@@ -12,7 +12,7 @@ using Xunit;
 
 namespace ScoutCampPlanner.PlatformTests;
 
-public sealed class CampManagementServiceTests : IAsyncLifetime
+public sealed partial class CampManagementServiceTests : IAsyncLifetime
 {
     private static readonly DateTimeOffset Now = new(2026, 8, 15, 8, 0, 0, TimeSpan.Zero);
     private SqliteConnection connection = null!;
@@ -25,6 +25,43 @@ public sealed class CampManagementServiceTests : IAsyncLifetime
     private Guid ownerUserId;
     private Guid otherUserId;
     private Guid otherMembershipId;
+
+    [Theory]
+    [InlineData(Permissions.Health.ReadParticipantRequirements)]
+    [InlineData(Permissions.Health.EditParticipantRequirements)]
+    [InlineData(Permissions.Catering.VerifyMealPlanning)]
+    public async Task Explicit_permissions_require_an_active_scoped_membership_and_can_be_revoked(string permission)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var created = await service.CreateAsync(ownerUserId, tenantId,
+            new CreateCampRequest("Dummy rights", new DateOnly(2027, 7, 1), new DateOnly(2027, 7, 3), [otherMembershipId]), ct);
+        Guid campId = created.Camp!.Id;
+        var membership = await platform.CampMemberships.SingleAsync(ct);
+        Assert.False(await service.HasCampPermissionAsync(otherUserId, campId, permission, ct));
+        var grant = new CampPermissionGrant(membership.Id, permission);
+        platform.CampPermissionGrants.Add(grant);
+        await platform.SaveChangesAsync(ct);
+        Assert.True(await service.HasCampPermissionAsync(otherUserId, campId, permission, ct));
+        Assert.False(await service.HasCampPermissionAsync(ownerUserId, campId, permission, ct));
+        Assert.False(await service.HasCampPermissionAsync(otherUserId, Guid.NewGuid(), permission, ct));
+        foreach (string other in new[] { Permissions.Health.ReadParticipantRequirements,
+                     Permissions.Health.EditParticipantRequirements, Permissions.Catering.VerifyMealPlanning }.Where(value => value != permission))
+            Assert.False(await service.HasCampPermissionAsync(otherUserId, campId, other, ct));
+        membership.Suspend();
+        await platform.SaveChangesAsync(ct);
+        Assert.False(await service.HasCampPermissionAsync(otherUserId, campId, permission, ct));
+        membership.Restore();
+        var tenantMembership = await platform.TenantMemberships.SingleAsync(value => value.Id == otherMembershipId, ct);
+        tenantMembership.Suspend();
+        await platform.SaveChangesAsync(ct);
+        Assert.False(await service.HasCampPermissionAsync(otherUserId, campId, permission, ct));
+        tenantMembership.Restore();
+        await platform.SaveChangesAsync(ct);
+        Assert.True(await service.HasCampPermissionAsync(otherUserId, campId, permission, ct));
+        platform.CampPermissionGrants.Remove(grant);
+        await platform.SaveChangesAsync(ct);
+        Assert.False(await service.HasCampPermissionAsync(otherUserId, campId, permission, ct));
+    }
 
     [Fact]
     public async Task CancelTransferRequiresPermissionConfirmationAndMatchingTransfer()

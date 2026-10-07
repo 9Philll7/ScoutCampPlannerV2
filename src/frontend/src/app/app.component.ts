@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, inject, signal, viewChild } from '@angular/core';
+import { Component, computed, effect, inject, signal, viewChild } from '@angular/core';
+import { SessionExpiry } from './core/session-expiry';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
@@ -17,9 +18,11 @@ import { concatMap, firstValueFrom, forkJoin } from 'rxjs';
 import { saveOfflinePackage } from './shared/save-offline-package';
 import { desktopCommand, isDesktop } from './core/desktop-runtime';
 import { PackageTransferComponent } from './features/camp/package-transfer.component';
+import { ParticipantsComponent } from './features/camp/participants.component';
 import { AuthenticationApiService, AuthenticatedUser } from './features/authentication/authentication-api.service';
 import { CampAdministratorOption, CampApiService, CampMeal, CampMealType, CampPlanningSummary, CampStageFoodFactor, CampSummary, IngredientCatalogEntry, IngredientConflictType, IngredientScope, MeasurementDimension, ParticipantEstimate, StructureConfiguration, StructureNodeSummary, TenantOption, TenantStageFoodFactor, WeightedStageTotal } from './features/camp/camp-api.service';
 import { IngredientRevisionEditorComponent } from './features/ingredients/ingredient-revision-editor.component';
+import { DietaryCatalogComponent } from './features/meal-planning/dietary-catalog.component';
 import { MealPlanningComponent } from './features/meal-planning/meal-planning.component';
 import { RecipeEditorComponent } from './features/recipes/recipe-editor.component';
 import { SetupApiService } from './features/setup/setup-api.service';
@@ -27,14 +30,14 @@ import { ActionIconComponent } from './shared/action-icon.component';
 
 type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
 type ApplicationSection = 'camps' | 'organization' | 'centralIngredients';
-type CampSection = 'general' | 'structure' | 'catering';
+type CampSection = 'general' | 'structure' | 'catering' | 'participants';
 
 @Component({
   selector: 'scp-root',
   standalone: true,
   imports: [FormsModule, MatButtonModule, MatButtonToggleModule, MatCardModule, MatCheckboxModule, MatFormFieldModule, MatInputModule,
     MatProgressSpinnerModule, MatSelectModule, MatToolbarModule, MatTooltipModule, MatDatepickerModule,
-    ActionIconComponent, IngredientRevisionEditorComponent, RecipeEditorComponent, MealPlanningComponent, PackageTransferComponent],
+    ActionIconComponent, IngredientRevisionEditorComponent, RecipeEditorComponent, MealPlanningComponent, PackageTransferComponent, ParticipantsComponent, DietaryCatalogComponent],
   providers: [provideNativeDateAdapter(), { provide: MAT_DATE_LOCALE, useValue: 'de-AT' }],
   template: `
     <mat-toolbar color="primary" class="app-toolbar">
@@ -94,6 +97,9 @@ type CampSection = 'general' | 'structure' | 'catering';
           <mat-card class="account-card">
             <mat-card-header><mat-card-title>Anmelden</mat-card-title></mat-card-header>
             <mat-card-content>
+              @if (sessionExpiry.expired()) {
+                <p role="alert">Deine Sitzung ist abgelaufen. Bitte melde dich erneut an. Nicht gespeicherte Änderungen müssen erneut eingegeben werden.</p>
+              }
               <form id="login" (ngSubmit)="signIn()">
                 <mat-form-field appearance="outline"><mat-label>E-Mail-Adresse</mat-label>
                   <input matInput name="loginEmail" [(ngModel)]="email" required type="email" autocomplete="username">
@@ -202,6 +208,7 @@ type CampSection = 'general' | 'structure' | 'catering';
                 </mat-card-header>
                 <mat-card-content>
                   <scp-ingredient-revision-editor scope="tenant" [tenantId]="tenant.id"/>
+                  <scp-dietary-catalog [tenantId]="tenant.id"/>
                 </mat-card-content>
               </mat-card>
             }
@@ -214,6 +221,7 @@ type CampSection = 'general' | 'structure' | 'catering';
               </mat-card-header>
               <mat-card-content>
                 <scp-ingredient-revision-editor scope="central"/>
+                <scp-dietary-catalog/>
               </mat-card-content>
             </mat-card>
           } @else {
@@ -225,6 +233,7 @@ type CampSection = 'general' | 'structure' | 'catering';
                 <scp-action-icon name="structure"/>Lagerstruktur</button>
               <button matButton [class.active]="campSection() === 'catering'" (click)="openCampCatering(opened)">
                 <scp-action-icon name="planning"/>Verpflegung</button>
+              <button matButton [class.active]="campSection() === 'participants'" (click)="campSection.set('participants')">Teilnehmer</button>
             </nav>
           }
           @if (!openedCampId()) {
@@ -276,6 +285,7 @@ type CampSection = 'general' | 'structure' | 'catering';
                   <p>{{ camp.startDate && camp.endDate ? camp.startDate + ' bis ' + camp.endDate : 'Legacy-Lager ohne Zeitraum' }}</p>
                   <p>{{ camp.isFrozen ? 'Offlinephase aktiv' : 'Online bearbeitbar' }}</p>
                 } @else {
+                @if (campSection() === 'participants') { <scp-participants [campId]="camp.id" [local]="localDevice"/> }
                 @if (campSection() === 'general') {
                 <section class="settings-section">
                   <div class="section-heading">
@@ -812,7 +822,17 @@ export class AppComponent {
   });
   private persistedMealTypeNames: string[] = [];
 
-  constructor() { this.initialize(); }
+  readonly sessionExpiry = inject(SessionExpiry);
+  constructor() {
+    effect(() => {
+      if (this.sessionExpiry.expired()) {
+        this.clearSession();
+        this.password = '';
+        this.submitting.set(false);
+      }
+    });
+    this.initialize();
+  }
 
   initialize() {
     this.state.set('loading');
@@ -852,6 +872,7 @@ export class AppComponent {
   }
 
   signOut() {
+    this.sessionExpiry.signedOut();
     this.authenticationApi.signOut().subscribe({ next: () => this.clearSession(), error: () => this.clearSession() });
   }
 
@@ -1569,6 +1590,7 @@ export class AppComponent {
   }
 
   private openApplication(user: AuthenticatedUser) {
+    this.sessionExpiry.signedIn();
     this.user.set(user);
     this.state.set('application');
     this.campApi.listTenants().subscribe({

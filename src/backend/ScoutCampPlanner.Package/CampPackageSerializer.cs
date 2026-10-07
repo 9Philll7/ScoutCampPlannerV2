@@ -43,6 +43,8 @@ public static class CampPackageSerializer
             var package = JsonSerializer.Deserialize<CampPackagePayload>(payload, Options)
                 ?? throw new CampPackageValidationException("Package payload is empty.");
             Validate(package);
+            package = UpgradeParticipantStructure(package);
+            Validate(package);
             return package;
         }
         catch (CampPackageValidationException) { throw; }
@@ -52,13 +54,38 @@ public static class CampPackageSerializer
         }
     }
 
+    public static CampPackagePayload UpgradeParticipantStructure(CampPackagePayload package)
+    {
+        var planning = package.CateringMealPlanningData.Deserialize<MealPlanningPackageData>(Options);
+        if (planning is null || planning.SchemaVersion >= 3) return package;
+        var legacy = planning.ParticipantConfiguration?.Assignments ?? [];
+        try
+        {
+            var mapping = ScoutCampPlanner.Catering.Application.MealPlanning.LegacyParticipantStructureMigration.Resolve(
+                package.StructureNodes.Select(value => new ScoutCampPlanner.Camp.Contracts.CampPlanningNode(value.Id, value.ParentId, value.Name)).ToArray(), legacy,
+                planning.CookingUnits.ToDictionary(value => value.Id, value => (IReadOnlyList<Guid>)planning.StructureAssignments
+                    .Where(item => item.CookingUnitId == value.Id && item.CampMealId is null).Select(item => item.StructureNodeId).ToArray()));
+            var people = package.Participants?.Items ?? [];
+            if (mapping.Keys.Any(id => !people.Any(value => value.Id == id)) ||
+                people.Any(value => mapping.TryGetValue(value.Id, out var node) && value.StructureNodeId is Guid current && current != node))
+                throw new InvalidOperationException("Legacy participant structure is inconsistent.");
+            var upgraded = planning with { SchemaVersion = 3, ParticipantConfiguration = planning.ParticipantConfiguration is { } config
+                ? config with { Assignments = [], Version = checked(config.Version + 1) } : null };
+            return package with { CateringMealPlanningData = JsonSerializer.SerializeToElement(upgraded, Options),
+                Participants = package.Participants is { } participants ? participants with { SchemaVersion = 2,
+                    Items = people.Select(value => mapping.TryGetValue(value.Id, out var node) ? value with { StructureNodeId = node } : value).ToArray() } : null };
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or OverflowException)
+        { throw new CampPackageValidationException(exception.Message); }
+    }
+
     private static void Validate(CampPackagePayload package)
     {
+        CampParticipantPackageValidation.Validate(package);
         if (package.CampStages is null || package.ParticipantEstimates is null || package.CampStageFoodFactors is null)
             throw new CampPackageValidationException("Camp stages are missing.");
         if (package.CateringReferenceData.ValueKind != JsonValueKind.Object)
             throw new CampPackageValidationException("Catering reference data is missing.");
-        CampOfflineReferenceStore.Validate(package.CateringReferenceData, package.Camp.Id);
         if (package.CateringMealPlanningData.ValueKind != JsonValueKind.Object)
             throw new CampPackageValidationException("Catering meal-planning data is missing.");
         try { CampMealPlanningPackageStore.Validate(package.CateringMealPlanningData, package.Camp.Id); }
@@ -66,6 +93,8 @@ public static class CampPackageSerializer
         {
             throw new CampPackageValidationException(exception.Message);
         }
+        CampOfflineReferenceStore.Validate(package.CateringReferenceData, package.Camp.Id,
+            CampMealPlanningPackageStore.ReadRecipeRevisionIds(package.CateringMealPlanningData, package.Camp.Id));
         if (package.Manifest.FormatVersion != CampPackageVersions.Current)
             throw new CampPackageValidationException($"Unsupported package version {package.Manifest.FormatVersion}.");
         if (package.Manifest.TenantId != package.Tenant.Id || package.Manifest.CampId != package.Camp.Id)
@@ -129,6 +158,16 @@ public static class CampPackageSerializer
         IReadOnlySet<Guid> packagedRecipeRevisions = CampOfflineReferenceStore.ReadRecipeRevisionIds(
             package.CateringReferenceData);
         var campMealIds = (package.CampMeals ?? []).Select(meal => meal.Id).ToHashSet();
+        if (mealPlanning.ParticipantConfiguration is { } configuration)
+        {
+            try
+            {
+                ScoutCampPlanner.Catering.Application.MealPlanning.MealPlanningService.ValidateAssignments(
+                    configuration.Assignments, mealPlanning.CookingUnits.Select(value => value.Id).ToHashSet(),
+                    campMealIds, (package.Participants?.Items.Select(value => value.Id) ?? []).ToHashSet());
+            }
+            catch (ArgumentException exception) { throw new CampPackageValidationException(exception.Message); }
+        }
         if (mealPlanning.OfferGroups.Any(group => !campMealIds.Contains(group.CampMealId)) ||
             mealPlanning.MealStates.Any(state => !campMealIds.Contains(state.CampMealId)) ||
             mealPlanning.StructureAssignments.Any(assignment => !nodeIds.Contains(assignment.StructureNodeId) ||
@@ -160,6 +199,9 @@ public static class CampPackageSerializer
             if (package.ParticipantEstimates.Any(estimate =>
                 depthsById[estimate.StructureNodeId] != package.Camp.StructureLevelNames.Count))
                 throw new CampPackageValidationException("Participant estimates must belong to the final fixed structure level.");
+            if ((package.Participants?.Items ?? []).Any(person => person.StructureNodeId is Guid node &&
+                depthsById[node] != package.Camp.StructureLevelNames.Count))
+                throw new CampPackageValidationException("Participants must belong to the final fixed structure level.");
         }
         var expectedModules = new[] { "Camp", "Catering" };
         if (!expectedModules.All(package.Manifest.IncludedModules.Contains))

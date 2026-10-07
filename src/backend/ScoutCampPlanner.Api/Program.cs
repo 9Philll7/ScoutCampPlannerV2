@@ -28,7 +28,10 @@ using ScoutCampPlanner.Platform.Infrastructure;
 using ScoutCampPlanner.Platform.Infrastructure.Authentication;
 using ScoutCampPlanner.Platform.Infrastructure.Auditing;
 
+var localPermissionCommand = LocalPermissionCommand.Parse(args);
 var builder = WebApplication.CreateBuilder(args);
+// The explicit CLI path never starts an HTTP server or creates a new device identity.
+if (localPermissionCommand is not null) builder.Configuration["SingleDevice:Enabled"] = "false";
 var singleDevice = new SingleDeviceRuntime(builder.Configuration);
 builder.Services.AddSingleton(singleDevice);
 builder.Services.AddScoped<LocalDeviceAccess>();
@@ -80,6 +83,8 @@ if (int.TryParse(builder.Configuration["ParentProcessId"], out var parentProcess
 }
 
 var provider = builder.Configuration["Database:Provider"] ?? "Sqlite";
+if (localPermissionCommand is not null && !provider.Equals("Sqlite", StringComparison.OrdinalIgnoreCase))
+    throw new InvalidOperationException("Local permission administration requires the existing SQLite device database.");
 if (provider.Equals("Sqlite", StringComparison.OrdinalIgnoreCase))
     SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_winsqlite3());
 var connectionString = builder.Configuration["Database:ConnectionString"]
@@ -95,8 +100,18 @@ builder.Services.AddDbContext<PlatformDbContext>((services, options) => Configur
 builder.Services.AddDbContext<CampDbContext>((services, options) => Configure(options, services.GetRequiredService<DbConnection>(), provider, "camp"));
 builder.Services.AddDbContext<CateringDbContext>((services, options) => Configure(options, services.GetRequiredService<DbConnection>(), provider, "catering"));
 builder.Services.AddScoped<ICampPlanningLookup>(services => services.GetRequiredService<CampDbContext>());
+builder.Services.AddScoped<ICampParticipantLookup>(services => services.GetRequiredService<CampDbContext>());
+builder.Services.AddScoped<ICampCateringParticipantLookup>(services => services.GetRequiredService<CampDbContext>());
 builder.Services.AddScoped<CampPackageService>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICampPackageParticipantAccess, ParticipantPackageAccess>();
+builder.Services.AddScoped<AuditedCampPackageService>();
 builder.Services.AddScoped<CampManagementService>();
+builder.Services.AddScoped<CampExplicitPermissionService>();
+builder.Services.AddScoped<ParticipantManagementService>();
+builder.Services.AddScoped<ParticipantRequirementCatalogStore>();
+builder.Services.AddScoped<IDietaryCatalogStore, DietaryCatalogStore>();
+builder.Services.AddScoped<DietaryCatalogService>();
 builder.Services.AddScoped<CateringPlanningService>();
 builder.Services.AddScoped<MealPlanningStore>();
 builder.Services.AddScoped<IMealPlanningStore>(services => services.GetRequiredService<MealPlanningStore>());
@@ -209,6 +224,11 @@ app.UseAuthorization();
 app.Use(async (context, next) =>
 {
     try { await next(context); }
+    catch (CampPackageParticipantAccessException)
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        await context.Response.WriteAsJsonAsync(new { code = "package_access_unavailable" });
+    }
     catch (CampPackageValidationException) when (context.Request.Path.StartsWithSegments("/api/packages"))
     {
         context.Response.StatusCode = StatusCodes.Status409Conflict;
@@ -230,9 +250,23 @@ await using (var scope = app.Services.CreateAsyncScope())
         scope.ServiceProvider.GetRequiredService<TimeProvider>(),
         sqliteBackupRetention);
     await scope.ServiceProvider.GetRequiredService<AuditRuntimeBootstrapper>().InitializeAsync();
+    await ParticipantStructureMigration.RunAsync(scope.ServiceProvider.GetRequiredService<CampDbContext>(),
+        scope.ServiceProvider.GetRequiredService<CateringDbContext>(), app.Logger);
     await singleDevice.InitializeAsync(scope.ServiceProvider.GetRequiredService<PlatformDbContext>());
+    if (localPermissionCommand is not null)
+    {
+        var result = await scope.ServiceProvider.GetRequiredService<CampExplicitPermissionService>()
+            .SetLocalFromCommandAsync(localPermissionCommand.CampId, localPermissionCommand.TransferId,
+                localPermissionCommand.Permission, localPermissionCommand.Granted);
+        Console.WriteLine($"Local permission command: {result}");
+        Environment.ExitCode = result == ExplicitPermissionResult.Success ? 0 : 1;
+        return;
+    }
 }
 
+app.MapCampExplicitPermissionEndpoints();
+app.MapParticipantEndpoints();
+app.MapDietaryCatalogEndpoints();
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", databaseProvider = provider }));
 app.MapGet("/api/setup/status", async (IInitialSetupService setup, CancellationToken cancellationToken) =>
     Results.Ok(singleDevice.Enabled ? new InitialSetupStatus(false) : await setup.GetStatusAsync(cancellationToken)));
@@ -652,6 +686,7 @@ app.MapPut("/api/camps/{campId:guid}/structure/{nodeId:guid}/parent", async (
         MoveStructureNodeFailure.Frozen => Results.Conflict(new { code = "camp_frozen" }),
         MoveStructureNodeFailure.Cycle => Results.Conflict(new { code = "structure_cycle" }),
         MoveStructureNodeFailure.DuplicateName => Results.Conflict(new { code = "duplicate_structure_name" }),
+        MoveStructureNodeFailure.HasParticipants => Results.Conflict(new { code = "structure_node_has_participants" }),
         _ => Results.Conflict(new { code = "maximum_structure_depth_reached" }),
     };
 }).RequireAuthorization();
@@ -659,13 +694,37 @@ app.MapGet("/api/camps", () => Results.BadRequest(new { code = "tenant_context_r
     .RequireAuthorization();
 app.MapGet("/api/camps/{campId:guid}/meal-planning", async (
     Guid campId, ClaimsPrincipal principal, CampManagementService camps, MealPlanningService planning,
-    CancellationToken cancellationToken) =>
+    HttpResponse response, CancellationToken cancellationToken) =>
 {
+    response.Headers.CacheControl = "no-store";
     Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
     if (!await camps.HasCampPermissionAsync(userId, campId, Permissions.Camp.View, cancellationToken))
         return Results.NotFound();
-    MealPlanningOverview? result = await planning.GetOverviewAsync(campId, cancellationToken);
+    if (await planning.UsesActualParticipantsAsync(campId, cancellationToken) &&
+        !await camps.HasCampPermissionAsync(userId, campId, Permissions.Health.ReadParticipantRequirements, cancellationToken))
+        return Results.NotFound();
+    MealPlanningOverview? result = await planning.GetOverviewAsync(campId, cancellationToken,
+        await camps.HasCampPermissionAsync(userId, campId, Permissions.Health.ReadParticipantRequirements, cancellationToken));
     return result is null ? Results.NotFound() : Results.Ok(result);
+}).RequireAuthorization();
+app.MapGet("/api/camps/{campId:guid}/meal-planning/participants", async (
+    Guid campId, ClaimsPrincipal principal, CampManagementService camps, MealPlanningService planning,
+    HttpResponse response, CancellationToken ct) =>
+{
+    response.Headers.CacheControl = "no-store";
+    Guid actor = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    if (!await camps.HasCampPermissionAsync(actor, campId, Permissions.Health.ReadParticipantRequirements, ct)) return Results.NotFound();
+    return Results.Ok(await planning.GetParticipantConfigurationAsync(campId, ct));
+}).RequireAuthorization();
+app.MapPut("/api/camps/{campId:guid}/meal-planning/participants", async (
+    Guid campId, SaveParticipantPlanningRequest request, ClaimsPrincipal principal, CampManagementService camps,
+    MealPlanningService planning, CancellationToken ct) =>
+{
+    Guid actor = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    IResult? denied = await RequireMealPlanningEditAsync(campId, actor, camps, ct);
+    if (denied is not null) return denied;
+    if (!await camps.HasCampPermissionAsync(actor, campId, Permissions.Health.ReadParticipantRequirements, ct)) return Results.NotFound();
+    return ToMealPlanningResult(await planning.SaveParticipantConfigurationAsync(campId, request, ct));
 }).RequireAuthorization();
 app.MapGet("/api/camps/{campId:guid}/meal-plans/{mealPlanId:guid}", async (
     Guid campId, Guid mealPlanId, ClaimsPrincipal principal, CampManagementService camps,
@@ -797,7 +856,10 @@ app.MapPost("/api/camps/{campId:guid}/cooking-units/{cookingUnitId:guid}/meals/{
     Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
     IResult? denied = await RequireMealPlanningEditAsync(campId, userId, camps, cancellationToken);
     if (denied is not null) return denied;
-    return ToMealPlanningResult(await planning.CalculateAsync(campId, cookingUnitId, mealId, cancellationToken));
+    if (await planning.UsesActualParticipantsAsync(campId, cancellationToken) &&
+        !await camps.HasCampPermissionAsync(userId, campId, Permissions.Health.ReadParticipantRequirements, cancellationToken)) return Results.NotFound();
+    return ToMealPlanningResult(await planning.CalculateAsync(campId, cookingUnitId, mealId, cancellationToken,
+        await camps.HasCampPermissionAsync(userId, campId, Permissions.Health.ReadParticipantRequirements, cancellationToken)));
 }).RequireAuthorization();
 app.MapGet("/api/recipes/central", async (
     ClaimsPrincipal principal, RecipeCatalogService recipes, CancellationToken cancellationToken) =>
@@ -1152,7 +1214,7 @@ app.MapPost("/api/ingredient-central-contributions/{contributionId:guid}/reject"
     .RequireAuthorization();
 app.MapPost("/api/camps/{campId:guid}/offline-package", async (
     Guid campId, ClaimsPrincipal principal, CampManagementService management,
-    CampPackageService packages, CancellationToken cancellationToken) =>
+    AuditedCampPackageService packages, CancellationToken cancellationToken) =>
     !singleDevice.Enabled && await management.HasCampPermissionAsync(
         Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!), campId,
         ScoutCampPlanner.Platform.Application.Authorization.Permissions.Camp.ExportPackage, cancellationToken)
@@ -1161,7 +1223,7 @@ app.MapPost("/api/camps/{campId:guid}/offline-package", async (
         : Results.NotFound())
     .RequireAuthorization();
 app.MapPost("/api/camps/{campId:guid}/remove-local-copy", async (Guid campId,
-    RemoveLocalCampRequest request, CampPackageService packages, CancellationToken cancellationToken) =>
+    RemoveLocalCampRequest request, AuditedCampPackageService packages, CancellationToken cancellationToken) =>
 {
     if (!singleDevice.Enabled) return Results.Forbid();
     if (!request.ConfirmLoss) return Results.BadRequest(new { code = "confirmation_required" });
@@ -1175,7 +1237,7 @@ app.MapPost("/api/camps/{campId:guid}/remove-local-copy", async (Guid campId,
         return Results.Conflict(new { message = "Die lokale Kopie konnte nicht entfernt werden. Möglicherweise werden ihre Rezepte oder Zutaten noch von einem anderen Lager verwendet. Es wurde nichts entfernt." });
     }
 }).RequireAuthorization();
-app.MapPost("/api/packages/import-initial", async (HttpRequest request, CampPackageService packages, CancellationToken cancellationToken) =>
+app.MapPost("/api/packages/import-initial", async (HttpRequest request, AuditedCampPackageService packages, CancellationToken cancellationToken) =>
 {
     if (!singleDevice.Enabled) return Results.Forbid();
     using var stream = new MemoryStream();
@@ -1183,7 +1245,7 @@ app.MapPost("/api/packages/import-initial", async (HttpRequest request, CampPack
     await packages.ImportInitialPackageForDeviceAsync(stream.ToArray(), singleDevice.IdentityId, cancellationToken);
     return Results.NoContent();
 }).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(100 * 1024 * 1024)).RequireAuthorization();
-app.MapPost("/api/camps/{campId:guid}/return-package", async (Guid campId, CampPackageService packages,
+app.MapPost("/api/camps/{campId:guid}/return-package", async (Guid campId, AuditedCampPackageService packages,
     LocalDeviceAccess access, CancellationToken cancellationToken) =>
     singleDevice.Enabled && await access.AllowsAsync(singleDevice.IdentityId, campId,
         ScoutCampPlanner.Platform.Application.Authorization.Permissions.Camp.ExportPackage, cancellationToken)
@@ -1205,7 +1267,7 @@ app.MapPost("/api/camps/{campId:guid}/offline-transfer/cancel", async (
     };
 }).RequireAuthorization();
 app.MapPost("/api/packages/import-return", async (HttpRequest request, ClaimsPrincipal principal,
-    CampManagementService management, CampPackageService packages, CancellationToken cancellationToken) =>
+    CampManagementService management, AuditedCampPackageService packages, CancellationToken cancellationToken) =>
 {
     if (singleDevice.Enabled) return Results.Forbid();
     using var stream = new MemoryStream();

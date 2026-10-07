@@ -423,6 +423,51 @@ import { IngredientNutritionEditorComponent } from './ingredient-nutrition-edito
                       </div>
                     </section>
                     <section>
+                      <h5>Stoffgehalte</h5>
+                      @for (property of quantitativeSubstances(); track property.id) {
+                        <article class="property-card">
+                          <strong>{{ property.name }}</strong>
+                          <mat-form-field appearance="outline"><mat-label>Abweichung</mat-label>
+                            <mat-select [value]="variantSubstanceMode(variant, property.id)"
+                              (selectionChange)="setVariantSubstanceMode(revision, variant, property.id, $event.value)"
+                              [disabled]="revision.state === publishedState || disabled()">
+                              <mat-option value="inherit">Wie Basis</mat-option>
+                              <mat-option value="unknown">Unbekannt</mat-option>
+                              <mat-option value="quantitative">Quantitativ – Gehalt</mat-option>
+                              <mat-option value="contains">Qualitativ – enthalten</mat-option>
+                              <mat-option value="absent">Qualitativ – nicht enthalten</mat-option>
+                            </mat-select>
+                          </mat-form-field>
+                          @if (variantSubstanceContent(variant, property.id); as content) {
+                            <div class="form-grid">
+                              <mat-form-field appearance="outline"><mat-label>Menge</mat-label>
+                                <input matInput type="number" min="0" step="0.001" [(ngModel)]="content.amount"
+                                  [name]="'variantSubstanceAmount' + variant.id + property.id" [disabled]="revision.state === publishedState || disabled()">
+                              </mat-form-field>
+                              <mat-form-field appearance="outline"><mat-label>Einheit</mat-label>
+                                <mat-select [(ngModel)]="content.amountUnitId" [name]="'variantSubstanceUnit' + variant.id + property.id"
+                                  [disabled]="revision.state === publishedState || disabled()">
+                                  @for (unit of substanceAmountUnits(); track unit.id) { <mat-option [value]="unit.id">{{ unit.symbol }}</mat-option> }
+                                </mat-select>
+                              </mat-form-field>
+                              <mat-form-field appearance="outline"><mat-label>Bezugsmenge</mat-label>
+                                <input matInput type="number" min="0.001" step="0.001" [(ngModel)]="content.referenceQuantity"
+                                  [name]="'variantSubstanceReference' + variant.id + property.id" [disabled]="revision.state === publishedState || disabled()">
+                              </mat-form-field>
+                              <mat-form-field appearance="outline"><mat-label>Bezugseinheit</mat-label>
+                                <mat-select [(ngModel)]="content.referenceUnitId" [name]="'variantSubstanceReferenceUnit' + variant.id + property.id"
+                                  [disabled]="revision.state === publishedState || disabled()">
+                                  @for (unit of substanceReferenceUnits(revision); track unit.id) { <mat-option [value]="unit.id">{{ unit.symbol }}</mat-option> }
+                                </mat-select>
+                              </mat-form-field>
+                            </div>
+                            <mat-checkbox [checked]="content.reviewState === 1" (change)="content.reviewState = $event.checked ? 1 : 0"
+                              [disabled]="revision.state === publishedState || disabled()">Stoffgehalt geprüft</mat-checkbox>
+                          }
+                        </article>
+                      }
+                    </section>
+                    <section>
                       <h5>Herkunft</h5>
                       <div class="variant-primary-origin">
                         <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Hauptherkunft</mat-label>
@@ -600,16 +645,21 @@ import { IngredientNutritionEditorComponent } from './ingredient-nutrition-edito
                   <article class="property-card">
                     <div class="property-row">
                       <strong>{{ property.name }}</strong>
-                      @if (!substanceContent(revision, property.id)) {
-                        <button matButton type="button" (click)="addSubstanceContent(revision, property.id)"
-                          [disabled]="revision.state === publishedState || disabled()">Gehalt erfassen</button>
-                      } @else {
-                        <button matIconButton type="button" aria-label="Stoffgehalt entfernen"
-                          (click)="removeSubstanceContent(revision, property.id)"
-                          [disabled]="revision.state === publishedState || disabled()"><scp-action-icon name="remove"/></button>
-                      }
+                      <mat-form-field appearance="outline"><mat-label>Angabe</mat-label>
+                        <mat-select [value]="substanceMode(revision, property.id)"
+                          (selectionChange)="setSubstanceMode(revision, property.id, $event.value)"
+                          [disabled]="revision.state === publishedState || disabled()">
+                          <mat-option value="unknown">Unbekannt</mat-option>
+                          <mat-option value="quantitative">Quantitativ – Gehalt</mat-option>
+                          <mat-option value="contains">Qualitativ – enthalten</mat-option>
+                          <mat-option value="absent">Qualitativ – nicht enthalten</mat-option>
+                        </mat-select>
+                      </mat-form-field>
                     </div>
-                    @if (substanceContent(revision, property.id); as content) {
+                    @if (substanceMode(revision, property.id) === 'unknown' && substanceContent(revision, property.id)) {
+                      <p class="property-info">Widersprüchliche Altangaben: Bitte den gewünschten Modus ausdrücklich auswählen.</p>
+                    }
+                    @if (substanceMode(revision, property.id) === 'quantitative' && substanceContent(revision, property.id); as content) {
                       <div class="form-grid">
                         <mat-form-field appearance="outline"><mat-label>Menge</mat-label>
                           <input matInput type="number" min="0" step="0.001" [(ngModel)]="content.amount"
@@ -975,9 +1025,9 @@ export class IngredientRevisionEditorComponent {
     return this.mainAllergens().filter(value => this.propertyState(revision.allergens, value.id) !== null).length;
   }
   specifiedVisibleIntoleranceCount(revision: IngredientRevisionDetails) {
-    const qualitativeIds = new Set(this.qualitativeIntolerances().map(value => value.id));
-    return revision.substanceContents.length +
-      revision.intolerances.filter(value => qualitativeIds.has(value.propertyId)).length;
+    const visibleIds = new Set([...this.qualitativeIntolerances(), ...this.quantitativeSubstances()].map(value => value.id));
+    return new Set([...revision.substanceContents.map(value => value.substanceId),
+      ...revision.intolerances.filter(value => visibleIds.has(value.propertyId)).map(value => value.propertyId)]).size;
   }
   qualitativeIntolerances() {
     return (this.referenceData()?.intolerances ?? [])
@@ -995,6 +1045,48 @@ export class IngredientRevisionEditorComponent {
   substanceContent(revision: IngredientRevisionDetails, substanceId: string) {
     return revision.substanceContents.find(value => value.substanceId === substanceId) ?? null;
   }
+  substanceMode(revision: IngredientRevisionDetails, substanceId: string) {
+    if (this.substanceContent(revision, substanceId))
+      return revision.intolerances.some(value => value.propertyId === substanceId) ? 'unknown' : 'quantitative';
+    const state = this.propertyState(revision.intolerances, substanceId);
+    return state === IngredientPropertyState.Contains ? 'contains' :
+      state === IngredientPropertyState.DoesNotContain ? 'absent' : 'unknown';
+  }
+  variantSubstanceContent(variant: IngredientVariantRevisionItem, substanceId: string) {
+    return variant.substanceContentOverrides.find(value => value.substanceId === substanceId) ?? null;
+  }
+  variantSubstanceMode(variant: IngredientVariantRevisionItem, substanceId: string) {
+    const state = this.propertyState(variant.intoleranceOverrides, substanceId);
+    if (this.variantSubstanceContent(variant, substanceId)) return state === null ? 'quantitative' : 'unknown';
+    return state === null ? 'inherit' : state === IngredientPropertyState.Contains ? 'contains' :
+      state === IngredientPropertyState.DoesNotContain ? 'absent' : 'unknown';
+  }
+  setVariantSubstanceMode(revision: IngredientRevisionDetails, variant: IngredientVariantRevisionItem, substanceId: string, mode: string) {
+    variant.intoleranceOverrides = variant.intoleranceOverrides.filter(value => value.propertyId !== substanceId);
+    if (mode === 'quantitative') {
+      if (!this.variantSubstanceContent(variant, substanceId)) {
+        const content = this.newSubstanceContent(revision, substanceId);
+        if (content) variant.substanceContentOverrides.push(content);
+      }
+    } else {
+      variant.substanceContentOverrides = variant.substanceContentOverrides.filter(value => value.substanceId !== substanceId);
+      if (mode !== 'inherit') this.setPropertyValue(variant.intoleranceOverrides, substanceId,
+        mode === 'contains' ? IngredientPropertyState.Contains : mode === 'absent' ? IngredientPropertyState.DoesNotContain : IngredientPropertyState.Unknown,
+        IngredientPropertySource.ManuallyVerified);
+    }
+    revision.intoleranceReviewState = IngredientPropertyReviewState.Unreviewed;
+  }
+  setSubstanceMode(revision: IngredientRevisionDetails, substanceId: string, mode: string) {
+    revision.intolerances = revision.intolerances.filter(value => value.propertyId !== substanceId);
+    if (mode === 'quantitative') this.addSubstanceContent(revision, substanceId);
+    else {
+      this.removeSubstanceContent(revision, substanceId);
+      this.setPropertyState(revision, 'intolerances', substanceId,
+        mode === 'contains' ? IngredientPropertyState.Contains :
+        mode === 'absent' ? IngredientPropertyState.DoesNotContain : IngredientPropertyState.Unknown);
+    }
+    revision.intoleranceReviewState = IngredientPropertyReviewState.Unreviewed;
+  }
   substanceAmountUnits() {
     return (this.referenceData()?.units ?? []).filter(value => value.dimension === 0);
   }
@@ -1004,16 +1096,22 @@ export class IngredientRevisionEditorComponent {
   }
   addSubstanceContent(revision: IngredientRevisionDetails, substanceId: string) {
     if (this.substanceContent(revision, substanceId)) return;
+    const content = this.newSubstanceContent(revision, substanceId);
+    if (!content) return;
+    revision.intolerances = revision.intolerances.filter(value => value.propertyId !== substanceId);
+    revision.substanceContents.push(content);
+  }
+  private newSubstanceContent(revision: IngredientRevisionDetails, substanceId: string): IngredientSubstanceContentItem | null {
     const amountUnit = this.substanceAmountUnits().find(value => value.symbol === 'g') ?? this.substanceAmountUnits()[0];
     const referenceUnit = this.substanceReferenceUnits(revision)
       .find(value => value.symbol === (this.unitDimension(revision.baseUnitId) === 1 ? 'ml' : 'g')) ??
       this.substanceReferenceUnits(revision)[0];
-    if (!amountUnit || !referenceUnit) return;
-    revision.substanceContents.push({
-      substanceId, amount: 0, amountUnitId: amountUnit.id, referenceQuantity: 100,
+    if (!amountUnit || !referenceUnit) return null;
+    return {
+      substanceId, amount: Number.NaN, amountUnitId: amountUnit.id, referenceQuantity: 100,
       referenceUnitId: referenceUnit.id, sourceType: IngredientSubstanceContentSourceType.ManualEstimate,
       sourceReference: revision.sourceSummary.slice(0, 500), reviewState: IngredientSubstanceContentReviewState.Unreviewed
-    });
+    };
   }
   removeSubstanceContent(revision: IngredientRevisionDetails, substanceId: string) {
     revision.substanceContents = revision.substanceContents.filter(value => value.substanceId !== substanceId);
@@ -1229,6 +1327,7 @@ export class IngredientRevisionEditorComponent {
     for (const suggested of suggestion.substanceContents) {
       const definition = definitions.get(suggested.code);
       if (!definition) continue;
+      revision.intolerances = revision.intolerances.filter(value => value.propertyId !== definition.id);
       let content = this.substanceContent(revision, definition.id);
       if (!content) {
         content = {

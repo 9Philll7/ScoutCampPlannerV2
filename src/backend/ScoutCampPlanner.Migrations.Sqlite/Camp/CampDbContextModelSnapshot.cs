@@ -101,6 +101,35 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Camp
                     b.ToTable("CampStages", (string)null);
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Camp.Domain.Participant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CampId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("DietTypeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("StructureNodeId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampId");
+
+                    b.HasIndex("StructureNodeId");
+
+                    b.ToTable("CampParticipants", (string)null);
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Camp.Domain.ParticipantEstimate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -213,6 +242,106 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Camp
                         .HasForeignKey("CampId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("ScoutCampPlanner.Camp.Domain.Participant", b =>
+                {
+                    b.HasOne("ScoutCampPlanner.Camp.Domain.Camp", null)
+                        .WithMany()
+                        .HasForeignKey("CampId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ScoutCampPlanner.Camp.Domain.StructureNode", null)
+                        .WithMany()
+                        .HasForeignKey("StructureNodeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.OwnsMany("ScoutCampPlanner.Camp.Domain.ParticipantAbsentDay", "AbsentDays", b1 =>
+                        {
+                            b1.Property<Guid>("ParticipantId")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<DateOnly>("Date")
+                                .HasColumnType("TEXT");
+
+                            b1.HasKey("ParticipantId", "Date");
+
+                            b1.ToTable("CampParticipantAbsentDays", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("ParticipantId");
+                        });
+
+                    b.OwnsMany("ScoutCampPlanner.Camp.Domain.ParticipantAbsentMeal", "AbsentMeals", b1 =>
+                        {
+                            b1.Property<Guid>("ParticipantId")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<Guid>("MealId")
+                                .ValueGeneratedOnAdd()
+                                .HasColumnType("TEXT");
+
+                            b1.HasKey("ParticipantId", "MealId");
+
+                            b1.ToTable("CampParticipantAbsentMeals", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("ParticipantId");
+                        });
+
+                    b.OwnsMany("ScoutCampPlanner.Camp.Domain.ParticipantAllergen", "Allergens", b1 =>
+                        {
+                            b1.Property<Guid>("ParticipantId")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<Guid>("AllergenId")
+                                .ValueGeneratedOnAdd()
+                                .HasColumnType("TEXT");
+
+                            b1.HasKey("ParticipantId", "AllergenId");
+
+                            b1.ToTable("CampParticipantAllergens", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("ParticipantId");
+                        });
+
+                    b.OwnsMany("ScoutCampPlanner.Camp.Domain.ParticipantIntolerance", "Intolerances", b1 =>
+                        {
+                            b1.Property<Guid>("ParticipantId")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<Guid>("SubstanceId")
+                                .ValueGeneratedOnAdd()
+                                .HasColumnType("TEXT");
+
+                            b1.Property<decimal?>("ThresholdGramsPerPortion")
+                                .HasPrecision(18, 6)
+                                .HasColumnType("TEXT");
+
+                            b1.Property<string>("ThresholdSource")
+                                .HasMaxLength(500)
+                                .HasColumnType("TEXT");
+
+                            b1.HasKey("ParticipantId", "SubstanceId");
+
+                            b1.ToTable("CampParticipantIntolerances", null, t =>
+                                {
+                                    t.HasCheckConstraint("CK_CampParticipantIntolerances_Threshold", "\"ThresholdGramsPerPortion\" IS NULL OR \"ThresholdGramsPerPortion\" >= 0");
+                                });
+
+                            b1.WithOwner()
+                                .HasForeignKey("ParticipantId");
+                        });
+
+                    b.Navigation("AbsentDays");
+
+                    b.Navigation("AbsentMeals");
+
+                    b.Navigation("Allergens");
+
+                    b.Navigation("Intolerances");
                 });
 
             modelBuilder.Entity("ScoutCampPlanner.Camp.Domain.ParticipantEstimate", b =>

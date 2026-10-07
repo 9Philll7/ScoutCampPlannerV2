@@ -73,7 +73,7 @@ public sealed record CreateStructureNodeResult(
     public bool IsSuccessful => Node is not null && Failure == CreateStructureNodeFailure.None;
 }
 public enum DeleteStructureNodeFailure { None, NotFound, Frozen, HasChildren, HasEstimates }
-public enum MoveStructureNodeFailure { None, NotFound, Frozen, Cycle, DuplicateName, MaximumDepthReached }
+public enum MoveStructureNodeFailure { None, NotFound, Frozen, Cycle, DuplicateName, MaximumDepthReached, HasParticipants }
 
 public sealed class CampManagementService(
     PlatformDbContext platform,
@@ -356,11 +356,14 @@ public sealed class CampManagementService(
         int maximumExistingDepth = 0;
         var nodes = await camps.StructureNodes.Where(node => node.CampId == campId).ToListAsync(cancellationToken);
         var byId = nodes.ToDictionary(node => node.Id);
+        var participantNodes = await camps.Participants.Where(value => value.CampId == campId && value.StructureNodeId != null)
+            .Select(value => value.StructureNodeId!.Value).ToArrayAsync(cancellationToken);
         foreach (var node in nodes)
         {
             int depth = 1; Guid? parentId = node.ParentId;
             while (parentId is Guid id && byId.TryGetValue(id, out var parent)) { depth++; parentId = parent.ParentId; }
             maximumExistingDepth = Math.Max(maximumExistingDepth, depth);
+            if (levels.Length > 0 && participantNodes.Contains(node.Id) && depth != levels.Length) return false;
         }
         if (levels.Length > 0 && levels.Length < maximumExistingDepth) return false;
         try { camp.ConfigureStructure(levels); }
@@ -397,8 +400,9 @@ public sealed class CampManagementService(
         if (request.ParentId is Guid parentId && !await camps.StructureNodes.AnyAsync(
             node => node.Id == parentId && node.CampId == campId, cancellationToken))
             return new(null, CreateStructureNodeFailure.NotFound);
-        if (request.ParentId is Guid estimatedParent && await camps.ParticipantEstimates.AnyAsync(
-            value => value.StructureNodeId == estimatedParent, cancellationToken))
+        if (request.ParentId is Guid estimatedParent && (await camps.ParticipantEstimates.AnyAsync(
+            value => value.StructureNodeId == estimatedParent, cancellationToken) || await camps.Participants.AnyAsync(
+            value => value.StructureNodeId == estimatedParent, cancellationToken)))
             return new(null, CreateStructureNodeFailure.HasEstimates);
 
         if (camp.StructureMode == ScoutCampPlanner.Camp.Domain.CampStructureMode.Fixed)
@@ -524,7 +528,8 @@ public sealed class CampManagementService(
         if (camp.IsFrozen) return DeleteStructureNodeFailure.Frozen;
         if (await camps.StructureNodes.AnyAsync(value => value.ParentId == nodeId, cancellationToken))
             return DeleteStructureNodeFailure.HasChildren;
-        if (await camps.ParticipantEstimates.AnyAsync(value => value.StructureNodeId == nodeId, cancellationToken))
+        if (await camps.ParticipantEstimates.AnyAsync(value => value.StructureNodeId == nodeId, cancellationToken) ||
+            await camps.Participants.AnyAsync(value => value.StructureNodeId == nodeId, cancellationToken))
             return DeleteStructureNodeFailure.HasEstimates;
 
         var auditEvent = new AuditEventDraft(
@@ -678,6 +683,8 @@ public sealed class CampManagementService(
         if (request.ParentId is Guid requestedParent && nodes.All(value => value.Id != requestedParent))
             return MoveStructureNodeFailure.NotFound;
         if (node.ParentId == request.ParentId) return MoveStructureNodeFailure.None;
+        if (request.ParentId is Guid occupied && await camps.Participants.AnyAsync(value => value.StructureNodeId == occupied, cancellationToken))
+            return MoveStructureNodeFailure.HasParticipants;
 
         var descendants = new HashSet<Guid>();
         void AddDescendants(Guid parentId)
@@ -703,6 +710,17 @@ public sealed class CampManagementService(
         if (camp.StructureMode == ScoutCampPlanner.Camp.Domain.CampStructureMode.Fixed &&
             NewDepth() + SubtreeHeight(node.Id) - 1 > camp.GetStructureLevelNames().Count)
             return MoveStructureNodeFailure.MaximumDepthReached;
+        if (camp.StructureMode == ScoutCampPlanner.Camp.Domain.CampStructureMode.Fixed)
+        {
+            var occupiedNodes = await camps.Participants.Where(value => value.CampId == campId && value.StructureNodeId != null)
+                .Select(value => value.StructureNodeId!.Value).Distinct().ToArrayAsync(cancellationToken);
+            foreach (Guid occupiedNode in occupiedNodes.Where(value => value == node.Id || descendants.Contains(value)))
+            {
+                int offset = 0; Guid current = occupiedNode;
+                while (current != node.Id) { current = nodes.Single(value => value.Id == current).ParentId!.Value; offset++; }
+                if (NewDepth() + offset != camp.GetStructureLevelNames().Count) return MoveStructureNodeFailure.HasParticipants;
+            }
+        }
 
         node.MoveTo(request.ParentId);
         var auditEvent = new AuditEventDraft(Guid.NewGuid(), timeProvider.GetUtcNow(),
@@ -933,6 +951,17 @@ public sealed class CampManagementService(
     {
         if (localAccess?.IsOperator(userId) == true)
             return await localAccess.CampIdsAsync(userId, tenantId, permission, cancellationToken);
+        // Sensitive participant access and verification are never inferred from a role.
+        if (LocalCampAccessPolicy.IsExplicitPermission(permission))
+            return await (from tenantMembership in platform.TenantMemberships.AsNoTracking()
+                join membership in platform.CampMemberships.AsNoTracking()
+                    on tenantMembership.Id equals membership.TenantMembershipId
+                join grant in platform.CampPermissionGrants.AsNoTracking()
+                    on membership.Id equals grant.MembershipId
+                where tenantMembership.UserId == userId && tenantMembership.TenantId == tenantId &&
+                    tenantMembership.State == TenantMembershipState.Active &&
+                    membership.State == CampMembershipState.Active && grant.Permission == permission
+                select membership.CampId).Distinct().ToArrayAsync(cancellationToken);
         var assignments = await platform.TenantMemberships
             .Where(tenantMembership => tenantMembership.UserId == userId &&
                 tenantMembership.TenantId == tenantId && tenantMembership.State == TenantMembershipState.Active)

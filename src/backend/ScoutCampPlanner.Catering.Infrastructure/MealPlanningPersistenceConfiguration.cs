@@ -7,6 +7,13 @@ internal static class MealPlanningPersistenceConfiguration
 {
     public static void Configure(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<MealPlanningParticipantConfiguration>(entity =>
+        {
+            entity.ToTable("MealPlanningParticipantConfigurations");
+            entity.HasKey(value => value.CampId);
+            entity.Property(value => value.Version).IsConcurrencyToken();
+            entity.Property(value => value.AssignmentsJson).HasColumnType("text");
+        });
         modelBuilder.Entity<MealPlanSnapshot>(entity =>
         {
             entity.ToTable("MealPlanSnapshots");

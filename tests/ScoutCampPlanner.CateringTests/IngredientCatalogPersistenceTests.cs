@@ -8,7 +8,7 @@ using Xunit;
 
 namespace ScoutCampPlanner.CateringTests;
 
-public sealed class IngredientCatalogPersistenceTests
+public sealed partial class IngredientCatalogPersistenceTests
 {
     [Fact]
     public async Task Revisioned_ingredient_graph_round_trips()
