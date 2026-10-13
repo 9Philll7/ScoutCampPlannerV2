@@ -1,4 +1,5 @@
 bin/
+.dev-data/
 obj/
 node_modules/
 .npm-cache/

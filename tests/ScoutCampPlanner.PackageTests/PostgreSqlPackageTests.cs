@@ -4,6 +4,9 @@ using System.Text.Json;
 using ScoutCampPlanner.Camp.Domain;
 using ScoutCampPlanner.Camp.Infrastructure;
 using ScoutCampPlanner.Catering.Domain;
+using ScoutCampPlanner.Catering.Application.MealPlanning;
+using ScoutCampPlanner.Catering.Application.Recipes;
+using ScoutCampPlanner.Catering.Infrastructure.Recipes;
 using ScoutCampPlanner.Catering.Infrastructure;
 using ScoutCampPlanner.Catering.Infrastructure.Offline;
 using ScoutCampPlanner.Package;
@@ -39,8 +42,34 @@ public sealed class PostgreSqlPackageTests
         participant.SetRequirements(null, [catalog.Allergens[0].Id],
             [new(catalog.Substances.First(value => value.Code == "LACTOSE").Id, 0.123456m, "Dummy source")]);
         camp.Participants.Add(participant);
+        var parent = new StructureNode(Guid.NewGuid(), campId, null, "Dummy parent");
+        camp.StructureNodes.Add(parent);
+        var node = new StructureNode(Guid.NewGuid(), campId, parent.Id, "Dummy group");
+        camp.StructureNodes.Add(node);
+        participant.AssignStructureNode(node.Id);
+        var unit = new CookingUnit(Guid.NewGuid(), campId, "Dummy kitchen", 0);
+        var mealType = new CampMealType(Guid.NewGuid(), campId, "Dummy meal", 0);
+        var meal = new CampMeal(Guid.NewGuid(), campId, mealType.Id, new(2027, 7, 1));
+        var recipeId = Guid.NewGuid(); var revisionId = Guid.NewGuid(); var actor = Guid.NewGuid();
+        catering.AddRange(unit, mealType, meal, new CookingUnitStructureAssignment(Guid.NewGuid(), campId, unit.Id, null, node.Id),
+            new RecipeRecord { Id = recipeId, Name = "Dummy reference recipe", NormalizedName = "DUMMY REFERENCE RECIPE",
+                ScopeType = (int)RecipeScopeType.Central, Status = (int)RecipeStatus.Active, RecipeType = (int)RecipeType.PortionBased,
+                CreatedBy = actor, UpdatedBy = actor, CreatedAtUtc = DateTimeOffset.UtcNow, UpdatedAtUtc = DateTimeOffset.UtcNow },
+            new RecipeRevisionRecord { Id = revisionId, RecipeId = recipeId, RevisionNumber = 1, PublishedBy = actor,
+                PublishedAtUtc = DateTimeOffset.UtcNow, SnapshotSchemaVersion = 2,
+                SnapshotJson = RecipeSnapshotBuilder.Serialize(new(2, "Dummy reference recipe", null, null, null,
+                    RecipeType.PortionBased, new(1, 1, null, null), null, false, [], [], [], [], [])) });
         await platform.SaveChangesAsync();
         await camp.SaveChangesAsync();
+        await catering.SaveChangesAsync();
+        var ct = TestContext.Current.CancellationToken;
+        var store = new MealPlanningStore(catering);
+        await store.SaveParticipantConfigurationAsync(campId, 0, MealPlanningDemandMode.UseActualParticipants, "[]", ct);
+        await store.ConfigureCookingUnitMealAsync(campId, unit.Id, meal.Id,
+            new(MealPlanSubscriptionState.Custom, null, null, [], [new(Guid.NewGuid(), revisionId, null, null, 0)]), ct);
+        var cloudPlanning = new MealPlanningService(store, camp, TimeProvider.System, camp, new EfSupplySuitabilityReferences(catering));
+        await cloudPlanning.CalculateAsync(campId, unit.Id, meal.Id, ct);
+        var originalState = await catering.CookingUnitMealStates.AsNoTracking().SingleAsync(ct);
         var packages = new CampPackageService(platform, camp, catering, TimeProvider.System, new CampPackageTests.TestParticipantAccess());
         byte[] initial = await packages.StartOfflineTransferAsync(campId);
         SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_winsqlite3());
@@ -50,6 +79,18 @@ public sealed class PostgreSqlPackageTests
         imported.Rename("Edited dummy person");
         imported.SetDayAbsent(new(2027, 7, 2), true);
         await local.SaveAsync();
+        var localPlanning = new MealPlanningService(new MealPlanningStore(local.Catering), local.Camp, TimeProvider.System,
+            local.Camp, new EfSupplySuitabilityReferences(local.Catering));
+        var before = Assert.Single((await localPlanning.GetOverviewAsync(campId, ct))!.OperationalMeals);
+        var manual = new SupplySolution(Guid.NewGuid(), revisionId, null, 2,
+            new Dictionary<string, RecipePositionSelection>(),
+            [new(Assert.Single(before.RequirementGroups!).Requirements.Key, 1)], SupplyDecisionSource.Manual);
+        Assert.True((await localPlanning.SaveSupplyAsync(campId, unit.Id, meal.Id, new(before.SupplyVersion, [manual]), ct)).IsSuccess);
+        await localPlanning.CalculateAsync(campId, unit.Id, meal.Id, ct);
+        var recalculated = Assert.Single((await localPlanning.GetOverviewAsync(campId, ct))!.OperationalMeals);
+        Assert.True((await localPlanning.VerifySupplyAsync(campId, unit.Id, meal.Id, actor,
+            new(recalculated.SupplyVersion, MealVerificationKind.VerifiedWithDeviation, "Dummy unassigned portion"), ct)).IsSuccess);
+        var expectedState = await local.Catering.CookingUnitMealStates.AsNoTracking().SingleAsync(ct);
         var localPackages = new CampPackageService(local.Platform, local.Camp, local.Catering,
             TimeProvider.System, new CampPackageTests.TestParticipantAccess());
         byte[] returned = await localPackages.CreateReturnPackageAsync(campId);
@@ -66,7 +107,32 @@ public sealed class PostgreSqlPackageTests
         await Assert.ThrowsAsync<CampPackageValidationException>(() => packages.ImportReturnPackageAsync(CampPackageSerializer.Serialize(invalid)));
         Assert.Equal("Dummy person", (await camp.Participants.AsNoTracking().SingleAsync()).DisplayName);
         Assert.True((await camp.Camps.AsNoTracking().SingleAsync()).IsFrozen);
+        await catering.Database.ExecuteSqlRawAsync("CREATE FUNCTION catering.reject_supply() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'supply rollback test'; END $$; CREATE TRIGGER reject_supply BEFORE INSERT ON catering.\"CookingUnitMealStates\" FOR EACH ROW EXECUTE FUNCTION catering.reject_supply();", ct);
+        await Assert.ThrowsAsync<DbUpdateException>(() => packages.ImportReturnPackageAsync(returned, ct));
+        var rolledBack = await catering.CookingUnitMealStates.AsNoTracking().SingleAsync(ct);
+        Assert.Equal(originalState.CalculationSnapshotJson, rolledBack.CalculationSnapshotJson);
+        Assert.Equal(originalState.ManualSupplySolutionsJson, rolledBack.ManualSupplySolutionsJson);
+        Assert.Equal(originalState.VerificationSnapshotJson, rolledBack.VerificationSnapshotJson);
+        Assert.True((await camp.Camps.AsNoTracking().SingleAsync(ct)).IsFrozen);
+        await catering.Database.ExecuteSqlRawAsync("DROP TRIGGER reject_supply ON catering.\"CookingUnitMealStates\"; DROP FUNCTION catering.reject_supply();", ct);
         await packages.ImportReturnPackageAsync(returned);
+        var actualState = await catering.CookingUnitMealStates.AsNoTracking().SingleAsync(ct);
+        Assert.Equal(expectedState.ManualSupplySolutionsJson, actualState.ManualSupplySolutionsJson);
+        Assert.Equal(expectedState.CalculationSnapshotJson, actualState.CalculationSnapshotJson);
+        Assert.Equal(expectedState.VerificationSnapshotJson, actualState.VerificationSnapshotJson);
+        Assert.Equal(expectedState.VerificationFingerprint, actualState.VerificationFingerprint);
+        Assert.Equal(expectedState.SupplyVersion, actualState.SupplyVersion);
+        Assert.False(Assert.Single((await cloudPlanning.GetOverviewAsync(campId, ct))!.OperationalMeals).VerificationStale);
+        var metadataPerson = await camp.Participants.SingleAsync(ct);
+        metadataPerson.Rename("Only metadata changed");
+        metadataPerson.SetRequirements(null, [catalog.Allergens[0].Id],
+            [new(catalog.Substances.First(value => value.Code == "LACTOSE").Id, 0.123456m, "Other dummy source")]);
+        await camp.SaveChangesAsync(ct);
+        var afterMetadata = Assert.Single((await cloudPlanning.GetOverviewAsync(campId, ct))!.OperationalMeals);
+        Assert.False(afterMetadata.VerificationStale);
+        Assert.Equal(OperationalMealPlanStatus.Current, afterMetadata.Status);
+        metadataPerson.Rename("Edited dummy person");
+        await camp.SaveChangesAsync(ct);
         var actual = Assert.Single(await camp.GetParticipantsAsync(campId));
         Assert.Equal(participant.Id, actual.Id);
         Assert.Equal("Edited dummy person", actual.DisplayName);

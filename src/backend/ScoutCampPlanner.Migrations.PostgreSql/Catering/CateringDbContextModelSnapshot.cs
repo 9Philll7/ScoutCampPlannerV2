@@ -257,6 +257,9 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                     b.Property<Guid?>("StandardMealPlanId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("TogetherPreference")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("GroupId");
@@ -395,6 +398,10 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                         .HasPrecision(18, 4)
                         .HasColumnType("numeric(18,4)");
 
+                    b.Property<string>("ManualSupplySolutionsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<Guid?>("MealPlanId")
                         .HasColumnType("uuid");
 
@@ -413,6 +420,17 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
 
                     b.Property<int>("SubscriptionState")
                         .HasColumnType("integer");
+
+                    b.Property<long>("SupplyVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("VerificationFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("VerificationSnapshotJson")
+                        .HasColumnType("text");
 
                     b.Property<string>("WarningsJson")
                         .HasColumnType("text");

@@ -2,19 +2,8 @@
 
 use tauri::Manager;
 use tauri_plugin_shell::{process::CommandEvent, ShellExt};
-
-#[tauri::command]
-async fn open_camp_package() -> Result<Option<Vec<u8>>, String> {
-    tauri::async_runtime::spawn_blocking(|| {
-        let Some(path) = rfd::FileDialog::new().add_filter("Lagerpaket", &["scoutcamp"]).pick_file() else {
-            return Ok(None);
-        };
-        if std::fs::metadata(&path).map_err(|e| e.to_string())?.len() > 100 * 1024 * 1024 {
-            return Err("Das Paket ist größer als 100 MB.".into());
-        }
-        std::fs::read(path).map(Some).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
-}
+mod package_file;
+use package_file::{open_camp_package, read_camp_package_chunk, close_camp_package, PackageFile};
 
 #[tauri::command]
 async fn save_return_package(bytes: Vec<u8>) -> Result<bool, String> {
@@ -29,7 +18,8 @@ async fn save_return_package(bytes: Vec<u8>) -> Result<bool, String> {
 fn main() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![open_camp_package, save_return_package])
+        .manage(PackageFile::default())
+        .invoke_handler(tauri::generate_handler![open_camp_package, read_camp_package_chunk, close_camp_package, save_return_package])
         .setup(|app| {
             let data_directory = app.path().app_local_data_dir()?;
             std::fs::create_dir_all(&data_directory)?;

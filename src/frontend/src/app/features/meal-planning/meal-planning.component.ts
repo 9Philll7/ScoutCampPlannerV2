@@ -1,4 +1,4 @@
-import { Component, effect, inject, input, signal } from '@angular/core';
+import { Component, effect, inject, input, signal, viewChildren } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -9,6 +9,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActionIconComponent } from '../../shared/action-icon.component';
 import { ParticipantPlanningComponent } from './participant-planning.component';
+import { SupplySolutionsComponent } from './supply-solutions.component';
 import {
   CookingUnit, CookingUnitGroup, CookingUnitMeal, MealPlanDocument, MealPlanEntryDocument,
   MealPlanOfferGroupDocument, MealPlanningApiService, MealPlanningOverview, MealSlot,
@@ -28,7 +29,7 @@ interface MealDraft {
   selector: 'scp-meal-planning',
   standalone: true,
   imports: [FormsModule, MatButtonModule, MatCardModule, MatCheckboxModule, MatFormFieldModule,
-    MatInputModule, MatSelectModule, MatTooltipModule, ActionIconComponent, ParticipantPlanningComponent],
+    MatInputModule, MatSelectModule, MatTooltipModule, ActionIconComponent, ParticipantPlanningComponent, SupplySolutionsComponent],
   template: `
     <section class="meal-planning">
       <div class="section-heading">
@@ -155,6 +156,9 @@ interface MealDraft {
                 </mat-select></mat-form-field><mat-form-field appearance="outline"><mat-label>Standard-Struktur</mat-label><mat-select multiple [(ngModel)]="unit.defaultStructureNodeIds" [name]="'unit-nodes-' + unit.id" [disabled]="disabled()">
                   @for (node of data.structureNodes; track node.id) { <mat-option [value]="node.id">{{ node.name }}</mat-option> }
                 </mat-select></mat-form-field>
+                <mat-form-field><mat-label>Gemeinsame Versorgung</mat-label><mat-select [(ngModel)]="unit.togetherPreference" [disabled]="disabled()">
+                  <mat-option [value]="0">Gemeinsam bevorzugen</mat-option><mat-option [value]="1">Nachfragen</mat-option><mat-option [value]="2">Getrennt bevorzugen</mat-option>
+                </mat-select></mat-form-field>
                 <button matIconButton type="button" matTooltip="Kocheinheit speichern" aria-label="Kocheinheit speichern" (click)="saveUnit(unit)" [disabled]="disabled()"><scp-action-icon name="save"/></button>
                 <button matIconButton type="button" class="remove-action" matTooltip="Kocheinheit löschen" aria-label="Kocheinheit löschen" (click)="deleteUnit(unit.id)" [disabled]="disabled()"><scp-action-icon name="remove"/></button></div>
                 <div class="slot-grid">@for (meal of activeMeals(data); track meal.id) {
@@ -191,6 +195,11 @@ interface MealDraft {
                       @for (problem of stateFor(data, unit.id, meal.id)?.participantProblems || []; track problem.reasonCode) {
                         <p class="status stale">{{ problem.reasonCode === 'OverlappingCookingUnits' ? 'Überlappende Kocheinheiten: keine eindeutige Zuordnung.' : problem.reasonCode === 'ParticipantStructureMigrationRequired' ? 'Alte Teilnehmerzuordnungen müssen migriert werden.' : 'Anwesende Teilnehmer sind keiner Kocheinheit zugeordnet.' }}</p>
                       }
+                      @if (stateFor(data, unit.id, meal.id); as state) {
+                        @if (state.supply) {
+                          <scp-supply-solutions [campId]="campId()" [state]="state" [recipes]="data.recipeOptions" [disabled]="disabled()" (saved)="supplySaved()" (verified)="supplyVerified()"/>
+                        }
+                      }
                       <footer><button matButton type="button" (click)="saveMeal(unit, meal, draft)" [disabled]="disabled()"><scp-action-icon name="save"/>Einstellungen</button>
                         @if (draft.subscriptionState !== 0) { <button matButton type="button" (click)="resetPlan(unit, meal, draft)" [disabled]="disabled()">Auf Standardplan zurücksetzen</button> }
                         @if (draft.useStructureOverride) { <button matButton type="button" (click)="resetStructure(unit.id, meal.id)" [disabled]="disabled()">Struktur zurücksetzen</button> }
@@ -223,6 +232,8 @@ interface MealDraft {
   `,
 })
 export class MealPlanningComponent {
+  supplySaved() { this.changed('Versorgungsentscheidungen gespeichert. Bitte neu berechnen.'); }
+  supplyVerified() { this.changed('Verifikation gespeichert.'); }
   readonly campId = input.required<string>();
   readonly disabled = input(false);
   private readonly api = inject(MealPlanningApiService);
@@ -264,7 +275,13 @@ export class MealPlanningComponent {
   saveMeal(unit: CookingUnit, meal: MealSlot, draft: MealDraft) { this.api.configureMeal(this.campId(), unit.id, meal.id, { subscriptionState: draft.subscriptionState, demandOverride: draft.demandOverride, structureOverrideNodeIds: draft.useStructureOverride ? draft.structureOverrideNodeIds : [], offerTargets: draft.offerTargets, recipeChoices: draft.recipeChoices }).subscribe({ next: () => this.changed('Mahlzeiteneinstellungen gespeichert.'), error: error => this.failed(error, 'Die Mahlzeiteneinstellungen konnten nicht gespeichert werden.') }); }
   resetPlan(unit: CookingUnit, meal: MealSlot, draft: MealDraft) { draft.subscriptionState = 0; draft.demandOverride = null; draft.offerTargets = []; draft.recipeChoices = []; this.saveMeal(unit, meal, draft); }
   resetStructure(unitId: string, mealId: string) { this.api.resetStructure(this.campId(), unitId, mealId).subscribe({ next: () => this.changed('Strukturabweichung zurückgesetzt.'), error: error => this.failed(error, 'Die Strukturabweichung konnte nicht zurückgesetzt werden.') }); }
-  calculate(unitId: string, mealId: string) { this.api.calculate(this.campId(), unitId, mealId).subscribe({ next: () => this.changed('Verpflegungsteilstand berechnet.'), error: error => this.failed(error, 'Der Verpflegungsteilstand konnte nicht berechnet werden.') }); }
+  private readonly supplyEditors = viewChildren(SupplySolutionsComponent);
+  calculate(unitId: string, mealId: string) {
+    if (this.supplyEditors().some(editor => editor.hasUnsavedChanges())) {
+      window.alert('Bitte die ungespeicherten Versorgungsentscheidungen zuerst speichern. Es wurde nichts verworfen.'); return;
+    }
+    this.api.calculate(this.campId(), unitId, mealId).subscribe({ next: () => this.changed('Verpflegungsteilstand berechnet.'), error: error => this.failed(error, 'Der Verpflegungsteilstand konnte nicht berechnet werden.') });
+  }
   offerGroupsFor(data: MealPlanningOverview, unit: CookingUnit, mealId: string) { const planId = unit.standardMealPlanId; return data.mealPlanDocuments.find(value => value.id === planId)?.offerGroups.filter(value => value.campMealId === mealId) ?? []; }
   offerTarget(draft: MealDraft, groupId: string) { return draft.offerTargets.find(value => value.offerGroupId === groupId)?.targetOverride ?? null; }
   setOfferTarget(draft: MealDraft, groupId: string, value: number | null) { const existing = draft.offerTargets.find(item => item.offerGroupId === groupId); if (existing) existing.targetOverride = value; else draft.offerTargets.push({ id: crypto.randomUUID(), offerGroupId: groupId, targetOverride: value }); }

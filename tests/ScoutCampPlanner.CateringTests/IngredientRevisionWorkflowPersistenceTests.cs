@@ -4,12 +4,49 @@ using ScoutCampPlanner.Catering.Application.Ingredients;
 using ScoutCampPlanner.Catering.Domain;
 using ScoutCampPlanner.Catering.Infrastructure;
 using ScoutCampPlanner.Catering.Infrastructure.Ingredients;
+using ScoutCampPlanner.Catering.Infrastructure.Recipes;
 using Xunit;
 
 namespace ScoutCampPlanner.CateringTests;
 
 public sealed class IngredientRevisionWorkflowPersistenceTests
 {
+    [Fact]
+    public async Task Supply_projection_uses_pinned_published_revision_of_retired_identity_and_effective_variant()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        var ct = TestContext.Current.CancellationToken;
+        var seed = await fixture.SeedDraftAsync(reviewed: true);
+        var db = fixture.Database;
+        var revision = await db.Set<IngredientRevisionRecord>().SingleAsync(value => value.Id == seed.RevisionId, ct);
+        revision.State = (int)IngredientRevisionState.Published;
+        var identity = await db.Set<IngredientIdentityRecord>().SingleAsync(value => value.Id == seed.IngredientId, ct);
+        identity.Status = 1;
+        // Use the seeded catalog IDs rather than assuming a particular main-allergen mapping.
+        Guid milk = await db.Set<IngredientAllergenDefinitionRecord>().Select(value => value.Id).FirstAsync(ct);
+        var variantId = Guid.NewGuid();
+        db.AddRange(new IngredientRevisionAllergenRecord { IngredientRevisionId = seed.RevisionId,
+                AllergenId = milk, State = (int)IngredientPropertyState.Contains },
+            new IngredientVariantRevisionRecord { Id = variantId, IngredientRevisionId = seed.RevisionId,
+                VariantKey = "without", Name = "Without", NormalizedName = "WITHOUT" },
+            new IngredientVariantAllergenOverrideRecord { VariantRevisionId = variantId, AllergenId = milk,
+                State = (int)IngredientPropertyState.DoesNotContain });
+        await db.SaveChangesAsync(ct);
+        db.ChangeTracker.Clear();
+        var references = new EfSupplySuitabilityReferences(db);
+        var content = references.Ingredient(seed.RevisionId);
+        Assert.Equal("Linsen", content.Name);
+        Assert.Equal(IngredientPropertyState.Contains, Assert.Single(content.Allergens).State);
+        var effective = references.ResolveVariant(seed.RevisionId, "without", seed.UnitId);
+        Assert.Empty(effective.Ingredient.Conflicts);
+        Assert.Equal(1, effective.Unit.ReferenceQuantityPerUnit);
+        Assert.All(references.MainOrigins, value => Assert.Contains(value.Code, DietaryCatalogStore.MainOriginCodes));
+        revision = await db.Set<IngredientRevisionRecord>().SingleAsync(value => value.Id == seed.RevisionId, ct);
+        revision.State = (int)IngredientRevisionState.Draft;
+        await db.SaveChangesAsync(ct);
+        Assert.Throws<InvalidOperationException>(() => references.Ingredient(seed.RevisionId));
+    }
+
     [Fact]
     public async Task Create_draft_persists_identity_scope_and_initial_revision()
     {

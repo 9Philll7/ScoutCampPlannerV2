@@ -24,7 +24,11 @@ public sealed partial class MealPlanningService
 
     private static bool RequiresParticipantAccess(MealPlanningData data) =>
         data.ParticipantConfiguration?.DemandMode == MealPlanningDemandMode.UseActualParticipants ||
-        data.MealStates.Any(value => value.DemandBasis == EffectiveDemandBasis.ActualParticipants);
+        data.MealStates.Any(RequiresParticipantAccess);
+
+    public static bool RequiresParticipantAccess(CookingUnitMealState value) => value.DemandBasis == EffectiveDemandBasis.ActualParticipants ||
+            value.VerificationSnapshotJson is not null && JsonSerializer.Deserialize<MealVerificationSnapshot>(value.VerificationSnapshotJson, JsonOptions)?.DemandBasis == EffectiveDemandBasis.ActualParticipants || ReadManualSupply(value).Any(solution =>
+                solution.Allocations.Any(allocation => allocation.RequirementGroupKey != new RequirementSignature(null, [], []).Key));
 
     public async Task<ParticipantPlanningConfigurationDocument> GetParticipantConfigurationAsync(Guid campId, CancellationToken ct = default)
     {

@@ -111,6 +111,49 @@ try {
         Invoke-RestMethod "$local/api/camps/$campId/cooking-units/$unitId" -Method Put -Headers $headers -ContentType 'application/json' -Body ($localUnit | ConvertTo-Json -Depth 8) | Out-Null
         $configurationUpdate = @{ expectedVersion = $configuration.version; demandMode = 1 } | ConvertTo-Json
         Invoke-RestMethod "$local/api/camps/$campId/meal-planning/participants" -Method Put -Headers $headers -ContentType 'application/json' -Body $configurationUpdate | Out-Null
+        $verifiedMealId = $localPlanning.meals[0].id
+        $mealRoute = "$local/api/camps/$campId/cooking-units/$unitId/meals/$verifiedMealId"
+        $noSupply = @{ subscriptionState = 2; demandOverride = $null; structureOverrideNodeIds = $null; offerTargets = @(); recipeChoices = @() } | ConvertTo-Json
+        Invoke-RestMethod $mealRoute -Method Put -Headers $headers -ContentType 'application/json' -Body $noSupply | Out-Null
+        Invoke-RestMethod "$mealRoute/calculate" -Method Post -Headers $headers -ContentType 'application/json' -Body '{}' | Out-Null
+        $calculated = Invoke-RestMethod "$local/api/camps/$campId/meal-planning" -Headers $headers
+        $supplyState = @($calculated.operationalMeals | Where-Object { $_.cookingUnitId -eq $unitId -and $_.campMealId -eq $verifiedMealId })[0]
+        $supplyRequest = @{ expectedVersion = $supplyState.supplyVersion; solutions = @() } | ConvertTo-Json
+        Invoke-RestMethod "$mealRoute/supply" -Method Put -Headers $headers -ContentType 'application/json' -Body $supplyRequest | Out-Null
+        $verifyRequest = @{ expectedVersion = $supplyState.supplyVersion; kind = 0; reason = $null } | ConvertTo-Json
+        Assert-Status 404 { Invoke-RestMethod "$mealRoute/verify" -Method Post -Headers $headers -ContentType 'application/json' -Body $verifyRequest }
+        $verifyArguments = @('--Database:Provider=Sqlite',
+            ('"--Database:ConnectionString=Data Source=' + (Join-Path $testDirectory 'local.db') + '"'),
+            ('"--Audit:Directory=' + (Join-Path $testDirectory 'local-audit') + '"'),
+            '--local-permission-command', 'grant', '--local-permission-camp', $campId,
+            '--local-permission-transfer', $visible[0].activeTransferId,
+            '--local-permission-name', 'catering.meal-planning.verify', '--local-permission-confirm', 'true')
+        $verifyGrant = Start-Process -FilePath $executable -ArgumentList $verifyArguments -WindowStyle Hidden -Wait -PassThru `
+            -RedirectStandardOutput (Join-Path $testDirectory 'verify-grant.log') -RedirectStandardError (Join-Path $testDirectory 'verify-grant.err')
+        if ($verifyGrant.ExitCode -ne 0) { throw 'Explicit local verification grant failed.' }
+        $missingReason = @{ expectedVersion = $supplyState.supplyVersion; kind = 1; reason = '' } | ConvertTo-Json
+        Assert-Status 422 { Invoke-RestMethod "$mealRoute/verify" -Method Post -Headers $headers -ContentType 'application/json' -Body $missingReason }
+        Invoke-RestMethod "$mealRoute/verify" -Method Post -Headers $headers -ContentType 'application/json' -Body $verifyRequest | Out-Null
+        Assert-Status 409 { Invoke-RestMethod "$mealRoute/verify" -Method Post -Headers $headers -ContentType 'application/json' -Body $verifyRequest }
+        Assert-Status 409 { Invoke-RestMethod "$mealRoute/supply" -Method Put -Headers $headers -ContentType 'application/json' -Body $supplyRequest }
+        Assert-Status 401 { Invoke-RestMethod "$mealRoute/supply" -Method Put -ContentType 'application/json' -Body $supplyRequest }
+        Assert-Status 401 { Invoke-RestMethod "$mealRoute/verify" -Method Post -ContentType 'application/json' -Body $verifyRequest }
+        $foreignRoute = "$local/api/camps/$([Guid]::NewGuid())/cooking-units/$unitId/meals/$verifiedMealId"
+        Assert-Status 404 { Invoke-RestMethod "$foreignRoute/supply" -Method Put -Headers $headers -ContentType 'application/json' -Body $supplyRequest }
+        Assert-Status 404 { Invoke-RestMethod "$foreignRoute/verify" -Method Post -Headers $headers -ContentType 'application/json' -Body $verifyRequest }
+        foreach ($healthAction in @('revoke', 'grant')) {
+            $healthArguments = @($verifyArguments | ForEach-Object {
+                if ($_ -eq 'catering.meal-planning.verify') { 'health.participant-requirements.read' }
+                elseif ($_ -eq 'grant') { $healthAction } else { $_ }
+            })
+            $healthProcess = Start-Process -FilePath $executable -ArgumentList $healthArguments -WindowStyle Hidden -Wait -PassThru `
+                -RedirectStandardOutput (Join-Path $testDirectory "health-$healthAction.log") -RedirectStandardError (Join-Path $testDirectory "health-$healthAction.err")
+            if ($healthProcess.ExitCode -ne 0) { throw 'Local health permission change failed.' }
+            if ($healthAction -eq 'revoke') {
+                Assert-Status 404 { Invoke-RestMethod "$mealRoute/supply" -Method Put -Headers $headers -ContentType 'application/json' -Body $supplyRequest }
+                Assert-Status 404 { Invoke-RestMethod "$mealRoute/verify" -Method Post -Headers $headers -ContentType 'application/json' -Body $verifyRequest }
+            }
+        }
     }
     Invoke-RestMethod "$local/api/camps/$campId" -Method Put -Headers $headers -ContentType 'application/json' -Body $changed | Out-Null
     Assert-Status 403 { Invoke-RestMethod "$local/api/tenants/$tenantId/camps" -Method Post -Headers $headers -ContentType 'application/json' -Body $body }
@@ -134,6 +177,10 @@ try {
         $planningOverview = Invoke-RestMethod "$cloud/api/camps/$campId/meal-planning" -WebSession $session
         if ($planningResult.version -ne 2 -or $planningOverview.cookingUnits[0].participantFilter -ne 2 -or
             $participantResult.participants[0].data.structureNodeId -ne $node.id) { throw 'Camp structure and cooking filter roundtrip failed.' }
+        $returnedSupply = @($planningOverview.operationalMeals | Where-Object { $_.campMealId -eq $verifiedMealId })[0]
+        if ($null -eq $returnedSupply.verification -or $returnedSupply.verification.kind -ne 0 -or $returnedSupply.verificationStale) {
+            throw 'NoSupplyRequired verification did not survive the return package.'
+        }
         Assert-Status 404 { Invoke-RestMethod "$local/api/camps/$campId/participants" -Headers $headers }
     }
     Assert-Status 409 { Invoke-RestMethod "$cloud/api/packages/import-return?expectedCampId=$campId" -Method Post -WebSession $session -ContentType 'application/octet-stream' -InFile $returned }

@@ -99,7 +99,8 @@ public sealed class RecipeCalculatorTests
         Assert.Equal("Ersatz", ingredient.IngredientName);
         Assert.Equal(6m, ingredient.Quantity);
         Assert.Equal(replacementId, ingredient.AppliedReplacementRuleId);
-        Assert.Equal([conflict, ruleConflict], result.Conflicts);
+        // Applicability describes why a rule may be selected, not a conflict of its result.
+        Assert.Equal([conflict], result.Conflicts);
         Assert.True(result.Nutrition.IsComplete);
         Assert.Equal(6m, result.Nutrition.Total!.EnergyKilojoules);
     }
@@ -213,6 +214,28 @@ public sealed class RecipeCalculatorTests
 
         Assert.Throws<InvalidOperationException>(() => Calculator((firstId, first), (secondId, second)).Calculate(
             new RecipeCalculationRequest(firstId, 1m, 1m)));
+    }
+
+    [Fact]
+    public void Occurrence_path_changes_only_one_of_two_uses_of_the_same_subrecipe()
+    {
+        var rootId = Guid.NewGuid(); var childId = Guid.NewGuid();
+        var position = Ingredient(10m);
+        var replacement = new IngredientReplacementSnapshot(Guid.NewGuid(), new(Guid.NewGuid(), "Ersatz", []),
+            20m, new(Gram, 1m), []);
+        position = position with { Replacements = [replacement] };
+        var first = new SubrecipePositionSnapshot(Guid.NewGuid(), null, 0, childId, 1m, null, null, [], []);
+        var second = first with { Id = Guid.NewGuid(), SortOrder = 1 };
+        var calculator = Calculator((rootId, PortionRecipe(1m, false, subrecipes: [first, second])),
+            (childId, PortionRecipe(1m, false, position)));
+        string selectedPath = $"{rootId:N}/{first.Id:N}/{childId:N}/{position.Id:N}";
+        var result = calculator.Calculate(new(rootId, 1m, 1m, PositionSelections:
+            new Dictionary<string, RecipePositionSelection> { [selectedPath] = new(replacement.Id) }));
+        Assert.Equal(new[] { 20m, 10m }, result.Ingredients.Select(value => value.Quantity));
+        Assert.Equal(selectedPath, result.Ingredients[0].PositionPath);
+        Assert.NotEqual(result.Ingredients[0].PositionPath, result.Ingredients[1].PositionPath);
+        Assert.Throws<InvalidOperationException>(() => calculator.Calculate(new(rootId, 1m, 1m, PositionSelections:
+            new Dictionary<string, RecipePositionSelection> { [$"{rootId:N}/{Guid.NewGuid():N}"] = new(replacement.Id) })));
     }
 
     private static RecipeCalculator Calculator(params (Guid Id, RecipeSnapshot Recipe)[] recipes) =>

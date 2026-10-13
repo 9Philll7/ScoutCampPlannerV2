@@ -15,6 +15,7 @@ public enum MealPlanningProblemCode
     DietTypeExcludedOrigin, UnknownDietTypeRule, ManualDecisionNoLongerSuitable,
     RequirementGroupUndercovered, RequirementGroupOvercovered, UnassignedPlannedPortions,
     UnassignedParticipant,
+    CommonSupplyDecisionRequired,
 }
 
 public sealed record MealPlanningProblem(MealPlanningProblemCategory Category,
@@ -37,6 +38,11 @@ public sealed record IntoleranceRequirement
 /// <summary>Calculation identity only. Names, source metadata and participant identities cannot split groups.</summary>
 public sealed class RequirementSignature
 {
+    [System.Text.Json.Serialization.JsonConstructor]
+    public RequirementSignature(Guid? dietTypeId, IReadOnlyList<Guid> allergenIds,
+        IReadOnlyList<IntoleranceRequirement> intolerances)
+        : this(dietTypeId, (IEnumerable<Guid>)allergenIds, (IEnumerable<IntoleranceRequirement>)intolerances) { }
+
     public RequirementSignature(Guid? dietTypeId, IEnumerable<Guid> allergenIds,
         IEnumerable<IntoleranceRequirement> intolerances)
     {
@@ -128,7 +134,8 @@ public static class SubstancePortionEvaluator
         foreach (var value in values.Where(value => value.Contained == true))
             problems.Add(new(MealPlanningProblemCategory.DataQuality, MealPlanningProblemCode.QualitativeOnlySubstanceData,
                 ReferenceId: requirement.SubstanceId, PositionPath: value.PositionPath));
-        if (!requirement.ThresholdGramsPerPortion.HasValue)
+        if (!requirement.ThresholdGramsPerPortion.HasValue && values.Any(value =>
+                value.Contained == true || value.Grams > 0))
             problems.Add(new(MealPlanningProblemCategory.DataQuality, MealPlanningProblemCode.MissingThreshold,
                 ReferenceId: requirement.SubstanceId));
         // An empty projection is missing data, not proof of absence.

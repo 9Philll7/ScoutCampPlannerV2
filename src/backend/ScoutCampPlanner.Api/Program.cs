@@ -95,7 +95,7 @@ if (sqliteBackupRetention < 1)
 
 builder.Services.AddScoped<DbConnection>(_ => provider.Equals("PostgreSql", StringComparison.OrdinalIgnoreCase)
     ? new NpgsqlConnection(connectionString)
-    : new SqliteConnection(connectionString));
+    : SqliteRuntimeConnection.Create(connectionString));
 builder.Services.AddDbContext<PlatformDbContext>((services, options) => Configure(options, services.GetRequiredService<DbConnection>(), provider, "platform"));
 builder.Services.AddDbContext<CampDbContext>((services, options) => Configure(options, services.GetRequiredService<DbConnection>(), provider, "camp"));
 builder.Services.AddDbContext<CateringDbContext>((services, options) => Configure(options, services.GetRequiredService<DbConnection>(), provider, "catering"));
@@ -119,6 +119,8 @@ builder.Services.AddScoped<MealPlanningService>();
 builder.Services.AddScoped<RecipeDraftStore>();
 builder.Services.AddScoped<IRecipeDraftStore>(services => services.GetRequiredService<RecipeDraftStore>());
 builder.Services.AddScoped<EfRecipeReferences>();
+builder.Services.AddScoped<ISupplySuitabilityReferences, EfSupplySuitabilityReferences>();
+builder.Services.AddScoped<MealVerificationService>();
 builder.Services.AddScoped<IRecipeRevisionSource>(services => services.GetRequiredService<EfRecipeReferences>());
 builder.Services.AddScoped<IRecipeValidationReferences>(services => services.GetRequiredService<EfRecipeReferences>());
 builder.Services.AddScoped<IRecipeSnapshotReferences>(services => services.GetRequiredService<EfRecipeReferences>());
@@ -229,12 +231,25 @@ app.Use(async (context, next) =>
         context.Response.StatusCode = StatusCodes.Status404NotFound;
         await context.Response.WriteAsJsonAsync(new { code = "package_access_unavailable" });
     }
-    catch (CampPackageValidationException) when (context.Request.Path.StartsWithSegments("/api/packages"))
+    catch (CampPackageValidationException exception) when (context.Request.Path.StartsWithSegments("/api/packages"))
     {
+        app.Logger.LogWarning("Package rejected ({Code}): {Reason}", exception.Code, exception.Message);
         context.Response.StatusCode = StatusCodes.Status409Conflict;
         await context.Response.WriteAsJsonAsync(new {
-            code = "invalid_package_or_transfer",
-            message = "Das Paket ist ungültig oder passt nicht zum aktuellen Transfer. Ein bereits lokal vorhandenes Lager kann nicht erneut importiert werden."
+            code = exception.Code,
+            message = exception.Code == "camp_already_exists_locally"
+                ? "Dieses Lager ist auf diesem Gerät bereits vorhanden und kann nicht erneut importiert werden."
+                : "Das Paket ist ungültig oder passt nicht zum aktuellen Transfer. Bitte Paket und App-Version prüfen; der technische Grund steht im Backend-Protokoll."
+        });
+    }
+    catch (Exception exception) when (context.Request.Path.StartsWithSegments("/api/packages")
+        && !context.Response.HasStarted && (exception is DbUpdateException or DbException))
+    {
+        app.Logger.LogError(exception, "Package database operation failed; inspect the database and transfer state before retrying.");
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        await context.Response.WriteAsJsonAsync(new {
+            code = "package_database_error",
+            message = "Das Paket konnte wegen eines Datenbankfehlers nicht verarbeitet werden. Bitte Lager- und Transferstatus prüfen; der technische Grund steht im Backend-Protokoll."
         });
     }
 });
@@ -861,6 +876,7 @@ app.MapPost("/api/camps/{campId:guid}/cooking-units/{cookingUnitId:guid}/meals/{
     return ToMealPlanningResult(await planning.CalculateAsync(campId, cookingUnitId, mealId, cancellationToken,
         await camps.HasCampPermissionAsync(userId, campId, Permissions.Health.ReadParticipantRequirements, cancellationToken)));
 }).RequireAuthorization();
+app.MapMealSupplyEndpoints();
 app.MapGet("/api/recipes/central", async (
     ClaimsPrincipal principal, RecipeCatalogService recipes, CancellationToken cancellationToken) =>
 {

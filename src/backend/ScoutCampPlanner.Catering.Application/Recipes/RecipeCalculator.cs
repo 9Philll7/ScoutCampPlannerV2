@@ -11,7 +11,16 @@ public sealed record RecipeCalculationRequest(
     Guid RecipeRevisionId,
     decimal AgeAdjustedServings,
     decimal DirectParticipantDemand,
-    IReadOnlyDictionary<Guid, Guid>? SelectedReplacementRuleIds = null);
+    IReadOnlyDictionary<Guid, Guid>? SelectedReplacementRuleIds = null,
+    IReadOnlyDictionary<string, RecipePositionSelection>? PositionSelections = null);
+
+public sealed record RecipePositionSelection(Guid? ReplacementRuleId = null, string? VariantKey = null);
+
+public interface IRecipeVariantSource
+{
+    (IngredientSnapshotSource Ingredient, IngredientUnitSnapshot Unit) ResolveVariant(
+        Guid ingredientRevisionId, string variantKey, Guid unitId);
+}
 
 public sealed record CalculatedIngredient(
     Guid IngredientId,
@@ -23,7 +32,8 @@ public sealed record CalculatedIngredient(
     Guid PositionId,
     Guid? AppliedReplacementRuleId,
     CalculatedNutritionValues? Nutrition = null,
-    MissingNutritionReason? NutritionIssue = null);
+    MissingNutritionReason? NutritionIssue = null,
+    string PositionPath = "", string? VariantKey = null, decimal QuantityInBaseUnit = 0);
 
 public sealed record CalculatedNutritionValues(
     decimal EnergyKilojoules,
@@ -63,7 +73,7 @@ public sealed record RecipeCalculationResult(
     IReadOnlyList<ConflictReference> Conflicts,
     RecipeNutritionCalculation Nutrition);
 
-public sealed class RecipeCalculator(IRecipeSnapshotSource snapshots)
+public sealed class RecipeCalculator(IRecipeSnapshotSource snapshots, IRecipeVariantSource? variants = null)
 {
     public RecipeCalculationResult Calculate(RecipeCalculationRequest request)
     {
@@ -91,13 +101,19 @@ public sealed class RecipeCalculator(IRecipeSnapshotSource snapshots)
         var activePath = new HashSet<Guid>();
         var path = new List<Guid>();
         var conflicts = new HashSet<ConflictReference>();
+        var consumed = new HashSet<string>(StringComparer.Ordinal);
+        if (request.PositionSelections?.Count > 0 && request.SelectedReplacementRuleIds?.Count > 0)
+            throw new ArgumentException("Use either occurrence paths or legacy position IDs, not both.", nameof(request));
         decimal adjustedRatio = request.AgeAdjustedServings / root.Reference.StandardServings.Value;
         decimal directRatio = request.DirectParticipantDemand / root.Reference.StandardServings.Value;
         Evaluate(
             request.RecipeRevisionId, root, adjustedRatio, directRatio,
             request.AgeAdjustedServings, request.DirectParticipantDemand,
             topLevel: true, request.SelectedReplacementRuleIds ?? new Dictionary<Guid, Guid>(),
-            activePath, path, result, conflicts);
+            activePath, path, result, conflicts, request.PositionSelections ?? new Dictionary<string, RecipePositionSelection>(),
+            request.RecipeRevisionId.ToString("N"), consumed, true);
+        if (request.PositionSelections is not null && request.PositionSelections.Keys.Any(key => !consumed.Contains(key)))
+            throw new InvalidOperationException("A selected position path is absent or lies inside a replaced subrecipe.");
         return new RecipeCalculationResult(
             result,
             conflicts.OrderBy(value => value.Type).ThenBy(value => value.Id).ToArray(),
@@ -116,7 +132,9 @@ public sealed class RecipeCalculator(IRecipeSnapshotSource snapshots)
         HashSet<Guid> activePath,
         List<Guid> path,
         List<CalculatedIngredient> result,
-        HashSet<ConflictReference> conflicts)
+        HashSet<ConflictReference> conflicts,
+        IReadOnlyDictionary<string, RecipePositionSelection> occurrenceSelections,
+        string occurrencePath, HashSet<string> consumed, bool allowChanges)
     {
         if (!activePath.Add(revisionId))
             throw new InvalidOperationException("A recipe cycle was encountered during calculation.");
@@ -125,17 +143,25 @@ public sealed class RecipeCalculator(IRecipeSnapshotSource snapshots)
         {
             foreach (IngredientPositionSnapshot position in recipe.IngredientPositions)
             {
+                string positionPath = occurrencePath + "/" + position.Id.ToString("N");
+                RecipePositionSelection? selection = allowChanges ? occurrenceSelections.GetValueOrDefault(positionPath) : null;
+                if (selection is not null) consumed.Add(positionPath);
                 (decimal positionRatio, decimal positionDemand) = ResolveIngredientDemand(
                     recipe, position, ratio, directRatio, targetDemand, directTargetDemand, topLevel);
                 IngredientReplacementSnapshot? replacement = Select(
                     position.Id, position.Replacements, value => value.Id, selections);
+                if (selection?.ReplacementRuleId is Guid replacementId)
+                    replacement = position.Replacements.SingleOrDefault(value => value.Id == replacementId) ??
+                        throw new InvalidOperationException("Selected replacement rule does not belong to the position.");
                 IngredientSnapshotSource ingredient = replacement?.Ingredient ?? position.Ingredient;
+                IngredientUnitSnapshot unit = replacement?.Unit ?? position.Unit;
+                if (selection?.VariantKey is string variantKey)
+                    (ingredient, unit) = (variants ?? throw new InvalidOperationException("Variant references are unavailable."))
+                        .ResolveVariant(ingredient.IngredientRevisionId, variantKey, unit.Unit.UnitId);
                 ConflictReference[] ingredientConflicts = ingredient.Conflicts
-                    .Concat(replacement?.ApplicableConflicts ?? [])
                     .Distinct().OrderBy(value => value.Type).ThenBy(value => value.Id).ToArray();
                 conflicts.UnionWith(ingredientConflicts);
                 decimal referenceQuantity = replacement?.Quantity ?? position.Quantity;
-                IngredientUnitSnapshot unit = replacement?.Unit ?? position.Unit;
                 decimal quantity = Scale(
                     referenceQuantity, position.ScalingMode, position.StepwiseScaling,
                     positionRatio, positionDemand);
@@ -144,25 +170,33 @@ public sealed class RecipeCalculator(IRecipeSnapshotSource snapshots)
                     ingredient.IngredientRevisionId, ingredient.Name, quantity, unit.Unit,
                     ingredientConflicts,
                     path.ToArray(), position.Id, replacement?.Id, nutrition,
-                    NutritionIssue(ingredient.Nutrition)));
+                    NutritionIssue(ingredient.Nutrition), positionPath, selection?.VariantKey,
+                    quantity * unit.ReferenceQuantityPerUnit));
             }
 
             foreach (SubrecipePositionSnapshot position in recipe.SubrecipePositions)
             {
+                string positionPath = occurrencePath + "/" + position.Id.ToString("N");
+                RecipePositionSelection? selection = allowChanges ? occurrenceSelections.GetValueOrDefault(positionPath) : null;
+                if (selection is not null) consumed.Add(positionPath);
+                if (selection?.VariantKey is not null) throw new InvalidOperationException("Subrecipes have no ingredient variant.");
                 RecipeReplacementSnapshot? replacement = Select(
                     position.Id, position.Replacements, value => value.Id, selections);
+                if (selection?.ReplacementRuleId is Guid replacementId)
+                    replacement = position.Replacements.SingleOrDefault(value => value.Id == replacementId) ??
+                        throw new InvalidOperationException("Selected replacement rule does not belong to the position.");
                 Guid childRevisionId = replacement?.RecipeRevisionId ?? position.RecipeRevisionId;
                 RecipeSnapshot child = snapshots.GetRevision(childRevisionId);
                 decimal? servings = replacement?.Servings ?? position.RequiredServings;
                 decimal? quantity = replacement?.Quantity ?? position.RequiredQuantity;
                 MeasurementUnitSnapshot? unit = replacement?.Unit ?? position.RequiredUnit;
-                conflicts.UnionWith(replacement?.ApplicableConflicts ?? []);
-                conflicts.UnionWith(replacement?.RevisionConflicts ?? position.RevisionConflicts);
                 decimal childRatio = ResolveSubrecipeRatio(child, servings, quantity, unit) * ratio;
                 decimal childTarget = ReferenceDemand(child) * childRatio;
                 Evaluate(
                     childRevisionId, child, childRatio, childRatio, childTarget, childTarget,
-                    topLevel: false, selections, activePath, path, result, conflicts);
+                    topLevel: false, selections, activePath, path, result, conflicts,
+                    occurrenceSelections, positionPath + "/" + childRevisionId.ToString("N"), consumed,
+                    allowChanges && replacement is null);
             }
         }
         finally

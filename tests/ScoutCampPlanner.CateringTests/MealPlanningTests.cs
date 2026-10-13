@@ -225,6 +225,16 @@ public sealed partial class MealPlanningTests
 
     private sealed class RecordingStore(MealPlanningData data) : IMealPlanningStore
     {
+        public Task<MealPlanningMutationResult> SaveSupplyStateAsync(Guid campId, Guid cookingUnitId, Guid mealId,
+            long expectedVersion, string? manualJson, string? verificationJson, string? verificationFingerprint,
+            CancellationToken cancellationToken = default)
+        {
+            var state = data.MealStates.Single(value => value.CookingUnitId == cookingUnitId && value.CampMealId == mealId);
+            if (state.SupplyVersion != expectedVersion) return Task.FromResult(new MealPlanningMutationResult(MealPlanningMutationStatus.Conflict));
+            if (manualJson is not null) state.SaveManualSupply(manualJson);
+            if (verificationJson is not null) state.SetVerification(verificationJson, verificationFingerprint!);
+            return Success(state.Id);
+        }
         public Task<MealPlanningMutationResult> SaveParticipantConfigurationAsync(Guid campId, int expectedVersion,
             MealPlanningDemandMode mode, string assignmentsJson, CancellationToken ct = default)
         {

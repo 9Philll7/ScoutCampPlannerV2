@@ -152,6 +152,15 @@ interface EditorConflictOption extends RecipeEditorConflict { name: string; }
                         </mat-select>
                       </mat-form-field>
                       <div class="icon-actions">
+                        <mat-form-field><mat-label>Mengenregel</mat-label>
+                          <mat-select [name]="'scaling-' + position.id" [(ngModel)]="position.scalingMode" (ngModelChange)="position.stepSize = null; position.quantityPerStep = null" [disabled]="disabled()">
+                            <mat-option [value]="0">Linear</mat-option><mat-option [value]="1">Fixe Menge</mat-option><mat-option [value]="2">Stufenweise</mat-option>
+                          </mat-select>
+                        </mat-form-field>
+                        @if (position.scalingMode === 2) {
+                          <mat-form-field><mat-label>Portionen pro Stufe</mat-label><input matInput type="number" min="0.000001" step="any" [name]="'step-' + position.id" [(ngModel)]="position.stepSize" [disabled]="disabled()"></mat-form-field>
+                          <mat-form-field><mat-label>Menge pro Stufe</mat-label><input matInput type="number" min="0.000001" step="any" [name]="'step-quantity-' + position.id" [(ngModel)]="position.quantityPerStep" [disabled]="disabled()"></mat-form-field>
+                        }
                         <button matIconButton type="button" aria-label="Zutat nach oben verschieben"
                           title="Zutat nach oben verschieben" (click)="movePosition(position, -1)"
                           [disabled]="disabled() || first"><scp-action-icon name="up"/></button>

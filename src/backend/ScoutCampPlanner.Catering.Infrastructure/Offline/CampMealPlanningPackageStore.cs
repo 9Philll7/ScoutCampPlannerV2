@@ -34,7 +34,8 @@ public sealed record MealPlanEntryPackageRecord(
 public sealed record CookingUnitGroupPackageRecord(Guid Id, Guid CampId, string Name, int SortOrder);
 public sealed record CookingUnitPackageRecord(
     Guid Id, Guid CampId, string Name, int SortOrder, Guid? GroupId, Guid? StandardMealPlanId,
-    CookingUnitParticipantFilter ParticipantFilter = CookingUnitParticipantFilter.All);
+    CookingUnitParticipantFilter ParticipantFilter = CookingUnitParticipantFilter.All,
+    CookingTogetherPreference TogetherPreference = CookingTogetherPreference.Ask);
 public sealed record StructureAssignmentPackageRecord(
     Guid Id, Guid CampId, Guid CookingUnitId, Guid? CampMealId, Guid StructureNodeId);
 public sealed record CookingUnitMealStatePackageRecord(
@@ -42,7 +43,9 @@ public sealed record CookingUnitMealStatePackageRecord(
     decimal? DemandOverride, decimal? CalculatedDemand, decimal? EffectiveDemand, int Status,
     Guid? MealPlanId, int? MealPlanVersion, Guid? MealPlanSnapshotId,
     string? CalculationSnapshotJson, string? SourceFingerprint, string? WarningsJson,
-    DateTimeOffset? CalculatedAtUtc, EffectiveDemandBasis DemandBasis = EffectiveDemandBasis.Estimated);
+    DateTimeOffset? CalculatedAtUtc, EffectiveDemandBasis DemandBasis = EffectiveDemandBasis.Estimated,
+    string ManualSupplySolutionsJson = "[]", long SupplyVersion = 0,
+    string? VerificationSnapshotJson = null, string? VerificationFingerprint = null);
 public sealed record OfferTargetPackageRecord(
     Guid Id, Guid CookingUnitMealStateId, Guid OfferGroupId, decimal? TargetOverride);
 public sealed record RecipeChoicePackageRecord(
@@ -51,7 +54,7 @@ public sealed record RecipeChoicePackageRecord(
 
 public sealed class CampMealPlanningPackageStore(CateringDbContext database)
 {
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public static JsonElement CreateEmptyPackageData(Guid campId) => JsonSerializer.SerializeToElement(
@@ -65,7 +68,54 @@ public sealed class CampMealPlanningPackageStore(CateringDbContext database)
     {
         var data = ReadPackageData(json, campId);
         return data.Entries.Select(value => value.RecipeRevisionId)
-            .Concat(data.RecipeChoices.Select(value => value.RecipeRevisionId)).Distinct();
+            .Concat(data.RecipeChoices.Select(value => value.RecipeRevisionId))
+            .Concat(data.MealStates.SelectMany(ReadSupplySolutions).Select(value => value.RecipeRevisionId)).Distinct();
+    }
+
+    public static IEnumerable<SupplySolution> ReadSupplySolutions(CookingUnitMealStatePackageRecord state)
+    {
+        foreach (var solution in JsonSerializer.Deserialize<SupplySolution[]>(state.ManualSupplySolutionsJson, JsonOptions) ?? [])
+        {
+            solution.Validate();
+            if (solution.Source != SupplyDecisionSource.Manual) throw new InvalidOperationException("Invalid manual supply provenance.");
+            yield return solution;
+        }
+        if (state.CalculationSnapshotJson is not null)
+        {
+            using var json = JsonDocument.Parse(state.CalculationSnapshotJson);
+            if (json.RootElement.TryGetProperty("supply", out var supply) && supply.ValueKind != JsonValueKind.Null)
+                foreach (var solution in ReadDocument(supply.Deserialize<OperationalSupplyDocument>(JsonOptions)!))
+                {
+                    solution.Validate();
+                    yield return solution;
+                }
+        }
+        if (state.VerificationSnapshotJson is not null)
+        {
+            var verification = JsonSerializer.Deserialize<MealVerificationSnapshot>(state.VerificationSnapshotJson, JsonOptions)
+                ?? throw new InvalidOperationException("Verification snapshot is missing.");
+            if (verification.CookingUnitId != state.CookingUnitId || verification.CampMealId != state.CampMealId ||
+                verification.VerifiedBy == Guid.Empty || !Enum.IsDefined(verification.Kind) ||
+                verification.Kind == MealVerificationKind.VerifiedWithDeviation && string.IsNullOrWhiteSpace(verification.Reason) ||
+                state.VerificationFingerprint?.Length != 64)
+                throw new InvalidOperationException("Invalid verification snapshot.");
+            foreach (var solution in ReadDocument(verification.Supply))
+            {
+                solution.Validate();
+                yield return solution;
+            }
+        }
+    }
+
+    private static IEnumerable<SupplySolution> ReadDocument(OperationalSupplyDocument document)
+    {
+        if (document is null || document.Solutions is null || document.Candidates is null || document.Problems is null)
+            throw new InvalidOperationException("Incomplete supply document.");
+        var choices = document.CommonSupplyChoices ?? [];
+        if (choices.Any(value => value is null || value.RequirementGroupKeys is null || value.TogetherOptions is null || value.SeparateSolutions is null))
+            throw new InvalidOperationException("Invalid common supply choices.");
+        return document.Solutions.Concat(document.Candidates)
+            .Concat(choices.SelectMany(value => value.TogetherOptions.Concat(value.SeparateSolutions)));
     }
 
     public static JsonElement CreatePackageData(MealPlanningPackageData data)
@@ -107,7 +157,7 @@ public sealed class CampMealPlanningPackageStore(CateringDbContext database)
         CookingUnitPackageRecord[] units = await database.CookingUnits.AsNoTracking()
             .Where(value => value.CampId == campId)
             .Select(value => new CookingUnitPackageRecord(
-                value.Id, value.CampId, value.Name, value.SortOrder, value.GroupId, value.StandardMealPlanId, value.ParticipantFilter))
+                value.Id, value.CampId, value.Name, value.SortOrder, value.GroupId, value.StandardMealPlanId, value.ParticipantFilter, value.TogetherPreference))
             .ToArrayAsync(cancellationToken);
         StructureAssignmentPackageRecord[] assignments = await database.CookingUnitStructureAssignments.AsNoTracking()
             .Where(value => value.CampId == campId)
@@ -120,7 +170,8 @@ public sealed class CampMealPlanningPackageStore(CateringDbContext database)
                 value.Id, value.CampId, value.CookingUnitId, value.CampMealId, (int)value.SubscriptionState,
                 value.DemandOverride, value.CalculatedDemand, value.EffectiveDemand, (int)value.Status,
                 value.MealPlanId, value.MealPlanVersion, value.MealPlanSnapshotId,
-                value.CalculationSnapshotJson, value.SourceFingerprint, value.WarningsJson, value.CalculatedAtUtc, value.DemandBasis))
+                value.CalculationSnapshotJson, value.SourceFingerprint, value.WarningsJson, value.CalculatedAtUtc, value.DemandBasis,
+                value.ManualSupplySolutionsJson, value.SupplyVersion, value.VerificationSnapshotJson, value.VerificationFingerprint))
             .ToArrayAsync(cancellationToken);
         Guid[] stateIds = states.Select(value => value.Id).ToArray();
         OfferTargetPackageRecord[] targets = await database.CookingUnitMealOfferTargets.AsNoTracking()
@@ -164,7 +215,8 @@ public sealed class CampMealPlanningPackageStore(CateringDbContext database)
         database.CookingUnits.AddRange(data.CookingUnits.Select(value =>
         {
             var unit = new CookingUnit(value.Id, value.CampId, value.Name, value.SortOrder, value.GroupId, value.StandardMealPlanId);
-            unit.SetParticipantFilter(value.ParticipantFilter); return unit;
+            unit.SetParticipantFilter(value.ParticipantFilter);
+            unit.SetTogetherPreference(value.TogetherPreference); return unit;
         }));
         database.CookingUnitStructureAssignments.AddRange(data.StructureAssignments.Select(value =>
             new CookingUnitStructureAssignment(value.Id, value.CampId, value.CookingUnitId,
@@ -179,6 +231,8 @@ public sealed class CampMealPlanningPackageStore(CateringDbContext database)
                     value.WarningsJson ?? "[]", value.CalculatedAtUtc.Value,
                     value.Status != (int)OperationalMealPlanStatus.Incomplete, value.DemandBasis);
             if (value.Status == (int)OperationalMealPlanStatus.Stale) state.MarkStale();
+            state.RestoreSupply(value.ManualSupplySolutionsJson, value.SupplyVersion,
+                value.VerificationSnapshotJson, value.VerificationFingerprint);
             database.CookingUnitMealStates.Add(state);
         }
         database.CookingUnitMealOfferTargets.AddRange(data.OfferTargets.Select(value =>
@@ -221,8 +275,13 @@ public sealed class CampMealPlanningPackageStore(CateringDbContext database)
             throw new InvalidOperationException("Catering meal-planning package data is missing.");
         MealPlanningPackageData data = json.Deserialize<MealPlanningPackageData>(JsonOptions)
             ?? throw new InvalidOperationException("Catering meal-planning package data is empty.");
-        if (data.SchemaVersion is not (1 or 2 or CurrentSchemaVersion) || data.CampId != campId)
+        if (data.SchemaVersion is not (1 or 2 or 3 or CurrentSchemaVersion) || data.CampId != campId)
             throw new InvalidOperationException("Catering meal-planning package identity or schema is invalid.");
+        if (data.CookingUnits.Any(value => !Enum.IsDefined(value.TogetherPreference)) ||
+            data.MealStates.Any(value => value.SupplyVersion < 0 || string.IsNullOrWhiteSpace(value.ManualSupplySolutionsJson) ||
+                (value.VerificationSnapshotJson is null) != (value.VerificationFingerprint is null)))
+            throw new InvalidOperationException("Invalid supply state.");
+        foreach (var state in data.MealStates) _ = ReadSupplySolutions(state).ToArray();
         if (data.ParticipantConfiguration is { } configuration &&
             (configuration.Version < 0 || !Enum.IsDefined(configuration.DemandMode) || configuration.Assignments is null) ||
             data.MealStates.Any(value => !Enum.IsDefined(value.DemandBasis)))

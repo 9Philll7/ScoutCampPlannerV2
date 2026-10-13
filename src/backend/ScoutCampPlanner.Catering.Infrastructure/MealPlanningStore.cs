@@ -11,6 +11,21 @@ public sealed class MealPlanningStore(CateringDbContext database) : IMealPlannin
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    public async Task<MealPlanningMutationResult> SaveSupplyStateAsync(Guid campId, Guid cookingUnitId, Guid mealId,
+        long expectedVersion, string? manualJson, string? verificationJson, string? verificationFingerprint,
+        CancellationToken cancellationToken = default)
+    {
+        var state = await database.CookingUnitMealStates.SingleOrDefaultAsync(value =>
+            value.CampId == campId && value.CookingUnitId == cookingUnitId && value.CampMealId == mealId, cancellationToken);
+        if (state is null) return NotFound();
+        if (state.SupplyVersion != expectedVersion) return new(MealPlanningMutationStatus.Conflict, "supply_version_conflict");
+        if (manualJson is not null) state.SaveManualSupply(manualJson);
+        if (verificationJson is not null) state.SetVerification(verificationJson, verificationFingerprint!);
+        try { await database.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return new(MealPlanningMutationStatus.Conflict, "supply_version_conflict"); }
+        return Success(state.Id);
+    }
+
     public async Task<MealPlanningData> LoadAsync(
         Guid campId, CancellationToken cancellationToken = default) => new(
         await database.MealPlans.AsNoTracking().Where(value => value.CampId == campId)
@@ -255,13 +270,17 @@ public sealed class MealPlanningStore(CateringDbContext database) : IMealPlannin
         MealPlan? plan = await database.MealPlans.SingleOrDefaultAsync(
             value => value.Id == mealPlanId && value.CampId == campId, cancellationToken);
         if (plan is null) return NotFound();
+        var verifiedReferences = (await database.CookingUnitMealStates.AsNoTracking()
+            .Where(value => value.CampId == campId && value.VerificationSnapshotJson != null).ToArrayAsync(cancellationToken))
+            .Where(value => JsonSerializer.Deserialize<MealVerificationSnapshot>(value.VerificationSnapshotJson!, JsonOptions)?.MealPlanId == mealPlanId)
+            .Select(value => $"Verifikation: {value.CookingUnitId}/{value.CampMealId}");
         string[] references = (await database.CookingUnits.AsNoTracking()
                 .Where(value => value.StandardMealPlanId == mealPlanId)
                 .Select(value => $"Kocheinheit: {value.Name}").ToArrayAsync(cancellationToken))
             .Concat(await database.CookingUnitMealStates.AsNoTracking()
                 .Where(value => value.MealPlanId == mealPlanId)
                 .Select(value => $"Verpflegungs-Teilstand: {value.CookingUnitId}/{value.CampMealId}")
-                .ToArrayAsync(cancellationToken)).Distinct().ToArray();
+                .ToArrayAsync(cancellationToken)).Concat(verifiedReferences).Distinct().ToArray();
         if (references.Length > 0)
             return new MealPlanningMutationResult(MealPlanningMutationStatus.Blocked,
                 "meal_plan_in_use", "Der Mahlzeitenplan wird noch verwendet.", references);
@@ -346,6 +365,7 @@ public sealed class MealPlanningStore(CateringDbContext database) : IMealPlannin
         {
             existing.Update(unit.Name, unit.SortOrder, unit.GroupId, unit.StandardMealPlanId);
             existing.SetParticipantFilter(unit.ParticipantFilter);
+            existing.SetTogetherPreference(unit.TogetherPreference);
         }
         await database.CookingUnitStructureAssignments.Where(value =>
                 value.CookingUnitId == unit.Id && value.CampMealId == null)

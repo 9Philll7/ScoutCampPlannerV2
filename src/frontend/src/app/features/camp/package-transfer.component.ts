@@ -3,7 +3,8 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
 import { firstValueFrom } from 'rxjs';
 import { API_BASE_URL } from '../../core/api-base-url';
-import { desktopCommand, isDesktop } from '../../core/desktop-runtime';
+import { isDesktop } from '../../core/desktop-runtime';
+import { openDesktopPackage } from '../../shared/open-desktop-package';
 
 @Component({
   selector: 'scp-package-transfer', standalone: true, imports: [MatButtonModule],
@@ -31,9 +32,14 @@ export class PackageTransferComponent {
     if (this.busy()) return;
     this.busy.set(true); this.message.set('');
     try {
-      const bytes = await desktopCommand<number[] | null>('open_camp_package');
-      if (bytes === null) return;
-      await this.import(new Blob([new Uint8Array(bytes)]), 'initial');
+      let file: Blob | null;
+      try { file = await openDesktopPackage(); }
+      catch (error) {
+        this.message.set('Die Datei konnte nicht an die Desktop-Oberfläche übergeben werden. Es wurde kein Import gestartet. ' +
+          (error instanceof Error ? error.message : String(error))); return;
+      }
+      if (file === null) return;
+      await this.import(file, 'initial');
     } catch (error) { this.failed(error); }
     finally { this.busy.set(false); }
   }
@@ -57,7 +63,8 @@ export class PackageTransferComponent {
   }
   private failed(error: unknown) {
     this.message.set(error instanceof HttpErrorResponse
-      ? error.error?.message || 'Das Paket konnte nicht importiert werden. Bitte Berechtigung und Transferstand prüfen.'
+      ? error.status === 0 ? 'Das lokale Backend konnte nicht erreicht werden. Bitte vor einem erneuten Import den Lagerstatus prüfen.'
+        : error.error?.message || 'Das Paket konnte nicht importiert werden. Bitte Berechtigung und Transferstand prüfen.'
       : error instanceof Error ? error.message : String(error));
   }
 }

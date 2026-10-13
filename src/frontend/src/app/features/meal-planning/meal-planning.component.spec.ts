@@ -9,6 +9,8 @@ import {
   MealPlanningOverview,
 } from './meal-planning-api.service';
 import { MealPlanningComponent } from './meal-planning.component';
+import { SupplySolutionsComponent } from './supply-solutions.component';
+import { By } from '@angular/platform-browser';
 
 describe('MealPlanningComponent', () => {
   const plan: MealPlanDocument = {
@@ -70,6 +72,20 @@ describe('MealPlanningComponent', () => {
     expect(component.overview()!.mealPlanDocuments[0].name).toBe('Standard');
     component.cancelPlan();
     expect(component.editingPlan()).toBeNull();
+  });
+
+  it('blocks recalculation when a visible supply editor has unsaved decisions', () => {
+    component.overview.update(value => value ? { ...value, operationalMeals: value.operationalMeals.map(state => ({ ...state, supply: { solutions: [], candidates: [], problems: [] } })) } : value);
+    fixture.detectChanges();
+    const editor = fixture.debugElement.query(By.directive(SupplySolutionsComponent));
+    expect(editor).toBeTruthy();
+    vi.spyOn(editor.componentInstance, 'hasUnsavedChanges').mockReturnValue(true);
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    api['calculate'] = vi.fn();
+    component.calculate('unit-1', 'meal-1');
+    expect(api['calculate']).not.toHaveBeenCalled();
+    expect(alert).toHaveBeenCalledOnce();
+    alert.mockRestore();
   });
 
   it('saves one explicit edit and closes the editor', () => {

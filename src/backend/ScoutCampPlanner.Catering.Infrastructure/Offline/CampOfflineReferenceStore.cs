@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using ScoutCampPlanner.Catering.Application.Recipes;
+using ScoutCampPlanner.Catering.Application.MealPlanning;
 using ScoutCampPlanner.Catering.Domain;
 using ScoutCampPlanner.Catering.Infrastructure.Ingredients;
 using ScoutCampPlanner.Catering.Infrastructure.Recipes;
@@ -130,6 +131,54 @@ public sealed class CampOfflineReferenceStore(CateringDbContext database)
 
     public static IReadOnlySet<Guid> ReadRecipeRevisionIds(JsonElement json) =>
         Read(json).RecipeRevisions.Select(value => value.Id).ToHashSet();
+
+    public static void ValidateSupplyPositions(JsonElement json, IEnumerable<SupplySolution> solutions)
+    {
+        var payload = Read(json);
+        var recipes = payload.RecipeRevisions.ToDictionary(value => value.Id,
+            value => RecipeSnapshotBuilder.Deserialize(value.SnapshotJson));
+        foreach (var solution in solutions)
+        {
+            solution.Validate();
+            var unused = solution.PositionSelections.Keys.ToHashSet(StringComparer.Ordinal);
+            Visit(solution.RecipeRevisionId, solution.RecipeRevisionId.ToString("N"), []);
+            if (unused.Count != 0) throw new InvalidDataException("Supply decision references an unavailable occurrence.");
+
+            void Visit(Guid revisionId, string path, HashSet<Guid> ancestors)
+            {
+                if (!ancestors.Add(revisionId) || !recipes.TryGetValue(revisionId, out var recipe))
+                    throw new InvalidDataException("Supply recipe reference is missing or cyclic.");
+                foreach (var position in recipe.IngredientPositions)
+                {
+                    string key = path + "/" + position.Id.ToString("N");
+                    if (!solution.PositionSelections.TryGetValue(key, out var selection)) continue;
+                    unused.Remove(key);
+                    Guid ingredient = position.Ingredient.IngredientRevisionId;
+                    if (selection.ReplacementRuleId is Guid replacementId)
+                    {
+                        var replacement = position.Replacements.SingleOrDefault(value => value.Id == replacementId)
+                            ?? throw new InvalidDataException("Supply ingredient replacement does not exist.");
+                        ingredient = replacement.Ingredient.IngredientRevisionId;
+                    }
+                    if (selection.VariantKey is string variant && !payload.Variants.Any(value =>
+                        value.IngredientRevisionId == ingredient && value.Key == variant))
+                        throw new InvalidDataException("Supply variant does not belong to the selected ingredient revision.");
+                }
+                foreach (var child in recipe.SubrecipePositions)
+                {
+                    string key = path + "/" + child.Id.ToString("N");
+                    if (solution.PositionSelections.TryGetValue(key, out var selection))
+                    {
+                        unused.Remove(key);
+                        if (selection.VariantKey is not null || !child.Replacements.Any(value => value.Id == selection.ReplacementRuleId))
+                            throw new InvalidDataException("Supply subrecipe replacement does not exist.");
+                        // Descendant decisions under a replaced subrecipe are intentionally not consumed.
+                    }
+                    else Visit(child.RecipeRevisionId, key + "/" + child.RecipeRevisionId.ToString("N"), new(ancestors));
+                }
+            }
+        }
+    }
 
     public async Task<JsonElement> ExportAsync(Guid campId, CancellationToken cancellationToken = default,
         IEnumerable<Guid>? planningRevisionIds = null)

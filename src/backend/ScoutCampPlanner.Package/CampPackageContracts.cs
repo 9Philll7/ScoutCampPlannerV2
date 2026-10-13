@@ -52,4 +52,7 @@ public sealed record CampMealTypeData(Guid Id, Guid CampId, string Name, int Sor
 public sealed record CampMealData(
     Guid Id, Guid CampId, Guid MealTypeId, DateOnly Date, bool IsActive, int ChangeVersion = 0);
 
-public sealed class CampPackageValidationException(string message) : Exception(message);
+public sealed class CampPackageValidationException(string message, string code = "invalid_package_or_transfer") : Exception(message)
+{
+    public string Code { get; } = code;
+}

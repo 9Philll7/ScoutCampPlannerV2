@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><UseAppHost>false</UseAppHost></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/backend/ScoutCampPlanner.Package/ScoutCampPlanner.Package.csproj" />
+    <ProjectReference Include="../../src/backend/ScoutCampPlanner.Migrations.Sqlite/ScoutCampPlanner.Migrations.Sqlite.csproj" />
+    <PackageReference Include="SQLitePCLRaw.provider.winsqlite3" />
+  </ItemGroup>
+</Project>

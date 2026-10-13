@@ -5,6 +5,8 @@ using ScoutCampPlanner.Camp.Domain;
 using ScoutCampPlanner.Camp.Infrastructure;
 using ScoutCampPlanner.Catering.Domain;
 using ScoutCampPlanner.Catering.Application.Recipes;
+using ScoutCampPlanner.Catering.Application.MealPlanning;
+using System.Text.Json;
 using ScoutCampPlanner.Catering.Infrastructure;
 using ScoutCampPlanner.Catering.Infrastructure.Recipes;
 using ScoutCampPlanner.Catering.Infrastructure.Ingredients;
@@ -115,6 +117,9 @@ public sealed partial class CampPackageTests
                 local.Packages.ImportInitialPackageForDeviceAsync(outbound, Guid.NewGuid()));
             Assert.Empty(await local.Platform.LocalCampAccessGrants.ToArrayAsync());
             await local.Packages.ImportInitialPackageForDeviceAsync(outbound, deviceId);
+            var repeated = await Assert.ThrowsAsync<CampPackageValidationException>(() =>
+                local.Packages.ImportInitialPackageForDeviceAsync(outbound, deviceId));
+            Assert.Equal("camp_already_exists_locally", repeated.Code);
             var grant = await local.Platform.LocalCampAccessGrants.SingleAsync();
             Assert.Equal(deviceId, grant.DeviceIdentityId);
             Assert.Equal(campId, grant.CampId);
@@ -243,6 +248,16 @@ public sealed partial class CampPackageTests
         var mealState = new CookingUnitMealState(mealStateId, campId, cookingUnitId, campMealId);
         mealState.Configure(MealPlanSubscriptionState.Custom, 24m);
         mealState.ApplyCalculation(22m, null, null, null, "{}", "ABC", "[]", DateTimeOffset.UtcNow, true);
+        var supply = new SupplySolution(Guid.NewGuid(), recipeRevisionId, offerGroupId, 24,
+            new Dictionary<string, RecipePositionSelection>(), [new(new RequirementSignature(null, [], []).Key, 24)],
+            SupplyDecisionSource.Manual);
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        string initialSupply = JsonSerializer.Serialize(new[] { supply }, options);
+        mealState.SaveManualSupply(initialSupply);
+        var verification = new MealVerificationSnapshot(cookingUnitId, campMealId, null, null, null,
+            EffectiveDemandBasis.Estimated, 24, [], new([supply], [], []), MealVerificationKind.Clean,
+            null, actorId, DateTimeOffset.UtcNow);
+        mealState.SetVerification(JsonSerializer.Serialize(verification, options), new string('A', 64));
         cloud.Catering.CookingUnitMealStates.Add(mealState);
         cloud.Catering.CookingUnitMealOfferTargets.Add(new CookingUnitMealOfferTarget(
             Guid.NewGuid(), mealStateId, offerGroupId, 20m));
@@ -278,6 +293,14 @@ public sealed partial class CampPackageTests
         if (!includeLibraryEntry)
             await cloud.Catering.Set<CampRecipeEntryRecord>().ExecuteDeleteAsync();
         var initialPackage = await cloud.Packages.StartOfflineTransferAsync(campId);
+        var initialPayload = CampPackageSerializer.Deserialize(initialPackage);
+        var initialPlanning = CampMealPlanningPackageStore.ReadPackageData(initialPayload.CateringMealPlanningData, campId);
+        var invalidSupply = supply with { PositionSelections = new Dictionary<string, RecipePositionSelection> {
+            [recipeRevisionId.ToString("N") + "/" + Guid.NewGuid().ToString("N")] = new(Guid.NewGuid()) } };
+        var invalidPlanning = initialPlanning with { MealStates = [initialPlanning.MealStates[0] with {
+            ManualSupplySolutionsJson = JsonSerializer.Serialize(new[] { invalidSupply }, options) }] };
+        Assert.Throws<InvalidDataException>(() => CampPackageSerializer.Serialize(initialPayload with {
+            CateringMealPlanningData = CampMealPlanningPackageStore.CreatePackageData(invalidPlanning) }));
         var frozenCloudCamp = await cloud.Camp.Camps.SingleAsync();
         Assert.True(frozenCloudCamp.IsFrozen);
 
@@ -285,10 +308,23 @@ public sealed partial class CampPackageTests
         await local.Packages.ImportInitialPackageAsync(initialPackage);
         var localMeal = await local.Catering.MealPlans.SingleAsync();
         localMeal.Rename("Montag offline geändert");
+        var localState = await local.Catering.CookingUnitMealStates.SingleAsync();
+        Assert.Equal(initialSupply, localState.ManualSupplySolutionsJson);
+        string changedSupply = JsonSerializer.Serialize(new[] { supply with { Portions = 20 } }, options);
+        localState.SaveManualSupply(changedSupply);
+        string changedVerification = JsonSerializer.Serialize(verification with {
+            Kind = MealVerificationKind.VerifiedWithDeviation, Reason = "Dummy-Abweichung offline",
+            Supply = new([supply with { Portions = 20 }], [], []) }, options);
+        localState.SetVerification(changedVerification, new string('B', 64));
         (await local.Catering.CampMeals.SingleAsync()).SetActive(false);
         await local.Catering.SaveChangesAsync();
 
         var returnPackage = await local.Packages.CreateReturnPackageAsync(campId);
+        await cloud.Catering.Database.ExecuteSqlRawAsync("CREATE TRIGGER block_supply_replace BEFORE INSERT ON CookingUnitMealStates BEGIN SELECT RAISE(ABORT, 'supply rollback test'); END;");
+        await Assert.ThrowsAsync<DbUpdateException>(() => cloud.Packages.ImportReturnPackageAsync(returnPackage));
+        Assert.Equal(initialSupply, (await cloud.Catering.CookingUnitMealStates.AsNoTracking().SingleAsync()).ManualSupplySolutionsJson);
+        Assert.True((await cloud.Camp.Camps.AsNoTracking().SingleAsync()).IsFrozen);
+        await cloud.Catering.Database.ExecuteSqlRawAsync("DROP TRIGGER block_supply_replace;");
         await cloud.Packages.ImportReturnPackageAsync(returnPackage);
 
         var importedNode = await cloud.Camp.StructureNodes.SingleAsync();
@@ -306,6 +342,9 @@ public sealed partial class CampPackageTests
         CookingUnitMealState importedState = await cloud.Catering.CookingUnitMealStates.SingleAsync();
         Assert.Equal(MealPlanSubscriptionState.Custom, importedState.SubscriptionState);
         Assert.Equal(24m, importedState.DemandOverride);
+        Assert.Equal(changedSupply, importedState.ManualSupplySolutionsJson);
+        Assert.Equal(changedVerification, importedState.VerificationSnapshotJson);
+        Assert.Equal(new string('B', 64), importedState.VerificationFingerprint);
         Assert.Single(await cloud.Catering.CookingUnitStructureAssignments.ToArrayAsync());
         Assert.Single(await cloud.Catering.CookingUnitMealOfferTargets.ToArrayAsync());
         Assert.Single(await cloud.Catering.CookingUnitMealRecipeChoices.ToArrayAsync());

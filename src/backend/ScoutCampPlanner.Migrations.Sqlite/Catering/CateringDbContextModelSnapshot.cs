@@ -251,6 +251,9 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.Property<Guid?>("StandardMealPlanId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("TogetherPreference")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.HasIndex("GroupId");
@@ -389,6 +392,10 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                         .HasPrecision(18, 4)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ManualSupplySolutionsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<Guid?>("MealPlanId")
                         .HasColumnType("TEXT");
 
@@ -407,6 +414,17 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
 
                     b.Property<int>("SubscriptionState")
                         .HasColumnType("INTEGER");
+
+                    b.Property<long>("SupplyVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("VerificationFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VerificationSnapshotJson")
+                        .HasColumnType("text");
 
                     b.Property<string>("WarningsJson")
                         .HasColumnType("text");

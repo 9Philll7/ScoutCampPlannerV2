@@ -35,7 +35,8 @@ public sealed record CookingUnitGroupDocument(Guid Id, Guid CampId, string Name,
 
 public sealed record CookingUnitDocument(
     Guid Id, Guid CampId, string Name, int SortOrder, Guid? GroupId, Guid? StandardMealPlanId,
-    IReadOnlyList<Guid> DefaultStructureNodeIds, CookingUnitParticipantFilter ParticipantFilter = CookingUnitParticipantFilter.All);
+    IReadOnlyList<Guid> DefaultStructureNodeIds, CookingUnitParticipantFilter ParticipantFilter = CookingUnitParticipantFilter.All,
+    CookingTogetherPreference TogetherPreference = CookingTogetherPreference.Ask);
 
 public sealed record CookingUnitMealDocument(
     Guid Id, Guid CookingUnitId, Guid CampMealId, MealPlanSubscriptionState SubscriptionState,
@@ -46,7 +47,10 @@ public sealed record CookingUnitMealDocument(
     IReadOnlyList<string> Warnings,
     EffectiveDemandBasis DemandBasis = EffectiveDemandBasis.Estimated,
     IReadOnlyList<RequirementGroup>? RequirementGroups = null,
-    IReadOnlyList<Guid>? UnassignedParticipantIds = null, IReadOnlyList<ParticipantPlanningProblem>? ParticipantProblems = null);
+    IReadOnlyList<Guid>? UnassignedParticipantIds = null, IReadOnlyList<ParticipantPlanningProblem>? ParticipantProblems = null,
+    OperationalSupplyDocument? Supply = null, long SupplyVersion = 0,
+    MealVerificationSnapshot? Verification = null, bool VerificationStale = false,
+    IReadOnlyList<SupplySolution>? ManualSupplySolutions = null);
 
 public sealed record OfferTargetDocument(Guid Id, Guid OfferGroupId, decimal? TargetOverride);
 
@@ -68,7 +72,8 @@ public sealed record SaveMealPlanRequest(
 public sealed record SaveCookingUnitRequest(
     string Name, int SortOrder, Guid? GroupId, Guid? StandardMealPlanId,
     IReadOnlyList<Guid>? DefaultStructureNodeIds, Guid? InitialStructureNodeId = null,
-    CookingUnitParticipantFilter ParticipantFilter = CookingUnitParticipantFilter.All);
+    CookingUnitParticipantFilter ParticipantFilter = CookingUnitParticipantFilter.All,
+    CookingTogetherPreference TogetherPreference = CookingTogetherPreference.Ask);
 
 public sealed record SaveCookingUnitGroupRequest(string Name, int SortOrder);
 
@@ -116,6 +121,9 @@ public sealed record MealPlanningData(
 
 public interface IMealPlanningStore
 {
+    Task<MealPlanningMutationResult> SaveSupplyStateAsync(Guid campId, Guid cookingUnitId, Guid mealId,
+        long expectedVersion, string? manualJson, string? verificationJson, string? verificationFingerprint,
+        CancellationToken cancellationToken = default);
     Task<MealPlanningMutationResult> SaveParticipantConfigurationAsync(Guid campId, int expectedVersion,
         MealPlanningDemandMode mode, string assignmentsJson, CancellationToken ct = default);
     Task<MealPlanningData> LoadAsync(Guid campId, CancellationToken cancellationToken = default);
@@ -162,7 +170,8 @@ public sealed partial class MealPlanningService(
     IMealPlanningStore store,
     ICampPlanningLookup campPlanning,
     TimeProvider timeProvider,
-    ICampCateringParticipantLookup? participants = null)
+    ICampCateringParticipantLookup? participants = null,
+    ISupplySuitabilityReferences? supplyReferences = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -197,7 +206,7 @@ public sealed partial class MealPlanningService(
             new CookingUnitDocument(value.Id, value.CampId, value.Name, value.SortOrder, value.GroupId,
                 value.StandardMealPlanId, data.StructureAssignments
                     .Where(item => item.CookingUnitId == value.Id && item.CampMealId is null)
-                    .Select(item => item.StructureNodeId).ToArray(), value.ParticipantFilter)).ToArray();
+                    .Select(item => item.StructureNodeId).ToArray(), value.ParticipantFilter, value.TogetherPreference)).ToArray();
         var people = new Dictionary<Guid, IReadOnlyList<CateringParticipantData>>();
         if (data.ParticipantConfiguration?.DemandMode == MealPlanningDemandMode.UseActualParticipants)
             foreach (var meal in data.Meals)
@@ -309,6 +318,7 @@ public sealed partial class MealPlanningService(
             var unit = new CookingUnit(cookingUnitId ?? Guid.NewGuid(), campId, name, request.SortOrder,
                 request.GroupId, request.StandardMealPlanId);
             unit.SetParticipantFilter(request.ParticipantFilter);
+            unit.SetTogetherPreference(request.TogetherPreference);
             var data = await store.LoadAsync(campId, cancellationToken);
             if (participants is not null)
                 foreach (var meal in data.Meals.Where(value => value.IsActive && IsInsideCamp(value.Date, camp)))
@@ -433,6 +443,8 @@ public sealed partial class MealPlanningService(
         IReadOnlyList<CateringParticipantData> people = data.ParticipantConfiguration?.DemandMode == MealPlanningDemandMode.UseActualParticipants
             ? await ReadMealParticipantsAsync(campId, meal, cancellationToken) : [];
         OperationalParticipantDemand participantDemand = ParticipantDemand(data, camp, unit, meal, people, demand);
+        if (subscription == MealPlanSubscriptionState.NoSupplyRequired)
+            participantDemand = new(EffectiveDemandBasis.Estimated, 0, true, [], [], "no-supply", []);
         if (subscription != MealPlanSubscriptionState.NoSupplyRequired) demand = participantDemand.Demand;
         MealPlan? plan = subscription == MealPlanSubscriptionState.FollowStandard && unit.StandardMealPlanId.HasValue
             ? data.MealPlans.SingleOrDefault(value => value.Id == unit.StandardMealPlanId)
@@ -476,8 +488,20 @@ public sealed partial class MealPlanningService(
                     value.MealPlanEntryId, Source = "custom" }).ToArray(),
             _ => [],
         };
+        OperationalSupplyDocument? supply = supplyReferences is null ? null : subscription == MealPlanSubscriptionState.NoSupplyRequired
+            ? new([], [], []) : new OperationalSupplyCalculator(supplyReferences).Calculate(
+                selectedRecipes.Select(value => new SupplyOffer(value.OfferGroupId, value.RecipeRevisionId,
+                    effectiveTargets.SingleOrDefault(target => target.offerGroupId == value.OfferGroupId)?.target ?? state?.DemandOverride ?? demand ?? 0,
+                    data.Entries.Where(entry => entry.OfferGroupId == value.OfferGroupId && !entry.IsStandard)
+                        .Select(entry => entry.RecipeRevisionId).ToArray())).ToArray(),
+                participantDemand.Basis == EffectiveDemandBasis.ActualParticipants
+                    ? participantDemand.RequirementGroups.Select(value => new SupplyRequirement(value.Requirements, value.Portions)).ToArray()
+                    : demand is > 0 ? [new(new RequirementSignature(null, [], []), demand.Value)] : [],
+                ReadManualSupply(state), unit.TogetherPreference, cancellationToken);
         string calculationJson = JsonSerializer.Serialize(new
         {
+            supply,
+            prerequisitesComplete = complete,
             structureNodeIds = assignedNodes,
             planningEstimates = camp.Estimates.Where(value => IsCovered(value.StructureNodeId, assignedNodes, camp.Nodes)),
             foodFactors = data.FoodFactors.OrderBy(value => value.CampStageId)
@@ -604,7 +628,7 @@ public sealed partial class MealPlanningService(
         return false;
     }
 
-    private static CookingUnitMealDocument MapOperationalMeal(
+    private CookingUnitMealDocument MapOperationalMeal(
         CookingUnitMealState state, MealPlanningData data, CampPlanningData camp, IReadOnlyList<CateringParticipantData> people)
     {
         CookingUnit unit = data.CookingUnits.Single(value => value.Id == state.CookingUnitId);
@@ -614,10 +638,14 @@ public sealed partial class MealPlanningService(
             ? data.MealPlans.SingleOrDefault(value => value.Id == unit.StandardMealPlanId)
             : null;
         var demand = ParticipantDemand(data, camp, unit, meal, people, CalculateDemand(nodes, camp, data.FoodFactors));
+        if (state.SubscriptionState == MealPlanSubscriptionState.NoSupplyRequired)
+            demand = new(EffectiveDemandBasis.Estimated, 0, true, [], [], "no-supply", []);
         string currentFingerprint = Fingerprint(BuildSourceFingerprint(unit, meal, state.SubscriptionState, nodes, plan, camp, data, demand));
         OperationalMealPlanStatus status = state.Status;
         if (state.CalculatedAtUtc.HasValue && state.SourceFingerprint != currentFingerprint)
             status = OperationalMealPlanStatus.Stale;
+        else if (ReadCalculation<bool?>(state, "prerequisitesComplete") is bool complete)
+            status = complete ? OperationalMealPlanStatus.Current : OperationalMealPlanStatus.Incomplete;
         string[] warnings = string.IsNullOrWhiteSpace(state.WarningsJson)
             ? []
             : JsonSerializer.Deserialize<string[]>(state.WarningsJson, JsonOptions) ?? [];
@@ -632,20 +660,26 @@ public sealed partial class MealPlanningService(
             data.RecipeChoices.Where(value => value.CookingUnitMealStateId == state.Id)
                 .Select(value => new RecipeChoiceDocument(value.Id, value.RecipeRevisionId,
                     value.OfferGroupId, value.MealPlanEntryId, value.SortOrder)).ToArray(), warnings,
-            state.DemandBasis, demand.RequirementGroups, demand.UnassignedParticipantIds, demand.Problems ?? []);
+            state.DemandBasis, demand.RequirementGroups, demand.UnassignedParticipantIds, demand.Problems ?? [],
+            ReadCalculation<OperationalSupplyDocument>(state, "supply"), state.SupplyVersion,
+            state.VerificationSnapshotJson is null ? null : JsonSerializer.Deserialize<MealVerificationSnapshot>(state.VerificationSnapshotJson, JsonOptions),
+            state.VerificationSnapshotJson is not null && state.VerificationFingerprint != currentFingerprint,
+            ReadManualSupply(state));
     }
 
-    private static string BuildSourceFingerprint(
+    private string BuildSourceFingerprint(
         CookingUnit unit, CampMeal meal, MealPlanSubscriptionState subscription,
         IReadOnlyCollection<Guid> nodes, MealPlan? plan, CampPlanningData camp, MealPlanningData data, OperationalParticipantDemand demand) =>
-        JsonSerializer.Serialize(new
+        subscription == MealPlanSubscriptionState.NoSupplyRequired
+        ? JsonSerializer.Serialize(new { meal.Id, meal.IsActive, meal.Date, inside = IsInsideCamp(meal.Date, camp), subscription }, JsonOptions)
+        : JsonSerializer.Serialize(new
         {
+            supply = BuildSupplyFingerprint(unit, meal, subscription, plan, data, demand),
             meal.Id,
             meal.IsActive,
             meal.ChangeVersion,
             meal.Date,
-            camp.StartDate,
-            camp.EndDate,
+            inside = IsInsideCamp(meal.Date, camp),
             subscription,
             demand.Basis,
             participantSignature = demand.RelevantSignature,
@@ -655,8 +689,7 @@ public sealed partial class MealPlanningService(
             factors = data.FoodFactors.Where(value => demand.Basis != EffectiveDemandBasis.ActualParticipants &&
                 camp.Estimates.Any(estimate => estimate.CampStageId == value.CampStageId && IsCovered(estimate.StructureNodeId, nodes, camp.Nodes))).OrderBy(value => value.CampStageId)
                 .Select(value => new { value.CampStageId, value.Factor }).ToArray(),
-            standardMealPlanId = unit.StandardMealPlanId,
-            planVersion = subscription == MealPlanSubscriptionState.FollowStandard ? plan?.Version : null,
+            standardMealPlanId = subscription == MealPlanSubscriptionState.FollowStandard ? unit.StandardMealPlanId : null,
         }, JsonOptions);
 
     private static string Fingerprint(string value) => Convert.ToHexString(

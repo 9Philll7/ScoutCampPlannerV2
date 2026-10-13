@@ -134,7 +134,7 @@ public sealed class CampPackageService(
                     value => value.Id == deviceIdentityId.Value, cancellationToken))
                 throw new CampPackageValidationException("Local device identity was not found.");
             if (await camp.Camps.AnyAsync(x => x.Id == package.Camp.Id, cancellationToken))
-                throw new CampPackageValidationException("Camp already exists locally.");
+                throw new CampPackageValidationException("Camp already exists locally.", "camp_already_exists_locally");
             if (!await platform.Tenants.AnyAsync(x => x.Id == package.Tenant.Id, cancellationToken))
                 platform.Tenants.Add(new Tenant(package.Tenant.Id, package.Tenant.Name));
 
@@ -213,7 +213,8 @@ public sealed class CampPackageService(
             if (hasParticipants && package.Participants is null)
                 throw new CampPackageValidationException("Return package is missing participant data; replacement was cancelled.");
             if (await ContainsParticipantPlanningAsync(existing.Id, cancellationToken) || package.Participants?.Items.Count > 0 ||
-                CampMealPlanningPackageStore.ReadPackageData(package.CateringMealPlanningData, package.Camp.Id).ParticipantConfiguration is not null)
+                CampMealPlanningPackageStore.ReadPackageData(package.CateringMealPlanningData, package.Camp.Id).ParticipantConfiguration is not null ||
+                VerificationPackageValidation.ContainsProtectedSupply(CampMealPlanningPackageStore.ReadPackageData(package.CateringMealPlanningData, package.Camp.Id)))
                 await DemandParticipantEditAsync(existing.Id, cancellationToken);
             if (package.Participants is not null)
             {
@@ -225,7 +226,13 @@ public sealed class CampPackageService(
             }
 
             await camp.ParticipantEstimates.Where(x => x.CampId == existing.Id).ExecuteDeleteAsync(cancellationToken);
-            await camp.StructureNodes.Where(x => x.CampId == existing.Id).ExecuteDeleteAsync(cancellationToken);
+            // Restrictive self-references require deleting leaves before their parents.
+            while (await camp.StructureNodes.AnyAsync(x => x.CampId == existing.Id, cancellationToken))
+            {
+                int removed = await camp.StructureNodes.Where(x => x.CampId == existing.Id &&
+                    !camp.StructureNodes.Any(child => child.ParentId == x.Id)).ExecuteDeleteAsync(cancellationToken);
+                if (removed == 0) throw new InvalidOperationException("Invalid camp structure.");
+            }
             await camp.CampStages.Where(x => x.CampId == existing.Id).ExecuteDeleteAsync(cancellationToken);
             await new CampMealPlanningPackageStore(catering).DeleteCampDataAsync(existing.Id, cancellationToken);
             await catering.CampMeals.Where(x => x.CampId == existing.Id).ExecuteDeleteAsync(cancellationToken);
@@ -279,7 +286,11 @@ public sealed class CampPackageService(
             await participantAccess.DemandReadAsync(entity.Id, cancellationToken);
         }
         var participants = await camp.GetParticipantsAsync(entity.Id, cancellationToken);
-        Guid[] dietIds = participants.Where(value => value.DietTypeId.HasValue).Select(value => value.DietTypeId!.Value).Distinct().ToArray();
+        JsonElement cateringMealPlanningData = await new CampMealPlanningPackageStore(catering)
+            .ExportAsync(entity.Id, cancellationToken);
+        Guid[] dietIds = participants.Select(value => value.DietTypeId)
+            .Concat(VerificationPackageValidation.Requirements(CampMealPlanningPackageStore.ReadPackageData(cateringMealPlanningData, entity.Id))
+                .Select(value => value.DietTypeId)).OfType<Guid>().Distinct().ToArray();
         var dietRows = await catering.DietaryRequirements.AsNoTracking().Where(value => dietIds.Contains(value.Id) &&
             (value.TenantId == null || value.TenantId == entity.TenantId)).ToArrayAsync(cancellationToken);
         var diets = dietRows.Select(value => new ParticipantDietReference(value.Id, value.Name, value.TenantId,
@@ -307,8 +318,6 @@ public sealed class CampPackageService(
         var campMeals = await catering.CampMeals.Where(x => x.CampId == entity.Id)
             .Select(x => new CampMealData(
                 x.Id, x.CampId, x.MealTypeId, x.Date, x.IsActive, x.ChangeVersion)).ToListAsync(cancellationToken);
-        JsonElement cateringMealPlanningData = await new CampMealPlanningPackageStore(catering)
-            .ExportAsync(entity.Id, cancellationToken);
         JsonElement cateringReferenceData = await new CampOfflineReferenceStore(catering)
             .ExportAsync(entity.Id, cancellationToken,
                 CampMealPlanningPackageStore.ReadRecipeRevisionIds(cateringMealPlanningData, entity.Id));
@@ -331,10 +340,13 @@ public sealed class CampPackageService(
         await participantAccess.DemandEditAsync(campId, ct);
     }
 
-    private async Task<bool> ContainsParticipantPlanningAsync(Guid campId, CancellationToken ct) =>
-        await camp.Participants.AnyAsync(value => value.CampId == campId, ct) ||
-        await catering.Set<MealPlanningParticipantConfiguration>().AnyAsync(value => value.CampId == campId, ct) ||
-        await catering.CookingUnitMealStates.AnyAsync(value => value.CampId == campId && value.DemandBasis == EffectiveDemandBasis.ActualParticipants, ct);
+    private async Task<bool> ContainsParticipantPlanningAsync(Guid campId, CancellationToken ct)
+    {
+        if (await camp.Participants.AnyAsync(value => value.CampId == campId, ct) ||
+            await catering.Set<MealPlanningParticipantConfiguration>().AnyAsync(value => value.CampId == campId, ct)) return true;
+        return (await catering.CookingUnitMealStates.AsNoTracking().Where(value => value.CampId == campId).ToArrayAsync(ct))
+            .Any(ScoutCampPlanner.Catering.Application.MealPlanning.MealPlanningService.RequiresParticipantAccess);
+    }
 
     private async Task ImportParticipantsAsync(CampPackagePayload package, bool initial, CancellationToken ct)
     {

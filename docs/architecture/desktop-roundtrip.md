@@ -1,5 +1,75 @@
 # Desktop-Roundtrip
 
+## Nachtrag 2026-10-11: SQLite-Importfehler nach lokalem Entfernen
+
+Ursache auf einer Kopie der betroffenen Desktop-Datenbank reproduziert:
+SQLite-Verbindungen des API-Hosts aktivierten Fremdschlüssel nicht explizit.
+Der Windows-Provider führte deshalb Löschkaskaden nicht aus. Bei null Lagern
+blieben unter anderem Abwesenheiten und lokale Freigaben zurück; ein neuer
+Import scheiterte an `CampParticipantAbsentDays` (UNIQUE constraint).
+Die unbehandelte HTTP-500-Antwort verlor CORS und erschien als Netzwerkfehler.
+Die unten dokumentierte native IPC-Vermutung war **nicht** die Ursache dieses Falls.
+
+Korrektur: `SqliteRuntimeConnection` erzwingt `Foreign Keys=True`, auch bei
+abweichender Konfiguration. Datenbankfehler der Package-Endpunkte liefern einen
+generischen `package_database_error` mit erhaltenem CORS; Details nur im Backendlog.
+Keine automatische Importwiederholung oder Datenbereinigung beim App-Start.
+
+Mit ausdrücklicher Zustimmung wurde die geschlossene lokale Desktop-Datenbank
+gesichert, die Reparatur auf einer Kopie samt erneutem Import geprüft und erst
+danach auf den Originalbestand angewendet. `tools/repair-empty-desktop-orphans.sql`
+ist ein einmaliges, transaktionales Reparaturskript, keine Migration. Es verlangt
+ein leeres Lager-/Teilnehmerverzeichnis, entfernt ausschließlich verwaiste Zeilen
+der diagnostizierten Tabellen und prüft Fremdschlüssel und Integrität vor Commit.
+Unbekannte Inkonsistenzen oder gültige restriktive Referenzen brechen die Reparatur ab.
+Nicht ohne Datenbank-/Auditsicherung und neue Einzelfallprüfung wiederverwenden.
+
+Sicherung: `%LOCALAPPDATA%/org.scoutcampplanner.desktop/backups/before-orphan-repair-20261011-210828/`
+(SQLite-Datei und `audit-security`). Auditdateien sind hashgleich geblieben.
+48 verwaiste Ausgangszeilen einschließlich drei nicht mehr gültiger lokaler
+Freigaben sowie deren kaskadierende Unterdaten entfernt; keine vorhandenen Lager
+oder gültigen Freigaben gelöscht. Wiederherstellung nur bei geschlossener App,
+mit zusammengehöriger Datenbank und Auditdateien aus dieser Sicherung.
+Nach Neuimport Health-/Verify-Freigaben explizit für den neuen Transfer vergeben.
+
+PASS: zwei neue Connection-/Cascade-Regressionen, Import auf reparierter Kopie,
+HTTP 500 mit Fehlercode und CORS auf unreparierter Kopie, isolierter Sidecar-Roundtrip
+mit Teilnehmern einschließlich Entfernen/Reimport, Release-Build und MSI/NSIS.
+Vollständige Backend-Suite: 511/511 PASS, einschließlich PostgreSQL-, Package-,
+Architektur- und Sicherheitstests. `git diff --check`: PASS.
+Sidecar-Publish, Tauri-Binary und Release-Sidecar sind SHA256-identisch:
+`8D0D6DAE7747C74359B1D688F102C7B1C621DD13E60F0B6324B9BEB7BCD1193C`.
+Installierte WebView-Abnahme dieses Fixes: **NOT_RUN**. Neues Bundle installieren,
+dann Paket einmal öffnen; die alte installierte Version nicht weiterverwenden.
+
+## Nachtrag 2026-10-11: native Paketdatei-Übergabe
+
+Gemeldeter Fehler: `Failed to fetch` nach der Dateiauswahl, obwohl der lokale
+Sidecar erreichbar war. Der bisherige native Befehl gab die gesamte Datei als
+JSON-Zahlenarray zurück. Tauri 2.11.5 verwendet bei größeren Channel-Rückgaben
+einen zusätzlichen Fetch-Pfad (JSON-Schwelle 8192 Bytes). Das ist ein begründeter
+Verdacht für den WebView-Fehler, kein abschließend reproduzierter WebView-Nachweis.
+
+Die Übergabe liefert jetzt eine temporäre Auswahl-ID und Dateigröße, anschließend
+Blöcke von höchstens 1024 Bytes. Deren JSON bleibt unter dieser Schwelle. Nur die
+explizit ausgewählte Datei ist lesbar; keine frei übergebenen Dateipfade. Maximal
+100 MB einschließlich tatsächlicher Lesebegrenzung, Freigabe des Puffers nach dem
+Lesen/bei Fehler, kein Backend-Import bei Abbruch oder unvollständiger Übertragung.
+Dateiübergabe- und Backendfehler werden getrennt angezeigt. Keine automatischen
+Import-Wiederholungen; Package-, Rechte-, Freeze-/Replace-Logik unverändert.
+
+Prüfung: Rust 2/2 (Byte-Roundtrip mit 62411 Bytes, Blockgrenze, Auswahlwechsel,
+leere Datei), Angular 53/53 einschließlich sieben neuer Übertragungs-/Importtests.
+Production Build, Tauri Release/MSI/NSIS und `git diff --check`: PASS am 11.10.2026.
+Installer unter `src/desktop/src-tauri/target/release/bundle/{msi,nsis}/`.
+Installierte WebView-Abnahme: **NOT_RUN**. Nach Installation des neuen Bundles
+dieselbe Datei erneut auswählen; einen gegebenenfalls bereits erfolgreichen
+Import nicht durch Löschen des Lagers rückgängig machen. Bei sehr großen Paketen
+kann die kleinteilige native Übertragung länger dauern; kein Lastnachweis bis 100 MB.
+Lokale Nutzer-/Lagerdaten und Freigaben wurden für diese Korrektur nicht verändert.
+
+## Bisheriger Basisstand
+
 Stand: 2026-09-22. Technische Umsetzung für den passwortlosen Einzelgerätmodus;
 Der unten aufgeführte Kernablauf ist manuell bestätigt; ergänzende Prüfungen
 bleiben offen. Kein Produktionsrelease.

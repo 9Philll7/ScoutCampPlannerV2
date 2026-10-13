@@ -403,6 +403,14 @@ Die Präferenz steuert den Umfang bereits fachlich zulässiger Lösungen. Sie ve
 
 `Ask`: Das System fragt nur dann zwischen gemeinsamer und getrennter Versorgung, wenn beide Wege fachlich zulässig sind.
 
+Dabei sind beide Wege zunächst Optionen, keine aktiven SupplySolutions. Erst die
+bewusste Auswahl materialisiert die gemeinsame oder die getrennte Versorgung.
+Ein Wechsel ersetzt die Lösungen der betroffenen RequirementGroups im selben
+Angebot, statt sie hinzuzufügen. Die gewählten Lösungen sind manuelle Entscheidungen
+und bleiben beim Speichern, Neuladen und Neuberechnen erhalten; nicht betroffene
+automatische Lösungen bleiben automatisch. Geeignete Optionen bleiben für einen
+expliziten späteren Wechsel verfügbar. Keine Auswahl erfolgt still durch Recalc.
+
 `NeverTogether`: Unterschiedliche RequirementGroups bleiben getrennt, außer sie verwenden ohnehin exakt dieselbe Versorgungslösung: gleiche RecipeRevision plus identische Varianten-/Ersatzentscheidungen.
 
 Gibt es mehrere fachlich geeignete gemeinsame Versorgungslösungen, wählt das System keine „beste“ Lösung. Insbesondere keine implizite Optimierung nach wenigsten Zubereitungsvarianten, Kosten, Aufwand, Nähe zum Standard oder maximaler Gemeinsamkeit.

@@ -88,6 +88,10 @@ internal static class MealPlanningPersistenceConfiguration
             entity.Property(value => value.CalculationSnapshotJson).HasColumnType("text");
             entity.Property(value => value.SourceFingerprint).HasMaxLength(64);
             entity.Property(value => value.WarningsJson).HasColumnType("text");
+            entity.Property(value => value.ManualSupplySolutionsJson).HasColumnType("text");
+            entity.Property(value => value.SupplyVersion).IsConcurrencyToken();
+            entity.Property(value => value.VerificationSnapshotJson).HasColumnType("text");
+            entity.Property(value => value.VerificationFingerprint).HasMaxLength(64);
             entity.HasIndex(value => new { value.CookingUnitId, value.CampMealId }).IsUnique();
             entity.HasIndex(value => value.CampId);
             entity.HasOne<CookingUnit>().WithMany().HasForeignKey(value => value.CookingUnitId)

@@ -45,12 +45,13 @@ public sealed class SubstancePortionEvaluatorTests
     }
 
     [Fact]
-    public void Qualitative_absence_adds_no_content_but_missing_threshold_remains_visible()
+    public void Qualitative_absence_is_suitable_without_a_threshold()
     {
         var result = SubstancePortionEvaluator.Evaluate(new(Guid.NewGuid(), null),
             [SubstancePortionContribution.Qualitative("a", false)]);
         Assert.Equal(0m, result.ExactGramsPerPortion);
-        Assert.Equal(MealPlanningProblemCode.MissingThreshold, Assert.Single(result.Problems).Code);
+        Assert.Empty(result.Problems);
+        Assert.True(result.IsSuitable);
     }
 
     [Fact]
@@ -59,5 +60,19 @@ public sealed class SubstancePortionEvaluatorTests
         var result = SubstancePortionEvaluator.Evaluate(new(Guid.NewGuid(), 5m), []);
         Assert.Null(result.ExactGramsPerPortion);
         Assert.Equal(MealPlanningProblemCode.UnknownSubstanceData, Assert.Single(result.Problems).Code);
+    }
+
+    [Fact]
+    public void Quantitative_zero_needs_no_threshold_but_unknown_is_not_absence()
+    {
+        var requirement = new IntoleranceRequirement(Guid.NewGuid(), null);
+        Assert.True(SubstancePortionEvaluator.Evaluate(requirement, [SubstancePortionContribution.Quantitative("a", 0)]).IsSuitable);
+        var unknown = SubstancePortionEvaluator.Evaluate(requirement, [SubstancePortionContribution.Unknown("a")]);
+        Assert.Null(unknown.ExactGramsPerPortion);
+        Assert.Equal(MealPlanningProblemCode.UnknownSubstanceData, Assert.Single(unknown.Problems).Code);
+        var present = SubstancePortionEvaluator.Evaluate(requirement, [SubstancePortionContribution.Qualitative("a", true)]);
+        Assert.Null(present.ExactGramsPerPortion);
+        Assert.Contains(present.Problems, x => x.Code == MealPlanningProblemCode.MissingThreshold);
+        Assert.DoesNotContain(present.Problems, x => x.Code == MealPlanningProblemCode.SubstanceThresholdExceeded);
     }
 }

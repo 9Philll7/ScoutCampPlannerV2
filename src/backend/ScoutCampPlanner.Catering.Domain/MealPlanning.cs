@@ -184,6 +184,12 @@ public sealed class CookingUnit
     public Guid? GroupId { get; private set; }
     public Guid? StandardMealPlanId { get; private set; }
     public CookingUnitParticipantFilter ParticipantFilter { get; private set; }
+    public CookingTogetherPreference TogetherPreference { get; private set; } = CookingTogetherPreference.Ask;
+    public void SetTogetherPreference(CookingTogetherPreference preference)
+    {
+        if (!Enum.IsDefined(preference)) throw new ArgumentOutOfRangeException(nameof(preference));
+        TogetherPreference = preference;
+    }
     public void SetParticipantFilter(CookingUnitParticipantFilter filter)
     {
         if (!Enum.IsDefined(filter)) throw new ArgumentOutOfRangeException(nameof(filter));
@@ -266,6 +272,39 @@ public sealed class CookingUnitMealState
     public string? SourceFingerprint { get; private set; }
     public string? WarningsJson { get; private set; }
     public DateTimeOffset? CalculatedAtUtc { get; private set; }
+    public string ManualSupplySolutionsJson { get; private set; } = "[]";
+    public long SupplyVersion { get; private set; }
+    public string? VerificationSnapshotJson { get; private set; }
+    public string? VerificationFingerprint { get; private set; }
+
+    public void SaveManualSupply(string json)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(json);
+        if (ManualSupplySolutionsJson == json) return;
+        ManualSupplySolutionsJson = json;
+        SupplyVersion++;
+        MarkStale();
+    }
+
+    public void SetVerification(string snapshotJson, string fingerprint)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(snapshotJson);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fingerprint);
+        VerificationSnapshotJson = snapshotJson;
+        VerificationFingerprint = fingerprint;
+        SupplyVersion++;
+    }
+
+    public void RestoreSupply(string manualJson, long version, string? verificationJson, string? verificationFingerprint)
+    {
+        if (version < 0 || string.IsNullOrWhiteSpace(manualJson) ||
+            (verificationJson is null) != (verificationFingerprint is null))
+            throw new ArgumentException("Invalid supply state.");
+        ManualSupplySolutionsJson = manualJson;
+        SupplyVersion = version;
+        VerificationSnapshotJson = verificationJson;
+        VerificationFingerprint = verificationFingerprint;
+    }
 
     public void Configure(MealPlanSubscriptionState state, decimal? demandOverride)
     {
@@ -300,6 +339,7 @@ public sealed class CookingUnitMealState
             : sourceFingerprint;
         WarningsJson = warningsJson;
         CalculatedAtUtc = calculatedAtUtc;
+        SupplyVersion++;
         Status = prerequisitesComplete ? OperationalMealPlanStatus.Current : OperationalMealPlanStatus.Incomplete;
     }
 

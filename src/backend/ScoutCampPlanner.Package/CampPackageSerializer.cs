@@ -155,6 +155,12 @@ public static class CampPackageSerializer
             throw new CampPackageValidationException("Camp structure identity or parent reference is invalid.");
         MealPlanningPackageData mealPlanning = CampMealPlanningPackageStore.ReadPackageData(
             package.CateringMealPlanningData, package.Camp.Id);
+        CampOfflineReferenceStore.ValidateSupplyPositions(package.CateringReferenceData,
+            mealPlanning.MealStates.SelectMany(CampMealPlanningPackageStore.ReadSupplySolutions));
+        var requirementReferences = CampOfflineReferenceStore.ReadParticipantRequirementIds(package.CateringReferenceData);
+        VerificationPackageValidation.Validate(mealPlanning,
+            (package.Participants?.DietTypes ?? []).Select(value => value.Id).ToHashSet(),
+            requirementReferences.Allergens, requirementReferences.Substances);
         IReadOnlySet<Guid> packagedRecipeRevisions = CampOfflineReferenceStore.ReadRecipeRevisionIds(
             package.CateringReferenceData);
         var campMealIds = (package.CampMeals ?? []).Select(meal => meal.Id).ToHashSet();

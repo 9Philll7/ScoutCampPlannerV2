@@ -214,6 +214,23 @@ public sealed class RecipeSnapshotBuilder(IRecipeSnapshotReferences references)
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
-        Converters = { new JsonStringEnumConverter() },
+        Converters = { new JsonStringEnumConverter(), new ConflictReferenceConverter() },
     };
+
+    // The immutable domain struct must be constructed, not default-initialized by JSON.
+    // Keep the existing wire shape and enum handling; no serialization dependency in Domain.
+    private sealed class ConflictReferenceConverter : JsonConverter<ConflictReference>
+    {
+        private sealed record Data([property: JsonRequired] ConflictType Type, [property: JsonRequired] Guid Id);
+
+        public override ConflictReference Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            var data = JsonSerializer.Deserialize<Data>(ref reader, options) ?? throw new JsonException("Conflict reference is required.");
+            try { return new ConflictReference(data.Type, data.Id); }
+            catch (ArgumentException error) { throw new JsonException("Invalid conflict reference.", error); }
+        }
+
+        public override void Write(Utf8JsonWriter writer, ConflictReference value, JsonSerializerOptions options) =>
+            JsonSerializer.Serialize(writer, new Data(value.Type, value.Id), options);
+    }
 }

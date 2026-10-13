@@ -1,143 +1,91 @@
 # Ergebnis: Mahlzeitenplanung – Inkrement 2
 
-Stand: 2026-10-07.
+Stand: 2026-10-13.
 
 ## Status
 
-**PARTIALLY_COMPLETED** für das gesamte Inkrement 2. Die angeforderte
-Struktur-/CookingUnit-Korrektur ist implementiert, automatisiert geprüft und
-vom Benutzer manuell abgenommen. Abgeschlossener Zwischenmeilenstein,
-ausdrücklich kein Abschluss von Inkrement 2. Offener Scope bleibt unverändert.
+**COMPLETED – funktional und technisch abgeschlossen.**
 
-## Neu umgesetzt
+Die manuelle Endabnahme wurde vom Benutzer vollständig mit **PASS** bestätigt.
+Auch die letzte Ask-Nachprüfung ist PASS: gemeinsame/getrennte Auswahl, Wechsel
+in beide Richtungen, keine parallelen aktiven Lösungen sowie Persistenz,
+Reload und Recalc. AlwaysTogether und NeverTogether sind ebenfalls PASS.
 
-- Camp-owned Teilnehmerstrukturzuordnung zu Blattknoten, bei definierter
-  Struktur ausschließlich letzte Ebene. Belegte Knoten sind gegen Löschen
-  und Erweiterung durch Unterknoten geschützt.
-- Datenminimierte Camp-Projektion: technische Teilnehmerreferenz,
-  Strukturreferenz, effektive Anwesenheit und benötigte Verpflegungsanforderungen.
-  Keine Klarnamen, Quellenmetadaten oder vollständigen Gesundheitsprofile.
-- CookingUnits verwenden Strukturreferenzen und All / SpecialCateringOnly /
-  WithoutSpecialCatering. Sonderverpflegung wird aus DietType, Allergenen
-  oder Unverträglichkeiten abgeleitet.
-- Direkte Catering-Teilnehmerzuordnung aus operativer API/UI entfernt.
-  Bestehender MealPlanningService/CookingUnitMealState nutzt die Projektion für
-  reale Bedarfsbasis, RequirementGroups und Fingerprints. Durch Filter oder
-  Abwesenheit leerer vorhandener Kontext ergibt ActualParticipants mit Bedarf 0.
-- Überlappende effektive Mengen werden beim Ändern der Konfiguration abgewiesen.
-  Inkonsistenter Bestand erzeugt Incomplete mit strukturiertem Problem, keine
-  willkürliche Zuordnung. Unzugeordnete Anwesende bleiben ein Problem.
-- MealServingAssignment als separates, geschütztes Ausgabekonzept dokumentiert;
-  noch keine personenbezogene Ausgabe-API oder Ausgabelogistik aktiviert.
-- Package-Sektionen Teilnehmer Schema 2 und Mahlzeitenplanung Schema 3:
-  Strukturzuordnung und Filter in Replace/Rollback integriert. Äußeres
-  Paketformat unverändert. Lokale Entfernung löscht Teilnehmer vor ihren Knoten.
+## Umgesetzt
 
-## Migrationen / verbleibende Migrationsprobleme
+- Bestehende Teilnehmer-/CookingUnit-Planung mit realer Bedarfsbasis,
+  RequirementGroups, SupplySolutions und transitiver Eignungsprüfung integriert.
+- Automatische Auflösung, persistierte manuelle Entscheidungen, Coverage und
+  Gemeinsamkeitspräferenz operativ angebunden.
+- Ask materialisiert erst nach der Operatorentscheidung die gewählte Versorgung.
+  Betroffene Lösungen werden ersetzt, nicht zusätzlich angelegt; Auto/Manual-
+  Herkunft und manuelle Entscheidungen bleiben bei Recalc erhalten.
+- Selektive Invalidierung, Verifikation mit ersetzbarem Snapshot, Rechte-/Scope-
+  Prüfungen sowie UI und Dummy-Package-Roundtrip einschließlich Replace/Rollback.
+- Development-Testseed und Snapshot-Codec-Regressionen; Desktop-Importkorrekturen.
+- In diesem Abschlussdurchlauf keine neue Fachlogik und keine Refaktorierung.
 
-- SQLite Camp: `20261006213153_AddParticipantStructure`.
-- SQLite Catering: `20261006213157_StructureBasedParticipantPlanning`.
-- PostgreSQL Camp: `20261006213201_AddParticipantStructure`.
-- PostgreSQL Catering: `20261006213205_StructureBasedParticipantPlanning`.
-- Eindeutige Altzuordnungen werden beim Start atomar auf Camp-Blattknoten
-  übertragen; frühere Catering-Zuordnungsdaten anschließend geleert.
-  Das alte JSON-Feld bleibt ausschließlich als Migrationsrest erhalten,
-  nicht als parallele aktive Zuordnungsquelle.
-- Mehrdeutige Zuordnungen, widersprechende Camp-Zuordnungen oder alte
-  Teilnehmer-Meal-Overrides bleiben unverändert erhalten und verhindern
-  vollständige Berechnung/Export bis zur Bereinigung. Keine dedizierte
-  Auflösungsoberfläche vorhanden. Auch redundante Overrides werden konservativ
-  nicht automatisch übertragen.
-- Eingefrorene Cloud-Lager werden bei der Startmigration übersprungen.
-  Alte Pakete werden nur bei eindeutiger Übertragung angenommen; andernfalls
-  Ablehnung vor Übernahme, kein stiller Datenverlust.
-- Entwicklungsdatenbank nur lesend geprüft: die untersuchte Zuordnung ist
-  eindeutig übertragbar. Migration dort nicht manuell ausgeführt.
+## Abschließender Prüfstand
 
-## Tests
+- .NET Release Build: **PASS**, 0 Warnungen und 0 Fehler.
+- Vollständige .NET-Test-Suite: **526/526 PASS**, keine übersprungenen Tests.
+  Architecture 4, Catering 292, DatabaseMigration 20, Package 18,
+  Platform 108, Security 84. PostgreSQL-Testinstanz ausdrücklich eingebunden.
+- Angular Tests: **56/56 PASS** in 13 Testdateien.
+- Angular Production Build: **PASS**, auch frisch im Tauri-Build ausgeführt.
+- Self-contained win-x64 Release Sidecar Publish: **PASS**.
+- Tauri Release, MSI und NSIS: **PASS**.
+- git diff --check: **PASS**. Git-Status auf unbeabsichtigte/generierte Artefakte
+  geprüft: keine Build-Binaries, Installer oder Testdatenbanken im Commit.
+  EF-Migrationen und deren Snapshots sind beabsichtigte Quellartefakte.
 
-- Kleine Web-Session-Nachkorrektur: HTTP 401 der eigenen Fach-API beendet die
-  aktive Browseransicht und zeigt die Anmeldung mit Ablaufhinweis. Keine
-  Wiederholung fehlgeschlagener Aktionen; 403/404, Loginfehler, fremde URLs
-  und Desktop-Geräteanmeldung bleiben unverändert. Verspätete 401 aus einer
-  früheren Sitzung beenden keine neue Sitzung. Kein Timer.
-  **PASS:** 34 Angular-Tests und Production Build. Interaktive Abnahme **NOT_RUN**.
-  Bestehende Installer wurden für diese reine Web-Korrektur nicht erneut gebaut.
+## Desktop-Artefakte und Aktualitätsnachweis
 
-- Export-Nachkorrektur: Die Rezept-Referenzmenge berücksichtigt jetzt auch
-  Mahlzeitenplaneinträge und CookingUnit-Rezeptentscheidungen, nicht nur die
-  Lagerbibliothek. Exakte Revisionen samt transitiven Abhängigkeiten werden
-  exportiert und beim Import/Validieren mit denselben Wurzeln geprüft.
-  Keine Änderung der Benutzerdaten oder automatische Entsperrung.
-- **PASS:** Pakettests erneut 18/18, einschließlich Rundlauf mit Planrezept
-  ohne Lagerbibliothekseintrag. HTTP-Sidecar-Rundlauf erneut **PASS**;
-  Artefakte: `%TEMP%/scp-roundtrip-7b1516f3-fd23-42eb-a820-60622c8c60bf`.
-  Vollständige .NET-Suite nach dieser Nachkorrektur nicht erneut ausgeführt.
+- MSI: src/desktop/src-tauri/target/release/bundle/msi/ScoutCampPlanner_0.1.0_x64_en-US.msi
+- NSIS: src/desktop/src-tauri/target/release/bundle/nsis/ScoutCampPlanner_0.1.0_x64-setup.exe
+- Sidecar SHA-256:
+  FE41770C6B448D43B28F7FC3FC349887621B1F906BFB9467E54676BDB7C7357C
+- Publish-Ausgabe, Tauri-Bundle-Eingabe, Release-Sidecar und der ohne Installation
+  aus dem MSI extrahierte Sidecar sind hashgleich.
+- Das komprimierte Tauri-Frontend ist nach Dekomprimierung bytegleich zum
+  aktuellen Angular-Build und enthält den letzten Ask-Fix (commonSupplyChoices).
+  Genau dieses Asset ist auch im aus dem MSI extrahierten Desktop-Programm enthalten.
+- NSIS-Nachweis: erfolgreicher frischer Build und generiertes Installer-Skript
+  referenzieren das geprüfte aktuelle Desktop-Programm und den aktuellen Sidecar.
+  NSIS wurde nicht zusätzlich extrahiert.
+- MSI SHA-256: CFE429C6992873B1C61CE4BDB9A9E26A08D4F48A5F91D1F4FB21B6F8EBCDFE02
+- NSIS SHA-256: B1E2D800F9161131D8756AA963029B960131F04403B1F1DA8ACEB8D78EF4335F
+- Keine Build-Blocker. MSI-Decompiler meldete UI-ControlEvent-Warnungen;
+  die Payload-Extraktion und deren Prüfungen waren erfolgreich.
 
-- **PASS:** vollständiger .NET-Release-Testlauf, 427 erfolgreich, 0 übersprungen:
-  Architektur 4, Catering 208, Migrationen 20, Package 17, Platform 94, Security 84.
-- **PASS:** SQLite und isoliertes PostgreSQL auf Port 55439; aktuelle Migrationen
-  und bestehende Upgrade-Tests enthalten.
-- Neue/angepasste Fälle: Camp-Blattzuordnung und Strukturänderungsschutz,
-  minimierter Contract, Filter, abgeleitete Sonderverpflegung, Anwesenheit,
-  Überlappung, reale Basis/RequirementGroups, Actual 0, eindeutige und
-  mehrdeutige Bestandsmigration sowie Package-Replace. Frühere direkte
-  Zuordnungstests wurden durch Strukturmodelltests ersetzt.
-- **PASS:** Angular 27 Tests; aktueller Production Build.
-- Nachkorrektur der Teilnehmerauswahl: API liefert die erforderliche Strukturtiefe;
-  bei fester Tiefe bietet das Dropdown nur Blattknoten auf der letzten Ebene an.
-  Angular erneut **28 PASS**, einschließlich Regression für zu flache Blätter
-  und freie Struktur. Manuelle Strukturzuordnung vom Benutzer bestätigt: **PASS**.
-- **PASS:** aktuelles self-contained win-x64 Sidecar Publish.
-- **PASS:** `tools/test-desktop-roundtrip.ps1 -IncludeParticipants`:
-  Strukturzuordnung/Filter Cloud → Lokal → Cloud, lokale Änderungen,
-  Health-Zugriffsgrenze, lokale Entfernung und Ablehnung veralteter Rückpakete.
-  Artefakte: `%TEMP%/scp-roundtrip-0c58f234-a3e5-4699-a1ca-bf87ae4f58c9`.
-- Vorheriger Rundlauf scheiterte bei lokaler Entfernung an der neuen
-  Knotenreferenz. Löschreihenfolge korrigiert; aktueller Wiederholungslauf PASS.
-- **PASS (2026-10-07):** aktueller Tauri Release, MSI und NSIS, inklusive
-  Dropdown- und Rezeptreferenz-Nachkorrektur. Sidecar frisch veröffentlicht, Frontend im
-  Tauri-Build neu gebaut. Installer-Quelldateien geprüft; Sidecar-Publish,
-  Tauri-Binary und MSI-Staging haben identischen SHA-256
-  `A66BB8EC8C66ED89CB561ABE434757E2B159FD052BCA2C2ABC732346125E32B5`.
-  MSI/NSIS referenzieren die aktuelle Desktop-EXE und dieses Sidecar.
-  Keine Build-Probleme. Artefakte:
-  - `src/desktop/src-tauri/target/release/bundle/msi/ScoutCampPlanner_0.1.0_x64_en-US.msi`
-  - `src/desktop/src-tauri/target/release/bundle/nsis/ScoutCampPlanner_0.1.0_x64-setup.exe`
-  Installierter Desktop-Roundtrip vom Benutzer bestätigt: **PASS**.
+## Manuelle Abnahme
 
-## Manuelle Prüfungen
+**PASS (Benutzerbestätigung):** Strukturzuordnung, reale CookingUnit-Bedarfsbasis,
+komplementäre Sonderverpflegungsfilter, Überlappungsschutz, Anwesenheit/
+Verpflegungsprofil mit Neuberechnung, Strukturschutz und installierter
+Cloud → lokal → Cloud Roundtrip; vollständige Endabnahme einschließlich
+AlwaysTogether, Ask und NeverTogether.
 
-Benutzerbestätigte manuelle Abnahme am 2026-10-07:
+Eine erneute Installation der exakt jetzt erzeugten Abschlussinstaller:
+**NOT_RUN**. Die oben dokumentierten Build-/Payload-Prüfungen wurden durchgeführt;
+dies ist keine erneute manuelle Roundtrip-Abnahme.
 
-- Strukturzuordnung: **PASS**.
-- CookingUnit mit realer Bedarfsbasis: **PASS**.
-- Komplementäre Sonderverpflegungsfilter: **PASS**.
-- Überlappungsschutz: **PASS**.
-- Anwesenheit/Verpflegungsprofil und Neuberechnung: **PASS**.
-- Strukturschutz: **PASS**.
-- Installierter Desktop-Roundtrip Cloud → lokal → Cloud: **PASS**.
+## Migrationen
 
-Die separate Web-Session-Nachkorrektur ist damit nicht zusätzlich manuell
-abgenommen; deren interaktiver Test bleibt **NOT_RUN**.
+OperationalMealSupply für PostgreSQL (20261007223517) und SQLite
+(20261007223512) einschließlich EF-Snapshots. Ask verwendet die bestehende
+Persistenz und ein optionales commonSupplyChoices-Feld im berechneten Dokument;
+keine zusätzliche Ask-Migration und keine neue Dependency.
+Im Abschlussdurchlauf wurden keine weiteren Migrationen erstellt.
 
-## Noch offen / echte Blocker / Risiken
+## Noch offen / Risiken
 
-- Kein neuer fachlicher Blocker für die Korrektur. Mehrdeutiger Altbestand
-  benötigt bewusste Bereinigung; keine automatische Umdeutung.
-- SupplySolutions, Konfliktauflösung, manuelle Versorgungsentscheidungen,
-  vollständige selektive Invalidierung und Verifikation bleiben ausstehender
-  Inkrement-2-Scope; hier nicht neu geplant.
-- Strukturwarnungen/Invalidierung aus Inkrement 1 sind teilweise breiter als
-  die tatsächliche Bedarfsbasis. Vollständige Nebenläufigkeitsabsicherung
-  paralleler Struktur-/Teilnehmeränderungen ist nicht nachgewiesen.
-- Keine aktive Serving-Ausgabeprojektion: deren eigene Rechteprüfung ist
-  noch nicht ausführbar; bestehende Health-Grenzen sind getestet.
-- Sensible Offline-Daten ausschließlich Dummy-/Testdaten; keine Produktionsfreigabe.
+- Kein bestätigter funktionaler Inkrement-2-Scope mehr offen; keine technischen Blocker.
+- Größerer UI-/UX-Overhaul bleibt ausdrücklich ein separater Folgeblock.
+- Sensible Offline-Daten sind weiterhin ausschließlich für Development mit
+  Dummy-/Testdaten freigegeben: **keine Produktionsfreigabe**.
 
 ## Commit-Bereitschaft
 
-Zwischenmeilenstein abgenommen und für den beauftragten Zwischen-Commit bereit:
-`Implement structure-based participant planning for cooking units`.
-Enthält die bisher uncommitteten Grundlagen und zugehörigen Nachkorrekturen.
-Kein Abschluss von Inkrement 2; danach Stopp ohne Erweiterung des offenen Scopes.
+Abschlussprüfungen grün; freigegeben für den beauftragten Abschlusscommit:
+Complete meal planning increment 2.
