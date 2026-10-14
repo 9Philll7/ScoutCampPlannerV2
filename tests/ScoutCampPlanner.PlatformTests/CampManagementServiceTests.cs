@@ -100,6 +100,19 @@ public sealed partial class CampManagementServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task NavigationCapabilitiesReflectExistingTenantPermissions()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var owner = Assert.Single(await service.ListTenantsAsync(ownerUserId, ct));
+        Assert.True(owner.CanManageSettings);
+        Assert.True(owner.CanCreateCamps);
+        var member = Assert.Single(await service.ListTenantsAsync(otherUserId, ct));
+        Assert.False(member.CanManageSettings);
+        Assert.False(member.CanCreateCamps);
+        Assert.Empty(await service.ListTenantsAsync(Guid.NewGuid(), ct));
+    }
+
+    [Fact]
     public async Task OwnerCanCreateCampForAnotherActiveTenantMember()
     {
         Assert.Single(await service.ListTenantsAsync(

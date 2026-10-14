@@ -1,5 +1,8 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, effect, inject, signal, viewChild } from '@angular/core';
+import { Component, computed, effect, HostListener, inject, signal, viewChild } from '@angular/core';
+import { TenantRecipesComponent } from './features/recipes/tenant-recipes.component';
+import { MealPlanningApiService } from './features/meal-planning/meal-planning-api.service';
+import { usedRecipeRevisions } from './features/recipes/camp-recipe-navigation';
 import { SessionExpiry } from './core/session-expiry';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -11,8 +14,7 @@ import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatSelectModule } from '@angular/material/select';
-import { MatToolbarModule } from '@angular/material/toolbar';
+import { MatSelect, MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { concatMap, firstValueFrom, forkJoin } from 'rxjs';
 import { saveOfflinePackage } from './shared/save-offline-package';
@@ -27,44 +29,82 @@ import { MealPlanningComponent } from './features/meal-planning/meal-planning.co
 import { RecipeEditorComponent } from './features/recipes/recipe-editor.component';
 import { SetupApiService } from './features/setup/setup-api.service';
 import { ActionIconComponent } from './shared/action-icon.component';
+import { CurrentNavigationDirective } from './shared/current-navigation.directive';
 
 type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
-type ApplicationSection = 'camps' | 'organization' | 'centralIngredients';
-type CampSection = 'general' | 'structure' | 'catering' | 'participants';
+type ApplicationSection = 'home' | 'camps' | 'recipes' | 'ingredients' | 'organization' | 'centralIngredients';
+type CampSection = 'overview' | 'general' | 'structure' | 'catering' | 'participants' | 'recipes' | 'ingredients';
 
 @Component({
   selector: 'scp-root',
   standalone: true,
   imports: [FormsModule, MatButtonModule, MatButtonToggleModule, MatCardModule, MatCheckboxModule, MatFormFieldModule, MatInputModule,
-    MatProgressSpinnerModule, MatSelectModule, MatToolbarModule, MatTooltipModule, MatDatepickerModule,
-    ActionIconComponent, IngredientRevisionEditorComponent, RecipeEditorComponent, MealPlanningComponent, PackageTransferComponent, ParticipantsComponent, DietaryCatalogComponent],
+    MatProgressSpinnerModule, MatSelectModule, MatTooltipModule, MatDatepickerModule,
+    ActionIconComponent, IngredientRevisionEditorComponent, RecipeEditorComponent, MealPlanningComponent, PackageTransferComponent, ParticipantsComponent, DietaryCatalogComponent, TenantRecipesComponent, CurrentNavigationDirective],
   providers: [provideNativeDateAdapter(), { provide: MAT_DATE_LOCALE, useValue: 'de-AT' }],
   template: `
-    <mat-toolbar color="primary" class="app-toolbar">
+    <div class="workspace-layout" [class.authenticated]="state() === 'application'">
+    @if (state() === 'application') {
+      <header class="mobile-utility">
+        <button id="navigation-toggle" matButton type="button" aria-controls="workspace-sidebar"
+          [attr.aria-expanded]="sidebarOpen()" (click)="toggleSidebar()">Menü {{ sidebarOpen() ? 'schließen' : 'öffnen' }}</button>
+        <span>{{ selectedTenant()?.name }} @if (openedCamp(); as camp) { · {{ camp.name }} }</span>
+      </header>
+    }
+    <aside id="workspace-sidebar" class="workspace-sidebar" [class.mobile-open]="sidebarOpen()" aria-label="Arbeitsbereiche">
       <span class="brand"><span class="brand-mark">SCP</span><span>ScoutCampPlanner</span></span>
       @if (state() === 'application') {
-        <nav class="toolbar-section-toggle" aria-label="Bereich auswählen">
-          <button matButton [class.active]="applicationSection() === 'camps'" (click)="showSection('camps')">
+        <span class="toolbar-context" aria-label="Aktueller Arbeitskontext">
+          <span>{{ selectedTenant()?.name ?? 'Kein Lagerpaket geöffnet' }}</span>
+          @if (openedCamp(); as camp) { <strong>{{ camp.name }}</strong> }
+        </span>
+        @if (!openedCampId() && tenants().length > 1) {
+          <mat-form-field appearance="outline" class="tenant-select"><mat-label>Organisation wechseln</mat-label>
+            <mat-select #tenantPicker [ngModel]="selectedTenant()?.id" (ngModelChange)="selectTenant($event)">
+              @for (tenant of tenants(); track tenant.id) { <mat-option [value]="tenant.id">{{ tenant.name }}</mat-option> }
+            </mat-select>
+          </mat-form-field>
+        }
+        @if (!openedCampId()) {
+        <nav class="toolbar-section-toggle" aria-label="Organisationsnavigation">
+          <button matButton [scpCurrent]="applicationSection() === 'home'" (click)="showSection('home')"><scp-action-icon name="home"/>Start</button>
+          <button matButton [scpCurrent]="applicationSection() === 'camps'" (click)="showSection('camps')">
             <scp-action-icon name="camp"/>Lager</button>
-          @if (!localDevice) { <button matButton [class.active]="applicationSection() === 'organization'" (click)="showSection('organization')">
-            <scp-action-icon name="organization"/>Organisation</button> }
-          @if (user()?.canManageCentralIngredients) {
-            <button matButton [class.active]="applicationSection() === 'centralIngredients'" (click)="showSection('centralIngredients')">
-              <scp-action-icon name="planning"/>Zutatenstamm</button>
+          @if (!localDevice) {
+          <button matButton [scpCurrent]="applicationSection() === 'recipes'" (click)="showSection('recipes')"><scp-action-icon name="recipe"/>Rezepte</button>
+          @if (selectedTenant()?.canManageIngredients || user()?.canManageCentralIngredients) {
+          <button matButton [scpCurrent]="applicationSection() === 'ingredients' || applicationSection() === 'centralIngredients'" (click)="showSection('ingredients')"><scp-action-icon name="ingredients"/>Zutaten</button>
           }
+          @if (selectedTenant()?.canManageSettings) {
+          <button matButton [scpCurrent]="applicationSection() === 'organization'" (click)="showSection('organization')">
+            <scp-action-icon name="organization"/>Organisation</button> } }
         </nav>
+        }
         @if (applicationSection() === 'camps' && openedCampId()) {
           <button matButton type="button" class="toolbar-back" (click)="closeCamp()">
-            <scp-action-icon name="back"/>Lagerübersicht</button>
+            <scp-action-icon name="back"/>Alle Lager</button>
+        }
+        @if (openedCamp(); as opened) {
+          <nav class="section-navigation camp-navigation" aria-label="Lagernavigation">
+            <button matButton [scpCurrent]="campSection() === 'overview'" (click)="navigateCamp('overview')"><scp-action-icon name="camp"/>Übersicht</button>
+            <button matButton [scpCurrent]="campSection() === 'structure' || campSection() === 'participants'" (click)="openCampStructure(opened)"><scp-action-icon name="structure"/>Struktur & Teilnehmer</button>
+            <button matButton [scpCurrent]="campSection() === 'catering'" (click)="openCampCatering(opened)"><scp-action-icon name="planning"/>Verpflegung</button>
+            <button matButton [scpCurrent]="campSection() === 'recipes'" (click)="navigateCamp('recipes')"><scp-action-icon name="recipe"/>Rezepte</button>
+            <button matButton [scpCurrent]="campSection() === 'ingredients'" (click)="navigateCamp('ingredients')"><scp-action-icon name="ingredients"/>Zutaten</button>
+            <button matButton [scpCurrent]="campSection() === 'general'" (click)="navigateCamp('general')"><scp-action-icon name="edit"/>Einstellungen</button>
+          </nav>
         }
       }
       <span class="toolbar-spacer"></span>
       @if (user(); as currentUser) {
+        <div class="toolbar-user">
+        @if (localDevice) { <span class="ui-badge">Lokaler Betrieb</span> }
         <span class="user-email">{{ currentUser.email }}</span>
         @if (!localDevice) { <button matButton (click)="signOut()"><scp-action-icon name="logout"/>Abmelden</button> }
+        </div>
       }
-    </mat-toolbar>
-    <main>
+    </aside>
+    <main id="workspace-content" tabindex="-1" (focusin)="sidebarOpen.set(false)" (input)="trackEdit($event)" (change)="trackEdit($event)">
       @switch (state()) {
         @case ('loading') {
           <section class="centered"><mat-spinner diameter="42"/><p>ScoutCampPlanner wird geladen …</p></section>
@@ -117,31 +157,54 @@ type CampSection = 'general' | 'structure' | 'catering' | 'participants';
           <div class="application-shell">
           <header class="page-header">
             <div>
-              @if (applicationSection() === 'camps' && openedCampId()) {
+              @if (openedCampId()) {
                 <h1>{{ openedCamp()?.name }}</h1>
+                @if (openedCamp()?.startDate && openedCamp()?.endDate) { <p class="camp-period">{{ openedCamp()?.startDate }} bis {{ openedCamp()?.endDate }}</p> }
+                <p>{{ localDevice ? 'Lokale Lagerkopie' : openedCamp()?.isFrozen ? 'Offlinephase aktiv – online schreibgeschützt' : 'Online' }}</p>
               } @else {
-              <p class="eyebrow">{{ selectedTenant()?.name ?? 'ScoutCampPlanner' }}</p>
-              <h1>{{ applicationSection() === 'camps' ? 'Lager'
-                : applicationSection() === 'organization' ? 'Organisation' : 'Zutatenstamm' }}</h1>
-              <p class="page-description">{{ applicationSection() === 'camps'
-                ? 'Lager anlegen, öffnen und für den Offlinebetrieb vorbereiten.'
-                : applicationSection() === 'organization'
-                  ? 'Mandantenweite Vorgaben für zukünftige Lager verwalten.'
-                  : 'Gemeinsame Basiszutaten für alle Organisationen verwalten.' }}</p>
+              <h1>{{ sectionTitle() }}</h1>
+              @if (applicationSection() === 'home') { <p>Deine Lager im Überblick.</p> }
+              @if (localDevice) { <p>Lokaler Betrieb · Lagerpakete und Rückpakete unter Lager</p> }
               }
             </div>
-            @if (tenants().length > 1) {
-              <mat-form-field appearance="outline" class="tenant-select"><mat-label>Organisation</mat-label>
-                <mat-select [ngModel]="selectedTenant()?.id" (ngModelChange)="selectTenant($event)">
-                  @for (tenant of tenants(); track tenant.id) { <mat-option [value]="tenant.id">{{ tenant.name }}</mat-option> }
-                </mat-select>
-              </mat-form-field>
-            }
           </header>
           @if (error()) { <p class="message error" role="alert">{{ error() }}</p> }
           @if (notice()) { <p class="message notice" role="status">{{ notice() }}</p> }
-          @if (localDevice && !openedCampId()) { <scp-package-transfer (completed)="reloadAfterPackageImport()"/> }
-          @if (applicationSection() === 'organization') {
+          @if (localDevice && !openedCampId() && applicationSection() === 'camps') { <scp-package-transfer (completed)="reloadAfterPackageImport()"/> }
+          @if (applicationSection() === 'home') {
+            <div class="start-page" aria-label="Start">
+              @if (camps().length) { <section aria-labelledby="recent-camps-title">
+              <h2 id="recent-camps-title">Zuletzt verwendete Lager</h2>
+              <div class="camp-entry-list">
+              @for (camp of recentCamps(); track camp.id) {
+                <article class="camp-entry"><div><h3>{{ camp.name }}</h3>
+                  <p>{{ camp.startDate && camp.endDate ? camp.startDate + ' bis ' + camp.endDate : 'Zeitraum noch nicht hinterlegt' }}</p>
+                </div><button matButton class="secondary-action" [attr.aria-label]="camp.name + ' öffnen'" (click)="openCamp(camp)">Lager öffnen <span aria-hidden="true">→</span></button></article>
+              } @empty { <div class="start-empty"><p>Noch kein Lager dieser Organisation geöffnet. Wähle unten ein Lager, um zu beginnen.</p></div> }
+              </div></section> }
+              @if (otherCamps().length || !camps().length) {
+              <section aria-labelledby="accessible-camps-title"><h2 id="accessible-camps-title">{{ recentCamps().length ? 'Weitere zugängliche Lager' : 'Zugängliche Lager' }}</h2>
+              <div class="camp-entry-list">
+              @for (camp of otherCamps(); track camp.id) {
+                <article class="camp-entry"><div><h3>{{ camp.name }}</h3>
+                  <p>{{ camp.startDate && camp.endDate ? camp.startDate + ' bis ' + camp.endDate : 'Zeitraum noch nicht hinterlegt' }}</p>
+                  <span class="ui-badge">{{ localDevice ? 'Lokale Lagerkopie' : camp.isFrozen ? 'Offlinephase aktiv · schreibgeschützt' : 'Online' }}</span>
+                </div><button matButton class="secondary-action" [attr.aria-label]="camp.name + ' öffnen'" (click)="openCamp(camp)">Lager öffnen <span aria-hidden="true">→</span></button></article>
+              } @empty { <div class="start-empty"><p>{{ camps().length ? 'Alle zugänglichen Lager stehen bereits unter „Zuletzt verwendet“.' : 'Für diese Organisation sind derzeit keine Lager verfügbar.' }}</p></div> }
+              </div>
+              </section> }
+              <div><button matButton="filled" class="primary-action" (click)="showSection('camps')">Zur Lagerübersicht</button></div>
+            </div>
+          } @else if (applicationSection() === 'recipes') {
+            @if (selectedTenant(); as tenant) { <scp-tenant-recipes [tenantId]="tenant.id"/> }
+          } @else if (applicationSection() === 'ingredients') {
+            @if (user()?.canManageCentralIngredients) {
+              <button matButton (click)="showSection('centralIngredients')">Zentralen Zutatenstamm verwalten</button>
+            }
+            @if (selectedTenant(); as tenant) {
+              @if (tenant.canManageIngredients) { <scp-ingredient-revision-editor scope="tenant" [tenantId]="tenant.id"/> }
+            }
+          } @else if (applicationSection() === 'organization') {
           @if (selectedTenant(); as tenant) {
             <mat-card class="content-card">
               <mat-card-header><mat-card-title>Stufenvorlage</mat-card-title>
@@ -203,17 +266,17 @@ type CampSection = 'general' | 'structure' | 'catering' | 'participants';
             @if (tenant.canManageIngredients) {
               <mat-card class="content-card">
                 <mat-card-header>
-                  <mat-card-title>Organisationsweite Basiszutaten</mat-card-title>
-                  <mat-card-subtitle>Veröffentlichte Zutaten stehen anschließend in allen Lagern von {{ tenant.name }} zur Verfügung.</mat-card-subtitle>
+                  <mat-card-title>Ernährungsformen</mat-card-title>
+                  <mat-card-subtitle>Vorgaben für {{ tenant.name }}</mat-card-subtitle>
                 </mat-card-header>
                 <mat-card-content>
-                  <scp-ingredient-revision-editor scope="tenant" [tenantId]="tenant.id"/>
                   <scp-dietary-catalog [tenantId]="tenant.id"/>
                 </mat-card-content>
               </mat-card>
             }
           }
           } @else if (applicationSection() === 'centralIngredients') {
+            <button matButton (click)="showSection('ingredients')">Zurück zu Organisationszutaten</button>
             <mat-card class="content-card">
               <mat-card-header>
                 <mat-card-title>Zentrale Basiszutaten</mat-card-title>
@@ -225,20 +288,10 @@ type CampSection = 'general' | 'structure' | 'catering' | 'participants';
               </mat-card-content>
             </mat-card>
           } @else {
-          @if (openedCamp(); as opened) {
-            <nav class="section-navigation camp-navigation" aria-label="Lagernavigation">
-              <button matButton [class.active]="campSection() === 'general'" (click)="campSection.set('general')">
-                <scp-action-icon name="edit"/>Grundeinstellungen</button>
-              <button matButton [class.active]="campSection() === 'structure'" (click)="openCampStructure(opened)">
-                <scp-action-icon name="structure"/>Lagerstruktur</button>
-              <button matButton [class.active]="campSection() === 'catering'" (click)="openCampCatering(opened)">
-                <scp-action-icon name="planning"/>Verpflegung</button>
-              <button matButton [class.active]="campSection() === 'participants'" (click)="campSection.set('participants')">Teilnehmer</button>
-            </nav>
-          }
           @if (!openedCampId()) {
           @if (selectedTenant(); as tenant) {
-            <mat-card class="content-card create-camp-card" [hidden]="localDevice">
+            @if (!localDevice && tenant.canCreateCamps) {
+            <mat-card class="content-card create-camp-card">
               <mat-card-header>
                 <mat-card-title>Neues Lager anlegen</mat-card-title>
                 <mat-card-subtitle>{{ tenant.name }}</mat-card-subtitle>
@@ -275,8 +328,9 @@ type CampSection = 'general' | 'structure' | 'catering' | 'participants';
             </mat-card>
           }
           }
+          }
           @for (camp of visibleCamps(); track camp.id) {
-            <mat-card class="content-card camp-card">
+            <mat-card class="content-card camp-card" [class.dashboard-container]="openedCampId() && campSection() === 'overview'">
               @if (!openedCampId()) {
                 <mat-card-header><mat-card-title>{{ camp.name }}</mat-card-title></mat-card-header>
               }
@@ -285,6 +339,30 @@ type CampSection = 'general' | 'structure' | 'catering' | 'participants';
                   <p>{{ camp.startDate && camp.endDate ? camp.startDate + ' bis ' + camp.endDate : 'Legacy-Lager ohne Zeitraum' }}</p>
                   <p>{{ camp.isFrozen ? 'Offlinephase aktiv' : 'Online bearbeitbar' }}</p>
                 } @else {
+                @if (campSection() === 'overview') {
+                  <div class="camp-dashboard">
+                    <section aria-labelledby="camp-workspaces-title"><h2 id="camp-workspaces-title">Im Lager arbeiten</h2>
+                      <div class="dashboard-actions">
+                        <button matButton="outlined" (click)="openCampStructure(camp)">Struktur & Teilnehmer</button>
+                        <button matButton="outlined" (click)="openCampCatering(camp)">Verpflegung</button>
+                        <button matButton="outlined" (click)="navigateCamp('recipes')">Rezepte</button>
+                        <button matButton="outlined" (click)="navigateCamp('ingredients')">Zutaten</button>
+                        <button matButton="outlined" (click)="navigateCamp('general')">Einstellungen</button>
+                      </div>
+                      <p class="dashboard-note">Lagerweite Kennzahlen und eine Aufgabenübersicht sind noch nicht verfügbar.</p>
+                    </section>
+                    <section class="dashboard-packages"><h2>Offline & Pakete</h2>
+                      <p>{{ localDevice ? 'Import, Rückpaket und lokale Kopien verwaltest du unter „Alle Lager“.' : 'Offlinepakete, Rückimporte und die bestehende Entsperrfunktion erreichst du unter „Alle Lager“ – abhängig von deinen Rechten.' }}</p>
+                      <button matButton (click)="closeCamp()">Alle Lager – Paketaktionen</button>
+                    </section>
+                  </div>
+                }
+                @if (campSection() === 'structure' || campSection() === 'participants') {
+                  <nav aria-label="Struktur und Teilnehmer">
+                    <button matButton (click)="openCampStructure(camp)">Struktur</button>
+                    <button matButton (click)="navigateCamp('participants')">Teilnehmer</button>
+                  </nav>
+                }
                 @if (campSection() === 'participants') { <scp-participants [campId]="camp.id" [local]="localDevice"/> }
                 @if (campSection() === 'general') {
                 <section class="settings-section">
@@ -653,9 +731,14 @@ type CampSection = 'general' | 'structure' | 'catering' | 'participants';
                         </tbody></table>
                       } @else { <p>Noch keine Verpflegungseinheiten vorhanden.</p> }
                     </section>
+                  }
+                  @if (campSection() === 'recipes') {
                     <section class="settings-section">
-                      <scp-recipe-editor [campId]="camp.id" [disabled]="!camp.canEdit || camp.isFrozen"/>
+                      <p>Hier findest du verwendete und lokal angepasste Rezepte. Weitere zugängliche Rezepte stehen bei der Auswahl in der Verpflegung bereit.</p>
+                      <scp-recipe-editor [campId]="camp.id" [usedRevisionIds]="usedCampRecipes()" [disabled]="!camp.canEdit || camp.isFrozen"/>
                     </section>
+                  }
+                  @if (campSection() === 'ingredients') {
                     <section class="settings-section">
                       <div class="section-heading"><div><p class="eyebrow">Zutatenverwaltung</p><h3>Eigene Lagerzutaten</h3></div></div>
                       <p class="context-info">Lagerzutaten werden zuerst als Entwurf angelegt und nach bewusster Prüfung veröffentlicht.</p>
@@ -663,7 +746,8 @@ type CampSection = 'general' | 'structure' | 'catering' | 'participants';
                         (published)="loadIngredients(camp.id)"/>
                     </section>
                     <section class="settings-section">
-                      <div class="section-heading"><div><p class="eyebrow">Bestehender Zutatenkatalog</p><h3>Verfügbare Zutaten</h3></div>
+                      <details><summary>Vorlagen für eine lokale Lagerkopie</summary>
+                      <div class="section-heading"><div><h3>Verfügbare Zutaten als Vorlage</h3></div>
                         <span class="catalog-count">{{ filteredIngredients().length }} von {{ ingredients().length }}</span>
                       </div>
                       <p class="context-info">Hier erscheinen die bisher verfügbaren zentralen Zutaten sowie Zutaten deiner Organisation und dieses Lagers.</p>
@@ -708,6 +792,7 @@ type CampSection = 'general' | 'structure' | 'catering' | 'participants';
                           } @empty { <p class="stage-empty">Keine passenden Zutaten vorhanden.</p> }
                         </div>
                       }
+                      </details>
                     </section>
                   }
                 }
@@ -741,20 +826,38 @@ type CampSection = 'general' | 'structure' | 'catering' | 'participants';
         }
       }
     </main>
+    </div>
   `
 })
 export class AppComponent {
+  readonly sidebarOpen = signal(false);
+  toggleSidebar() {
+    if (this.sidebarOpen()) { this.closeSidebar(); return; }
+    this.sidebarOpen.set(true);
+    setTimeout(() => {
+      if (this.sidebarOpen()) document.querySelector<HTMLElement>('#workspace-sidebar [aria-current="page"]')?.focus();
+    });
+  }
+  @HostListener('document:keydown.escape')
+  closeSidebar() {
+    if (!this.sidebarOpen()) return;
+    this.sidebarOpen.set(false);
+    document.getElementById('navigation-toggle')?.focus();
+  }
   readonly localDevice = isDesktop();
   reloadAfterPackageImport() { const user = this.user(); if (user) this.openApplication(user); }
   private readonly setupApi = inject(SetupApiService);
   private readonly authenticationApi = inject(AuthenticationApiService);
   private readonly campApi = inject(CampApiService);
+  private readonly mealPlanningApi = inject(MealPlanningApiService);
+  readonly usedCampRecipes = signal<ReadonlySet<string>>(new Set());
   private readonly ingredientRevisionEditor = viewChild(IngredientRevisionEditorComponent);
+  private readonly tenantPicker = viewChild<MatSelect>('tenantPicker');
   readonly state = signal<ViewState>('loading');
   readonly submitting = signal(false);
   readonly error = signal<string | null>(null);
   readonly notice = signal<string | null>(null);
-  readonly applicationSection = signal<ApplicationSection>('camps');
+  readonly applicationSection = signal<ApplicationSection>('home');
   readonly user = signal<AuthenticatedUser | null>(null);
   readonly camps = signal<CampSummary[]>([]);
   readonly tenants = signal<TenantOption[]>([]);
@@ -763,7 +866,109 @@ export class AppComponent {
   readonly selectedAdministratorIds = signal<ReadonlySet<string>>(new Set());
   readonly editingCampId = signal<string | null>(null);
   readonly openedCampId = signal<string | null>(null);
-  readonly campSection = signal<CampSection>('general');
+  readonly campSection = signal<CampSection>('overview');
+  private potentialEdits = false;
+  private restoringNavigation = false;
+  private recentIds = signal<string[]>([]);
+  readonly recentCamps = computed(() => this.recentIds().flatMap(id => {
+    const camp = this.camps().find(value => value.id === id);
+    return camp ? [camp] : [];
+  }).slice(0, 5));
+  readonly otherCamps = computed(() => {
+    const recentIds = new Set(this.recentCamps().map(camp => camp.id));
+    return this.camps().filter(camp => !recentIds.has(camp.id));
+  });
+
+  sectionTitle() {
+    return { home: 'Start', camps: 'Lager', recipes: 'Rezepte', ingredients: 'Zutaten',
+      organization: 'Organisation', centralIngredients: 'Zentraler Zutatenstamm' }[this.applicationSection()];
+  }
+
+  trackEdit(event: Event) {
+    if (this.state() === 'application' && !(event.target as HTMLElement).closest('.tenant-select, .catalog-search')) {
+      this.potentialEdits = true;
+    }
+  }
+
+  private mayLeave() {
+    if (this.restoringNavigation) return true;
+    if (this.submitting()) return false;
+    // Existing editors do not share a dirty-state contract. Protect their forms
+    // conservatively, including programmatic additions not emitting input events.
+    if (this.hasPotentialEdits() && !window.confirm('Bereich verlassen? Bitte speichere vorher deine Änderungen. Nicht gespeicherte Eingaben werden verworfen.')) return false;
+    this.potentialEdits = false;
+    return true;
+  }
+
+  private hasPotentialEdits() {
+    return this.state() === 'application' && (this.potentialEdits || Array.from(document.querySelectorAll(
+      'main input:not([disabled]), main textarea:not([disabled]), main mat-select:not(.mat-mdc-select-disabled)'
+    )).some(control => !control.closest('.tenant-select, .catalog-search')));
+  }
+
+  @HostListener('window:beforeunload', ['$event'])
+  beforeUnload(event: BeforeUnloadEvent) {
+    if (this.hasPotentialEdits()) { event.preventDefault(); event.returnValue = ''; }
+  }
+
+  private navigationHash() {
+    const tenant = this.selectedTenant()?.id;
+    if (!tenant) return '#/home';
+    return `#/organization/${encodeURIComponent(tenant)}/${this.openedCampId()
+      ? `camps/${encodeURIComponent(this.openedCampId()!)}/${this.campSection()}` : this.applicationSection()}`;
+  }
+
+  private rememberNavigation() {
+    if (this.sidebarOpen()) {
+      this.sidebarOpen.set(false);
+      document.getElementById('workspace-content')?.focus();
+    }
+    if (!this.restoringNavigation && window.location.hash !== this.navigationHash()) {
+      window.history.pushState(null, '', this.navigationHash());
+    }
+  }
+
+  @HostListener('window:hashchange')
+  restoreNavigation(skipGuard = false) {
+    if (this.state() !== 'application' || !this.selectedTenant()) return;
+    if (!skipGuard && !this.mayLeave()) { window.history.replaceState(null, '', this.navigationHash()); return; }
+    const parts = window.location.hash.slice(2).split('/');
+    const tenant = this.tenants().find(value => value.id === parts[1]);
+    this.restoringNavigation = true;
+    try {
+      if (tenant && tenant.id !== this.selectedTenant()?.id) { this.selectTenant(tenant.id); return; }
+      const camp = parts[2] === 'camps' && parts[3] ? this.camps().find(value => value.id === parts[3]) : null;
+      if (camp) {
+        this.openCamp(camp);
+        const section = parts[4] as CampSection;
+        this.navigateCamp(['overview', 'general', 'structure', 'participants', 'catering', 'recipes', 'ingredients'].includes(section) ? section : 'overview');
+      } else {
+        this.openedCampId.set(null);
+        const section = parts[2] as ApplicationSection;
+        this.showSection(['home', 'camps', 'recipes', 'ingredients', 'organization', 'centralIngredients'].includes(section) ? section : 'home');
+        if (parts[3]) this.error.set('Dieses Lager ist nicht verfügbar oder nicht zugänglich.');
+      }
+    } finally { this.restoringNavigation = false; }
+    window.history.replaceState(null, '', this.navigationHash());
+  }
+
+  navigateCamp(section: CampSection) {
+    if (section === this.campSection() || !this.mayLeave()) return;
+    const camp = this.openedCamp();
+    if (!camp) return;
+    this.campSection.set(section);
+    if (section === 'structure' && this.structureCampId() !== camp.id) this.toggleStructure(camp);
+    if (section === 'catering') { this.loadWeightedFoodSummary(camp.id); this.loadMealPlan(camp.id); }
+    if (section === 'ingredients') this.loadIngredients(camp.id);
+    if (section === 'recipes') {
+      this.usedCampRecipes.set(new Set());
+      this.mealPlanningApi.overview(camp.id).subscribe({
+        next: overview => { if (this.openedCampId() === camp.id) this.usedCampRecipes.set(usedRecipeRevisions(overview)); },
+        error: () => this.error.set('Verwendete Rezepte konnten nicht ermittelt werden. Lokale Rezepte bleiben sichtbar.'),
+      });
+    }
+    this.rememberNavigation();
+  }
   readonly structureCampId = signal<string | null>(null);
   readonly structureNodes = signal<StructureNodeSummary[]>([]);
   readonly structureConfiguration = signal<StructureConfiguration | null>(null);
@@ -872,6 +1077,7 @@ export class AppComponent {
   }
 
   signOut() {
+    if (!this.mayLeave()) return;
     this.sessionExpiry.signedOut();
     this.authenticationApi.signOut().subscribe({ next: () => this.clearSession(), error: () => this.clearSession() });
   }
@@ -998,28 +1204,31 @@ export class AppComponent {
   }
 
   openCamp(camp: CampSummary) {
+    if (!this.mayLeave()) return;
+    this.applicationSection.set('camps');
     this.openedCampId.set(camp.id);
-    this.campSection.set('general');
-    this.loadCampStageFoodFactors(camp.id);
-    this.loadStructureConfiguration(camp.id);
+    this.campSection.set('overview');
+    this.recentIds.update(ids => [camp.id, ...ids.filter(id => id !== camp.id)].slice(0, 20));
+    try { sessionStorage.setItem(`scp-recent-${this.user()?.userId}`, JSON.stringify(this.recentIds())); } catch { /* Storage is optional. */ }
     this.error.set(null);
     this.notice.set(null);
+    this.loadCampStageFoodFactors(camp.id);
+    this.loadStructureConfiguration(camp.id);
+    this.rememberNavigation();
   }
 
   openCampStructure(camp: CampSummary) {
-    this.campSection.set('structure');
-    if (this.structureCampId() !== camp.id) this.toggleStructure(camp);
+    this.navigateCamp('structure');
   }
 
   openCampCatering(camp: CampSummary) {
-    this.campSection.set('catering');
-    this.loadWeightedFoodSummary(camp.id);
-    this.loadMealPlan(camp.id);
-    this.loadIngredients(camp.id);
+    this.navigateCamp('catering');
   }
 
   closeCamp() {
+    if (!this.mayLeave()) return;
     this.openedCampId.set(null);
+    this.applicationSection.set('camps');
     this.campSection.set('general');
     this.editingCampId.set(null);
     this.movingStructureNodeId.set(null);
@@ -1029,6 +1238,7 @@ export class AppComponent {
     this.ingredients.set([]); this.ingredientSearch.set('');
     this.error.set(null);
     this.notice.set(null);
+    this.rememberNavigation();
   }
 
   saveCamp(camp: CampSummary) {
@@ -1303,14 +1513,18 @@ export class AppComponent {
     this.editingCampStageIndexes.set(new Set());
     this.campApi.getCampStageFoodFactors(campId).subscribe({
       next: factors => {
+        if (this.openedCampId() !== campId) return;
         this.campStagesLoading.set(false);
         this.editingCampStageIndexes.set(new Set());
         this.campStageFoodFactors.set(factors.map(value => ({ ...value })));
         this.persistedCampStageFoodFactors = factors.map(value => ({ ...value }));
       },
-      error: () => {
+      error: (failure: { status?: number }) => {
+        if (this.openedCampId() !== campId) return;
         this.campStagesLoading.set(false);
-        this.error.set('Die Lager-Verpflegungsfaktoren konnten nicht geladen werden.');
+        const detail = failure.status === 0 ? 'Backend nicht erreichbar.'
+          : failure.status ? `HTTP ${failure.status}.` : 'Keine Statusinformation verfügbar.';
+        this.error.set(`Die Lager-Verpflegungsfaktoren konnten nicht geladen werden. ${detail} Bitte das Lager erneut öffnen; bei wiederholtem Fehler den Status melden.`);
       }
     });
   }
@@ -1562,16 +1776,30 @@ export class AppComponent {
   }
 
   showSection(section: ApplicationSection) {
+    if (!this.mayLeave()) return;
+    if (this.localDevice && !['home', 'camps'].includes(section)) section = 'home';
+    if (section === 'centralIngredients' && !this.user()?.canManageCentralIngredients) section = 'home';
+    if (section === 'ingredients' && !this.selectedTenant()?.canManageIngredients && !this.user()?.canManageCentralIngredients) section = 'home';
+    if (section === 'organization' && !this.selectedTenant()?.canManageSettings) section = 'home';
+    this.openedCampId.set(null);
     this.applicationSection.set(section);
     this.error.set(null);
     this.notice.set(null);
+    this.rememberNavigation();
   }
 
   selectTenant(tenantId: string) {
+    if (!this.mayLeave()) {
+      const picker = this.tenantPicker();
+      if (picker) picker.value = this.selectedTenant()?.id;
+      return;
+    }
     const tenant = this.tenants().find(candidate => candidate.id === tenantId) ?? null;
     this.selectedTenant.set(tenant); this.camps.set([]); this.administratorCandidates.set([]);
     this.openedCampId.set(null); this.campSection.set('general'); this.structureCampId.set(null);
     this.selectedAdministratorIds.set(new Set()); this.error.set(null); this.notice.set(null);
+    this.applicationSection.set('home');
+    this.rememberNavigation();
     if (!tenant) return;
     this.loadCamps(tenant.id);
     if (this.localDevice) return;
@@ -1596,8 +1824,12 @@ export class AppComponent {
     this.campApi.listTenants().subscribe({
       next: tenants => {
         this.tenants.set(tenants);
-        const tenant = tenants[0] ?? null;
+        const tenant = tenants.find(value => value.id === window.location.hash.slice(2).split('/')[1]) ?? tenants[0] ?? null;
         this.selectedTenant.set(tenant);
+        try {
+          const ids: unknown = JSON.parse(sessionStorage.getItem(`scp-recent-${user.userId}`) ?? '[]');
+          this.recentIds.set(Array.isArray(ids) ? ids.filter(id => typeof id === 'string') : []);
+        } catch { this.recentIds.set([]); }
         if (!tenant) { if (!this.localDevice) this.error.set('Für dieses Konto ist kein aktiver Mandant verfügbar.'); return; }
         this.loadCamps(tenant.id);
         if (this.localDevice) return;
@@ -1613,7 +1845,12 @@ export class AppComponent {
 
   private loadCamps(tenantId: string) {
     this.campApi.list(tenantId).subscribe({
-      next: camps => this.camps.set(camps),
+      next: camps => {
+        if (this.selectedTenant()?.id !== tenantId) return;
+        this.camps.set(camps);
+        if (window.location.hash) this.restoreNavigation(true);
+        else this.rememberNavigation();
+      },
       error: () => this.error.set('Die Lager konnten nicht geladen werden.')
     });
   }

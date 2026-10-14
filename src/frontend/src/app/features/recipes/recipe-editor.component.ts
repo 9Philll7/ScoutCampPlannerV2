@@ -369,7 +369,7 @@ interface EditorConflictOption extends RecipeEditorConflict { name: string; }
       </form>
     } @else {
       <div class="recipe-grid">
-        @for (recipe of recipes(); track recipe.libraryEntryId ?? recipe.recipeId) {
+        @for (recipe of visibleRecipes(); track recipe.libraryEntryId ?? recipe.recipeId) {
           <mat-card><mat-card-header><mat-card-title>{{ recipe.name }}</mat-card-title>
             <mat-card-subtitle>{{ recipe.isLocal ? statusLabel(recipe.status) : 'Übernommenes Rezept' }}</mat-card-subtitle>
           </mat-card-header><mat-card-actions align="end">
@@ -444,6 +444,9 @@ interface EditorConflictOption extends RecipeEditorConflict { name: string; }
 export class RecipeEditorComponent {
   private readonly api = inject(RecipeEditorApiService);
   readonly campId = input.required<string>();
+  readonly usedRevisionIds = input<ReadonlySet<string> | null>(null);
+  readonly visibleRecipes = computed(() => this.recipes().filter(recipe =>
+    this.usedRevisionIds() === null || recipe.isLocal || !!recipe.revisionId && this.usedRevisionIds()!.has(recipe.revisionId)));
   readonly disabled = input(false);
   readonly recipes = signal<RecipeCatalogEntry[]>([]);
   readonly ingredients = signal<IngredientCatalogEntry[]>([]);

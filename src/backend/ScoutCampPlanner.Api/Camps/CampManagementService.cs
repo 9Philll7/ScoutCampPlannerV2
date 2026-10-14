@@ -11,7 +11,8 @@ using ScoutCampPlanner.Platform.Infrastructure.Auditing;
 
 namespace ScoutCampPlanner.Api.Camps;
 
-public sealed record TenantOption(Guid Id, string Name, bool CanManageIngredients);
+public sealed record TenantOption(Guid Id, string Name, bool CanManageIngredients,
+    bool CanManageSettings = false, bool CanCreateCamps = false);
 public sealed record CampAdministratorOption(Guid MembershipId, Guid UserId, string Email);
 public sealed record CampSummary(
     Guid Id, Guid TenantId, string Name, DateOnly? StartDate, DateOnly? EndDate,
@@ -93,7 +94,7 @@ public sealed class CampManagementService(
         {
             Guid[] ids = await localAccess.TenantIdsAsync(userId, cancellationToken);
             return await platform.Tenants.Where(value => ids.Contains(value.Id)).OrderBy(value => value.Name)
-                .Select(value => new TenantOption(value.Id, value.Name, false)).ToArrayAsync(cancellationToken);
+                .Select(value => new TenantOption(value.Id, value.Name, false, false, false)).ToArrayAsync(cancellationToken);
         }
         var memberships = await platform.TenantMemberships
             .Where(membership => membership.UserId == userId && membership.State == TenantMembershipState.Active)
@@ -105,14 +106,17 @@ public sealed class CampManagementService(
         var roles = await platform.TenantRoleAssignments
             .Where(value => membershipIds.Contains(value.MembershipId))
             .ToListAsync(cancellationToken);
-        return memberships.Select(value => new TenantOption(
-            value.Tenant.Id,
-            value.Tenant.Name,
-            AuthorizationCatalogue.ResolvePermissions(
+        return memberships.Select(value =>
+        {
+            var permissions = AuthorizationCatalogue.ResolvePermissions(
                     AuthorizationScope.Tenant,
                     roles.Where(role => role.MembershipId == value.MembershipId)
-                        .Select(role => role.RoleIdentifier))
-                .Contains(Permissions.Ingredients.Manage)))
+                        .Select(role => role.RoleIdentifier));
+            return new TenantOption(value.Tenant.Id, value.Tenant.Name,
+                permissions.Contains(Permissions.Ingredients.Manage),
+                permissions.Contains(Permissions.Tenant.ManageSettings),
+                permissions.Contains(Permissions.Tenant.CreateCamps) && permissions.Contains(Permissions.Tenant.AssignCampMembers));
+        })
             .ToArray();
     }
 

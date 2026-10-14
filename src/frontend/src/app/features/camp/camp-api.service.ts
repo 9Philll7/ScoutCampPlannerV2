@@ -16,7 +16,8 @@ export interface CampSummary {
   baselineVersion?: number;
 }
 
-export interface TenantOption { id: string; name: string; canManageIngredients: boolean; }
+export interface TenantOption { id: string; name: string; canManageIngredients: boolean;
+  canManageSettings?: boolean; canCreateCamps?: boolean; }
 export interface CampAdministratorOption { membershipId: string; userId: string; email: string; }
 export interface StructureNodeSummary { id: string; campId: string; parentId: string | null; name: string; }
 export interface StructureConfiguration { mode: 'Free' | 'Fixed'; levelNames: string[]; }
