@@ -39,6 +39,15 @@ describe('ParticipantsComponent', () => {
     component.overview.set({ ...component.overview()!, participantStructureDepth: null });
     expect(component.participantNodes().map(node => node.id)).toEqual(['leaf', 'shallow']);
   });
+  it('prefills an eligible node without accepting a parent from the structure entry point', () => {
+    component.overview.set({ ...component.overview()!, structureNodes: [
+      { id: 'parent', parentId: null, name: 'Bereich' }, { id: 'leaf', parentId: 'parent', name: 'Gruppe' }
+    ] });
+    fixture.componentRef.setInput('initialStructureNodeId', 'leaf'); component.create();
+    expect(component.draft?.structureNodeId).toBe('leaf');
+    fixture.componentRef.setInput('initialStructureNodeId', 'parent'); component.create();
+    expect(component.draft?.structureNodeId).toBeNull();
+  });
   it('preserves edits on conflict and sends the original concurrency token', () => {
     component.edit(component.overview()!.participants[0]); component.draft!.displayName = 'Edited dummy';
     api['update'].mockReturnValue(throwError(() => ({ status: 409 })));

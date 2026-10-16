@@ -1,3 +1,5 @@
+@use 'sass:meta';
+
 :root {
   --color-canvas: #F6F7F3;
   --color-surface: #FFFFFF;
@@ -48,6 +50,7 @@
 .workspace-layout > main { width: 100%; min-width: 0; }
 .workspace-layout > main:focus { outline: none; }
 .mobile-utility { display: none; }
+@include meta.load-css('app/features/camp/structure-view');
 .dashboard-container.content-card { background: transparent; border: 0; box-shadow: none; overflow: visible; }
 .dashboard-container.content-card mat-card-content { overflow: visible; }
 .dashboard-container.content-card > mat-card-content { padding: 0; }

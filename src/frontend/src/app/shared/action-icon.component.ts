@@ -2,7 +2,7 @@ import { Component, input } from '@angular/core';
 
 export type ActionIconName = 'add' | 'back' | 'camp' | 'download' | 'edit' | 'info' | 'login' | 'logout' |
   'move' | 'organization' | 'planning' | 'refresh' | 'remove' | 'save' | 'structure' | 'up' | 'down' |
-  'expand' | 'collapse' | 'home' | 'recipe' | 'ingredients';
+  'expand' | 'collapse' | 'home' | 'recipe' | 'ingredients' | 'people';
 
 @Component({
   selector: 'scp-action-icon',
@@ -11,6 +11,7 @@ export type ActionIconName = 'add' | 'back' | 'camp' | 'download' | 'edit' | 'in
   template: `
     <svg viewBox="0 0 24 24" focusable="false">
       @switch (name()) {
+        @case ('people') { <circle cx="9" cy="7" r="3" fill="currentColor" stroke="none"/><path d="M2 20v-3a7 7 0 0 1 14 0v3Z" fill="currentColor" stroke="none"/><path d="M16 4a3 3 0 0 1 0 6m2 3a6 6 0 0 1 4 6v1h-4"/> }
         @case ('home') { <path d="m3 11 9-8 9 8M5 10v10h14V10M10 20v-7h4v7"/> }
         @case ('recipe') { <path d="M4 4h7l1 2 1-2h7v16h-7l-1 1-1-1H4zM12 6v15"/> }
         @case ('ingredients') { <path d="M3 9h18l-2 11H5L3 9ZM7 9l5-6 5 6M9 13v3m6-3v3"/> }

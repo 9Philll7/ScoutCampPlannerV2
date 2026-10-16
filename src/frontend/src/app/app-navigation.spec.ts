@@ -25,6 +25,9 @@ describe('Application navigation', () => {
       listAdministratorCandidates: vi.fn(() => of([])),
       getCampStageFoodFactors: vi.fn(() => of([])), getCampStages: vi.fn(() => of([])),
       getStructureConfiguration: vi.fn(() => of({ mode: 'Free', levelNames: [] })),
+      listStructure: vi.fn(() => of([])), getPlanningSummary: vi.fn(() => of({ stageTotals: [], structureTotals: [] })),
+      getParticipantEstimates: vi.fn(() => of([])), updateParticipantEstimates: vi.fn(() => of(undefined)),
+      getWeightedFoodSummary: vi.fn(() => of([])),
     };
     TestBed.configureTestingModule({ imports: [AppComponent], providers: [
       provideHttpClient(), provideHttpClientTesting(),
@@ -192,5 +195,122 @@ describe('Application navigation', () => {
     expect(document.activeElement).toBe(element.querySelector('[aria-current="page"]'));
     element.querySelector<HTMLElement>('main')!.focus(); fixture.detectChanges();
     expect(app.sidebarOpen()).toBe(false);
+  });
+  function structureSetup() {
+    const result = setup(); const { app } = result;
+    app.openCamp(camp); app.campSection.set('structure'); app.structureCampId.set(camp.id);
+    app.structureMode.set('Free'); app.planningSummary.set({ stageTotals: [], structureTotals: [] });
+    app.structureNodes.set([
+      { id: 'parent', campId: camp.id, parentId: null, name: 'GuSp ist ein Knotenname' },
+      { id: 'leaf', campId: camp.id, parentId: 'parent', name: 'Gemischte Gruppe' },
+      { id: 'shallow', campId: camp.id, parentId: null, name: 'Kurzer Zweig' }
+    ]);
+    return result;
+  }
+  it('keeps the tree visible and only offers estimates on eligible leaves', () => {
+    const { app, fixture, element } = structureSetup();
+    app.selectStructureNode('parent'); fixture.detectChanges();
+    expect(element.querySelector('[aria-label="Strukturknoten"]')).not.toBeNull();
+    expect(element.textContent).not.toContain('Schätzung bearbeiten');
+    app.selectStructureNode('leaf'); fixture.detectChanges();
+    expect(element.textContent).toContain('Schätzung bearbeiten');
+    expect(element.querySelector('[aria-label="Eintrag umbenennen"]')).toBeNull();
+    app.structureMode.set('Fixed'); app.structureLevelNames.set(['Bereich', 'Gruppe']);
+    app.selectStructureNode('shallow'); fixture.detectChanges();
+    expect(element.textContent).not.toContain('Schätzung bearbeiten');
+    expect(element.textContent).not.toContain('Teilnehmerverwaltung öffnen');
+  });
+  it('uses a separate edit mode with individual persistence and read-only permissions', () => {
+    const { app, fixture, element } = structureSetup(); app.selectStructureNode('leaf');
+    app.toggleStructureEditing(); fixture.detectChanges();
+    expect(element.querySelector('[aria-label="Eintrag umbenennen"]')).not.toBeNull();
+    expect(element.textContent).toContain('einzeln gespeichert');
+    expect(element.textContent).not.toContain('Schätzung bearbeiten');
+    app.camps.set([{ ...camp, canEdit: false }]); fixture.detectChanges();
+    expect(element.querySelector('[aria-label="Eintrag umbenennen"]')).toBeNull();
+    expect(element.textContent).not.toContain('Bearbeitung beenden');
+  });
+  it('does not double count parent estimates and selects collapsed descendants independently', () => {
+    const { app } = structureSetup();
+    app.planningSummary.set({ stageTotals: [{ campStageId: 'stage', stageName: 'Biber', childYouthCount: 3, leaderCount: 2 }], structureTotals: [
+      { structureNodeId: 'parent', childYouthCount: 3, leaderCount: 2 }, { structureNodeId: 'leaf', childYouthCount: 3, leaderCount: 2 }
+    ] });
+    expect(app.campChildYouthTotal()).toBe(3);
+    app.selectStructureNode('leaf'); app.toggleStructureNodeCollapsed('parent');
+    expect(app.selectedStructureRows()[0].depth).toBe(1);
+    expect(app.structureRows().some(row => row.node.id === 'leaf')).toBe(false);
+  });
+  it('discards estimate drafts only after confirmation and rejects invalid counts', () => {
+    const { app } = structureSetup(); app.selectStructureNode('leaf');
+    app.estimateNodeId.set('leaf');
+    app.participantEstimates.set([{ campStageId: 'a', stageName: 'Biber', childYouthCount: 3, leaderCount: 2 },
+      { campStageId: 'b', stageName: 'GuSp', childYouthCount: 4, leaderCount: 1 }]);
+    expect(app.estimateTotal()).toBe(10);
+    vi.mocked(window.confirm).mockReturnValue(false); app.closeEstimates(); expect(app.estimateNodeId()).toBe('leaf');
+    app.participantEstimates()[0].childYouthCount = -1; app.saveEstimates(camp);
+    expect(api['updateParticipantEstimates']).not.toHaveBeenCalled();
+    expect(app.error()).toContain('nicht negative');
+    vi.mocked(window.confirm).mockReturnValue(true); app.closeEstimates(); expect(app.estimateNodeId()).toBeNull();
+  });
+  it('persists the complete mixed-stage matrix and closes only after success', () => {
+    const { app } = structureSetup(); app.selectStructureNode('leaf'); app.estimateNodeId.set('leaf');
+    const rows = [{ campStageId: 'a', stageName: 'Biber', childYouthCount: 3, leaderCount: 2 },
+      { campStageId: 'b', stageName: 'GuSp', childYouthCount: 4, leaderCount: 1 }];
+    app.participantEstimates.set(rows);
+    api['updateParticipantEstimates'].mockReturnValueOnce(throwError(() => ({ status: 409, error: { code: 'structure_node_not_participant_level' } })));
+    app.saveEstimates(camp); expect(app.error()).toContain('letzten definierten Ebene');
+    expect(app.estimateNodeId()).toBe('leaf'); expect(app.participantEstimates()).toEqual(rows);
+    app.saveEstimates(camp);
+    expect(api['updateParticipantEstimates']).toHaveBeenLastCalledWith(camp.id, 'leaf', rows);
+    expect(app.estimateNodeId()).toBeNull(); expect(api['getPlanningSummary']).toHaveBeenCalledWith(camp.id);
+  });
+  it('aligns leaf disclosure slots and displays only labelled estimate metrics', () => {
+    const { app, fixture, element } = structureSetup();
+    app.planningSummary.set({ stageTotals: [], structureTotals: [{ structureNodeId: 'leaf', childYouthCount: 7, leaderCount: 2 }] });
+    app.selectStructureNode('leaf'); fixture.detectChanges();
+    expect(element.querySelectorAll('.structure-disclosure-space')).toHaveLength(2);
+    expect(element.querySelector('.structure-select.selected')?.textContent).toContain('7 / 2');
+    expect(element.querySelector('.structure-detail-title')?.textContent).toBe('Gemischte Gruppe');
+    expect(element.querySelector('.structure-path')?.textContent).toContain('GuSp ist ein Knotenname › Gemischte Gruppe');
+    expect(Array.from(element.querySelectorAll('.structure-metrics dd')).map(value => value.textContent)).toEqual(['7', '2']);
+    expect(element.querySelector('[aria-label="Teilnehmerschätzung"]')?.textContent).toContain('Geschätzte Teilnehmer');
+    expect(element.querySelector('.structure-metrics')?.textContent).toContain('KiJu');
+  });
+  it('groups estimate dialog totals and actions without changing save semantics', () => {
+    const { app, fixture, element } = structureSetup(); app.selectStructureNode('leaf');
+    app.estimateNodeId.set('leaf'); app.participantEstimates.set([{ campStageId: 'a', stageName: 'Biber', childYouthCount: 3, leaderCount: 2 }]);
+    fixture.detectChanges();
+    expect(element.querySelector('dialog tfoot')?.textContent).toContain('Gesamt5');
+    expect(element.querySelector('dialog .estimate-actions [aria-label="Schätzung speichern"]')).not.toBeNull();
+    expect(element.querySelector('input[aria-label="Biber Leiter/Erwachsene"]')).not.toBeNull();
+  });
+  it('uses one structure page heading and keeps editing in the tree panel', () => {
+    const { app, fixture, element } = structureSetup(); fixture.detectChanges();
+    expect(element.querySelector('main')?.classList.contains('structure-page')).toBe(true);
+    expect(Array.from(element.querySelectorAll('h1')).map(heading => heading.textContent)).toEqual(['Struktur & Teilnehmer']);
+    expect(element.querySelector('.structure-breadcrumb')?.textContent).toContain(camp.name);
+    expect(element.querySelector('.structure-browser-heading button')?.textContent).toContain('Struktur bearbeiten');
+    expect(element.querySelector('.structure-section-navigation [aria-current="page"]')?.textContent).toBe('Struktur');
+    app.navigateCamp('general'); fixture.detectChanges();
+    expect(element.querySelector('main')?.classList.contains('structure-page')).toBe(false);
+    expect(element.querySelector('h1')?.textContent).toBe(camp.name);
+  });
+  it('renders parent details as a header and real child table, and leaf details separately', () => {
+    const { app, fixture, element } = structureSetup(); app.selectStructureNode('parent'); fixture.detectChanges();
+    expect(element.querySelector('scp-structure-detail-header .detail-symbol')).not.toBeNull();
+    expect(element.querySelector('.structure-children-table tbody th')?.textContent).toContain('Gemischte Gruppe');
+    expect(element.querySelector('.structure-leaf-content')).toBeNull();
+    expect(element.querySelector('.child-count')?.textContent).toBe('1');
+    app.selectStructureNode('leaf'); fixture.detectChanges();
+    expect(element.querySelector('.structure-children-table')).toBeNull();
+    expect(element.querySelector('.structure-leaf-content')).not.toBeNull();
+    app.toggleStructureEditing(); fixture.detectChanges();
+    expect(element.querySelector('.structure-editor-section')?.textContent).toContain('Allgemeine Angaben');
+    expect(element.querySelector('.mode-label')?.textContent).toBe('Bearbeitungsmodus');
+    expect(element.querySelector('.detail-statistics')).toBeNull();
+    expect(element.querySelector('.structure-properties')?.textContent).toContain('Gemischte Gruppe');
+    app.toggleStructureEditing(); fixture.detectChanges();
+    expect(element.querySelector('.detail-statistics')).not.toBeNull();
+    expect(element.querySelector('.structure-column-caption')?.textContent).toContain('Geschätzt');
   });
 });

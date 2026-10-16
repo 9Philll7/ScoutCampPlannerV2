@@ -28,6 +28,7 @@ import { ExplicitPermissionMember, ParticipantData, ParticipantDocument, Partici
       }
       @if (local()) { <p class="hint">Lokale Health-/Verify-Rechte werden ausschließlich über den bewusst ausgeführten Verwaltungsbefehl am Gerät vergeben, nicht durch den Paketimport.</p> }
       @if (overview(); as view) {
+        @if (initialStructureNodeId(); as nodeId) { <p>Neue Teilnehmer werden dem gewählten Blattknoten vorbelegt. Die Liste bleibt lagerweit.</p> }
         @if (view.isFrozen) { <p>Offlinephase aktiv – Teilnehmer sind hier schreibgeschützt.</p> }
         <button matButton [disabled]="!view.canEdit || busy()" (click)="create()">Testteilnehmer anlegen</button>
         <div class="cards">
@@ -103,6 +104,7 @@ import { ExplicitPermissionMember, ParticipantData, ParticipantDocument, Partici
 })
 export class ParticipantsComponent {
   readonly campId = input.required<string>();
+  readonly initialStructureNodeId = input<string | null>(null);
   readonly local = input(false);
   private readonly api = inject(ParticipantsApiService);
   readonly overview = signal<ParticipantsOverview | null>(null);
@@ -148,7 +150,7 @@ export class ParticipantsComponent {
       error: () => this.error.set('Teilnehmer konnten nicht geladen werden. Ein explizites Leserecht ist erforderlich.') }));
     if (!this.local()) this.requests.add(this.api.members(this.campId()).subscribe({ next: data => this.members.set(data), error: () => {} }));
   }
-  create() { this.original = null; this.draft = { displayName: '', structureNodeId: null, dietTypeId: null, absentDays: [], absentMealIds: [], allergenIds: [], intolerances: [] }; }
+  create() { this.original = null; this.draft = { displayName: '', structureNodeId: this.participantNodes().some(node => node.id === this.initialStructureNodeId()) ? this.initialStructureNodeId() : null, dietTypeId: null, absentDays: [], absentMealIds: [], allergenIds: [], intolerances: [] }; }
   edit(document: ParticipantDocument) { this.original = document; this.draft = structuredClone(document.data); }
   days(): string[] {
     const view = this.overview(); if (!view?.startDate || !view.endDate) return [];
