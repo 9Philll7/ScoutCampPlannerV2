@@ -514,24 +514,12 @@
                           [youth]="planningSummary() ? campChildYouthTotal() : null" [adults]="planningSummary() ? campLeaderTotal() : null"
                           [children]="selectedStructureChildren().length" [editing]="structureEditing()"/>
                         <div class="structure-node-actions">
-                          <button matButton type="button"
-                            [class.editing-active]="planningDetailsVisible()" aria-label="Planungsdetails anzeigen"
-                            [attr.aria-expanded]="planningDetailsVisible()"
-                            matTooltip="Planungsdetails" (click)="planningDetailsVisible.update(value => !value)">
-                            <scp-action-icon name="info"/>Nach Stufe aufschlüsseln</button>
                           @if (camp.canEdit && structureEditing()) {
                             <button matButton="outlined" type="button" aria-label="Knoten hinzufügen"
                               matTooltip="Knoten hinzufügen" (click)="toggleCreateStructureNode(null)"
                               [disabled]="submitting() || camp.isFrozen"><scp-action-icon name="add"/>Knoten hinzufügen</button>
                           }
                         </div>
-                        @if (planningDetailsVisible() && planningSummary(); as summary) {
-                          <div class="structure-planning-editor"><table><thead><tr><th>Stufe</th><th>KiJu</th><th>Leiter</th></tr></thead><tbody>
-                            @for (total of summary.stageTotals; track total.campStageId) {
-                              <tr><td>{{ total.stageName }}</td><td>{{ total.childYouthCount }}</td><td>{{ total.leaderCount }}</td></tr>
-                            }
-                          </tbody></table></div>
-                        }
                         @if (creatingStructureParent() === 'camp') {
                           <form class="structure-create-editor" (ngSubmit)="createStructureNode(camp)">
                             <mat-form-field appearance="outline"><mat-label>Name des neuen Knotens</mat-label>
@@ -643,6 +631,10 @@
                       }
                       </tbody></table></div>
                       </section>
+                    }
+                    @if (!structureEditing()) {
+                      <scp-stage-distribution [campId]="camp.id" [context]="selectedStructureContext()"
+                        [nodeIds]="selectedEstimateNodeIds()" [stageTotals]="selectedStructureNodeId() === null ? planningSummary()?.stageTotals ?? null : null"/>
                     }
                     <details class="structure-data-note"><summary>Hinweis zu den angezeigten Zahlen</summary><p>Hier werden Schätzwerte angezeigt. Eine Aufteilung erfasster Teilnehmer nach KiJu und Erwachsenen ist noch nicht verfügbar. Schätzwerte und erfasste Teilnehmer werden nicht addiert.</p></details>
                     </section>

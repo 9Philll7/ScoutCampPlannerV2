@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { StructureDetailHeaderComponent } from './features/camp/structure-detail-header.component';
+import { StageDistributionComponent } from './features/camp/stage-distribution.component';
 import { Component, computed, effect, HostListener, inject, signal, viewChild } from '@angular/core';
 import { TenantRecipesComponent } from './features/recipes/tenant-recipes.component';
 import { MealPlanningApiService } from './features/meal-planning/meal-planning-api.service';
@@ -40,7 +41,7 @@ type CampSection = 'overview' | 'general' | 'structure' | 'catering' | 'particip
 @Component({
   selector: 'scp-root',
   standalone: true,
-  imports: [FormsModule, MatMenuModule, MatButtonModule, MatButtonToggleModule, MatCardModule, MatCheckboxModule, MatFormFieldModule, MatInputModule,
+  imports: [FormsModule, StageDistributionComponent, MatMenuModule, MatButtonModule, MatButtonToggleModule, MatCardModule, MatCheckboxModule, MatFormFieldModule, MatInputModule,
     MatProgressSpinnerModule, MatSelectModule, MatTooltipModule, MatDatepickerModule,
     ActionIconComponent, IngredientRevisionEditorComponent, RecipeEditorComponent, MealPlanningComponent, PackageTransferComponent, ParticipantsComponent, DietaryCatalogComponent, TenantRecipesComponent, CurrentNavigationDirective, StructureDetailHeaderComponent],
   providers: [provideNativeDateAdapter(), { provide: MAT_DATE_LOCALE, useValue: 'de-AT' }],
@@ -53,6 +54,14 @@ export class AppComponent {
     if (this.campSection() === 'participants') this.participantInitialNodeId.set(nodeId);
   }
   readonly selectedStructureNodeId = signal<string | null>(null);
+  readonly selectedStructureContext = computed(() => this.structureNodes().find(node => node.id === this.selectedStructureNodeId())?.name ?? this.openedCamp()?.name ?? 'dieses Lager');
+  readonly selectedEstimateNodeIds = computed(() => {
+    const selected = this.selectedStructureNodeId();
+    if (selected === null) return [];
+    const nodes = this.structureNodes(); const ids = new Set<string>();
+    const visit = (id: string) => { if (ids.has(id)) return; ids.add(id); nodes.filter(node => node.parentId === id).forEach(node => visit(node.id)); };
+    visit(selected); return [...ids];
+  });
   readonly structureEditing = signal(false);
   selectStructureNode(id: string | null) {
     if (id === this.selectedStructureNodeId() || !this.mayLeave()) return;
