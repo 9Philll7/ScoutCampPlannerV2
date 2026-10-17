@@ -1,7 +1,11 @@
 @use '@angular/material' as mat;
 @use 'sass:meta';
 
-html { @include mat.theme((color: mat.$green-palette, typography: (plain-family: 'system-ui', brand-family: 'system-ui'), density: 0)); }
+html {
+  @include mat.theme((color: mat.$green-palette, typography: (plain-family: 'system-ui', brand-family: 'system-ui'), density: 0));
+  @include mat.theme-overrides((primary: #315B45, on-primary: #FFFFFF, surface: #FFFFFF, surface-container-low: #FFFFFF, on-surface: #203029, outline: #7B8A80));
+  @include mat.button-overrides((filled-container-shape: 8px, outlined-container-shape: 8px, text-container-shape: 8px));
+}
 html { min-height: 100%; background: #f3f5f0; }
 body { min-height: 100%; margin: 0; font-family: Roboto, Arial, sans-serif; background: #f3f5f0; color: #172217; }
 main { max-width: 1120px; margin: 0 auto; padding: 2.5rem 1.5rem 5rem; }

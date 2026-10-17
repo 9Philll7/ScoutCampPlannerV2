@@ -26,7 +26,7 @@ describe('Application navigation', () => {
       getCampStageFoodFactors: vi.fn(() => of([])), getCampStages: vi.fn(() => of([])),
       getStructureConfiguration: vi.fn(() => of({ mode: 'Free', levelNames: [] })),
       listStructure: vi.fn(() => of([])), getPlanningSummary: vi.fn(() => of({ stageTotals: [], structureTotals: [] })),
-      getParticipantEstimates: vi.fn(() => of([])), updateParticipantEstimates: vi.fn(() => of(undefined)),
+      getParticipantEstimates: vi.fn(() => of([])), updateParticipantEstimates: vi.fn(() => of(undefined)), renameStructureNode: vi.fn(() => of(undefined)),
       getWeightedFoodSummary: vi.fn(() => of([])),
     };
     TestBed.configureTestingModule({ imports: [AppComponent], providers: [
@@ -223,11 +223,11 @@ describe('Application navigation', () => {
   it('uses a separate edit mode with individual persistence and read-only permissions', () => {
     const { app, fixture, element } = structureSetup(); app.selectStructureNode('leaf');
     app.toggleStructureEditing(); fixture.detectChanges();
-    expect(element.querySelector('[aria-label="Eintrag umbenennen"]')).not.toBeNull();
+    expect(element.querySelector('[aria-label="Aktionen für Gemischte Gruppe"]')).not.toBeNull();
     expect(element.textContent).toContain('einzeln gespeichert');
     expect(element.textContent).not.toContain('Schätzung bearbeiten');
     app.camps.set([{ ...camp, canEdit: false }]); fixture.detectChanges();
-    expect(element.querySelector('[aria-label="Eintrag umbenennen"]')).toBeNull();
+    expect(element.querySelector('[aria-label="Aktionen für Gemischte Gruppe"]')).toBeNull();
     expect(element.textContent).not.toContain('Bearbeitung beenden');
   });
   it('does not double count parent estimates and selects collapsed descendants independently', () => {
@@ -308,9 +308,41 @@ describe('Application navigation', () => {
     expect(element.querySelector('.structure-editor-section')?.textContent).toContain('Allgemeine Angaben');
     expect(element.querySelector('.mode-label')?.textContent).toBe('Bearbeitungsmodus');
     expect(element.querySelector('.detail-statistics')).toBeNull();
-    expect(element.querySelector('.structure-properties')?.textContent).toContain('Gemischte Gruppe');
+    expect((element.querySelector('.structure-node-name-field input') as HTMLInputElement)?.value).toBe('Gemischte Gruppe');
     app.toggleStructureEditing(); fixture.detectChanges();
     expect(element.querySelector('.detail-statistics')).not.toBeNull();
     expect(element.querySelector('.structure-column-caption')?.textContent).toContain('Geschätzt');
+  });
+  it('keeps the local view switch in the shared page header during editing and participant navigation', () => {
+    const { app, fixture, element } = structureSetup();
+    app.selectStructureNode('leaf'); app.toggleStructureEditing(); fixture.detectChanges();
+    expect(element.querySelectorAll('nav[aria-label="Struktur und Teilnehmer"]')).toHaveLength(1);
+    expect(element.querySelector('.page-header nav[aria-label="Struktur und Teilnehmer"]')).not.toBeNull();
+    expect(element.querySelector('.structure-edit-notice')?.textContent).toContain('einzeln gespeichert');
+    app.navigateCamp('participants'); fixture.detectChanges();
+    expect(element.querySelector('.page-header h1')?.textContent).toBe('Struktur & Teilnehmer');
+    expect(element.querySelector('.page-header [aria-current="page"]')?.textContent).toBe('Teilnehmer');
+    expect(element.querySelectorAll('nav[aria-label="Struktur und Teilnehmer"]')).toHaveLength(1);
+  });
+  it('opens node actions from the tree and starts renaming without persisting a change', async () => {
+    const { app, fixture, element } = structureSetup(); app.selectStructureNode('leaf'); app.toggleStructureEditing(); fixture.detectChanges();
+    (element.querySelector('[aria-label="Aktionen für Gemischte Gruppe"]') as HTMLButtonElement).click(); fixture.detectChanges(); await fixture.whenStable();
+    const rename = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')).find(button => button.textContent?.trim() === 'Umbenennen');
+    expect(rename).toBeDefined(); rename!.click(); fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    expect(app.editingStructureNodeId()).toBe('leaf');
+    const input = element.querySelector('.structure-node-name-field input') as HTMLInputElement;
+    expect(input.value).toBe('Gemischte Gruppe');
+    expect(element.textContent).toContain('Namen speichern');
+    expect(api['renameStructureNode']).not.toHaveBeenCalled();
+  });
+  it('does not warn for an unchanged or cancelled structure name but protects a changed draft', () => {
+    const { app, fixture } = structureSetup(); app.selectStructureNode('leaf'); app.toggleStructureEditing(); fixture.detectChanges();
+    vi.mocked(window.confirm).mockClear();
+    app.toggleRenameStructureNode(app.structureNodes()[1]); fixture.detectChanges();
+    app.toggleRenameStructureNode(app.structureNodes()[1]); fixture.detectChanges();
+    app.toggleStructureEditing(); expect(window.confirm).not.toHaveBeenCalled();
+    app.toggleStructureEditing(); app.toggleRenameStructureNode(app.structureNodes()[1]); app.editStructureNodeName = 'Changed'; fixture.detectChanges();
+    vi.mocked(window.confirm).mockReturnValue(false); app.toggleStructureEditing();
+    expect(app.structureEditing()).toBe(true); expect(window.confirm).toHaveBeenCalled();
   });
 });

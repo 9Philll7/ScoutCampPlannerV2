@@ -1,0 +1,108 @@
+<section>
+      <div class="heading"><div><h2>Teilnehmerübersicht</h2><p>Alle erfassten Teilnehmer dieses Lagers.</p></div><div class="heading-actions"><button matButton [disabled]="busy()" (click)="reload()">Neu laden</button>
+      @if (!draft && overview()?.canEdit && !overview()?.isFrozen) { <button matButton="filled" [disabled]="busy()" (click)="create()"><scp-action-icon name="add"/>Teilnehmer hinzufügen</button> }</div></div>
+      <p class="notice">Entwicklungsfunktion: ausschließlich erfundene Dummy-/Testdaten eingeben. Keine Freigabe für echte Gesundheitsdaten oder deren Offline-Transport.</p>
+      @if (error()) { <p role="alert">{{ error() }}</p> }
+      @if (members().length) {
+        <details class="permissions"><summary>Explizite Zugriffsrechte verwalten</summary>
+          <p>Diese Rechte werden nicht automatisch durch eine Rolle vergeben. Jede Änderung wird protokolliert.</p>
+          @for (member of members(); track member.membershipId) {
+            <fieldset [disabled]="busy()"><legend>{{ member.displayName }}</legend>
+              @for (right of rights; track right.code) {
+                <label class="check"><input type="checkbox" [checked]="member.permissions.includes(right.code)"
+                  (change)="grant(member, right.code, $any($event.target).checked)"/>{{ right.label }}</label>
+              }
+            </fieldset>
+          }
+        </details>
+      }
+      @if (local()) { <p class="hint">Lokale Health-/Verify-Rechte werden ausschließlich über den bewusst ausgeführten Verwaltungsbefehl am Gerät vergeben, nicht durch den Paketimport.</p> }
+      @if (overview(); as view) {
+        @if (initialStructureNodeId(); as nodeId) { <p>Neue Teilnehmer werden dem gewählten Blattknoten vorbelegt. Die Liste bleibt lagerweit.</p> }
+        @if (view.isFrozen) { <p>Offlinephase aktiv – Teilnehmer sind hier schreibgeschützt.</p> }
+        @if (!draft) {
+        <div class="list-summary"><strong>{{ view.participants.length }}</strong><span>Teilnehmer erfasst</span><span class="result-count">{{ filteredParticipants().length }} angezeigt</span></div>
+        <div class="list-toolbar">
+          <label class="search-field">Suche<input type="search" placeholder="Teilnehmer suchen …" [(ngModel)]="search" (ngModelChange)="clearHiddenSelection()"/></label>
+          <label>Strukturzweig<select [(ngModel)]="groupFilter" (ngModelChange)="clearHiddenSelection()"><option value="">Alle Gruppen</option><option value="unassigned">Ohne Zuordnung</option>
+            @for (node of view.structureNodes ?? []; track node.id) { <option [value]="node.id">{{ structurePath(node.id) }}</option> }
+          </select></label>
+          <button matButton (click)="search = ''; groupFilter = ''; clearHiddenSelection()">Filter zurücksetzen</button>
+        </div>
+        <div class="participants-workspace" [class.has-preview]="selectedDocument() !== null">
+          <div class="table-scroll"><table aria-label="Teilnehmerliste"><thead><tr>
+            <th scope="col" [attr.aria-sort]="sortAscending ? 'ascending' : 'descending'"><button class="sort-button" type="button" (click)="sortAscending = !sortAscending" [attr.aria-label]="sortAscending ? 'Name absteigend sortieren' : 'Name aufsteigend sortieren'">Name <span aria-hidden="true">{{ sortAscending ? '↑' : '↓' }}</span></button></th>
+            <th scope="col">Strukturzuordnung</th><th scope="col">Aktion</th>
+          </tr></thead><tbody>
+          @for (document of filteredParticipants(); track document.data.id) {
+            <tr [class.selected]="selectedId === document.data.id">
+              <th scope="row"><button class="person-button" type="button" (click)="select(document)" [attr.aria-expanded]="selectedId === document.data.id" aria-controls="participant-preview"><span class="avatar" aria-hidden="true">{{ initials(document.data.displayName) }}</span><span>{{ document.data.displayName }}</span></button></th>
+              <td>{{ structurePath(document.data.structureNodeId) }}</td>
+              <td><button matButton (click)="select(document)" [attr.aria-label]="'Vorschau öffnen: ' + document.data.displayName">Ansehen <span aria-hidden="true">›</span></button></td>
+            </tr>
+          } @empty { <tr><td colspan="3" class="empty">{{ view.participants.length ? 'Keine Teilnehmer für diese Auswahl.' : 'Noch keine Teilnehmer erfasst.' }}</td></tr> }
+          </tbody></table></div>
+          @if (selectedDocument(); as document) {
+            <aside id="participant-preview" class="participant-preview" aria-label="Teilnehmervorschau">
+              <header><span class="avatar large" aria-hidden="true">{{ initials(document.data.displayName) }}</span><div><h3>{{ document.data.displayName }}</h3><p>Teilnehmervorschau</p></div><button matButton aria-label="Vorschau schließen" (click)="selectedId = null">×</button></header>
+              <section><h4>Strukturzuordnung</h4><p>{{ structurePath(document.data.structureNodeId) }}</p></section>
+              <section><h4>Anwesenheit</h4><p>Standardmäßig anwesend</p><dl><div><dt>Ganze Tage abwesend</dt><dd>{{ document.data.absentDays.length }}</dd></div><div><dt>Einzelne Mahlzeiten abwesend</dt><dd>{{ document.data.absentMealIds.length }}</dd></div></dl></section>
+              <footer><button matButton="outlined" (click)="edit(document)" [disabled]="busy()">{{ view.canEdit && !view.isFrozen ? 'Bearbeiten' : 'Details anzeigen' }}</button>
+              @if (view.canEdit && !view.isFrozen) { <button matButton class="danger" [disabled]="busy()" (click)="remove(document)">Teilnehmer löschen</button> }</footer>
+            </aside>
+          }
+        </div>
+        }
+        @if (draft; as value) {
+          <form class="participant-editor" (ngSubmit)="save()">
+            <header class="heading"><div><h3>{{ original ? 'Teilnehmer bearbeiten' : 'Neuer Teilnehmer' }}</h3><p>Angaben und Anwesenheit</p></div><button matButton type="button" [disabled]="busy()" (click)="closeEditor()">Abbrechen</button></header>
+            <fieldset [disabled]="!view.canEdit || view.isFrozen || busy()">
+              <legend>Allgemeine Angaben</legend>
+              <label>Anzeigename<input name="displayName" [(ngModel)]="value.displayName" required maxlength="200"/></label>
+              <label>Strukturknoten<select name="structureNodeId" [(ngModel)]="value.structureNodeId">
+                <option [ngValue]="null">Noch nicht zugeordnet</option>
+                @for (node of participantNodes(); track node.id) { <option [ngValue]="node.id">{{ node.name }}</option> }
+              </select></label>
+              <label>Ernährungsform<select name="diet" [(ngModel)]="value.dietTypeId"><option [ngValue]="null">Keine</option>
+                @for (diet of view.catalog.dietTypes; track diet.id) { <option [ngValue]="diet.id">{{ diet.name }}</option> }
+              </select></label>
+              <details><summary>Anwesenheit (standardmäßig anwesend)</summary>
+                @for (day of days(); track day) {
+                  <label class="check"><input type="checkbox" [checked]="value.absentDays.includes(day)"
+                    (change)="toggle(value.absentDays, day, $any($event.target).checked)"/>{{ day }} ganztägig abwesend</label>
+                }
+                <h5>Einzelne Mahlzeiten abwesend</h5>
+                @for (meal of view.meals; track meal.id) {
+                  <label class="check"><input type="checkbox" [checked]="value.absentMealIds.includes(meal.id)"
+                    [disabled]="value.absentDays.includes(meal.date) || !meal.isActive"
+                    (change)="toggle(value.absentMealIds, meal.id, $any($event.target).checked)"/>
+                    {{ meal.date }} · {{ meal.name }} {{ !meal.isActive ? '(inaktiv)' : '' }}</label>
+                }
+              </details>
+              <details><summary>Allergene</summary>
+                @for (allergen of view.catalog.allergens; track allergen.id) {
+                  <label class="check"><input type="checkbox" [checked]="value.allergenIds.includes(allergen.id)"
+                    (change)="toggle(value.allergenIds, allergen.id, $any($event.target).checked)"/>{{ allergen.name }}</label>
+                }
+              </details>
+              <details><summary>Unverträglichkeiten und individuelle Angaben</summary>
+                <p>Kein medizinischer Standardwert. Ein leeres Feld bedeutet: Grenzwert unbekannt.</p>
+                @for (substance of view.catalog.substances; track substance.id) {
+                  <div class="substance"><label class="check"><input type="checkbox" [checked]="!!requirement(substance.id)"
+                    (change)="toggleRequirement(substance.id, $any($event.target).checked)"/>{{ substance.name }}</label>
+                  @if (requirement(substance.id); as requirement) {
+                    @if (substance.isQuantityDependent) {
+                      <label>Individueller Grenzwert (g/Portion)<input type="number" min="0" max="999999999999.999999" step="0.000001"
+                        [name]="'threshold-' + substance.id" [(ngModel)]="requirement.thresholdGramsPerPortion"/></label>
+                    }
+                    <label>Herkunft des Grenzwerts<input maxlength="500" [name]="'source-' + substance.id" [(ngModel)]="requirement.thresholdSource"/></label>
+                  }</div>
+                }
+              </details>
+              <button matButton="filled" type="submit" [disabled]="!value.displayName.trim()">Speichern</button>
+            </fieldset>
+            <button matButton type="button" [disabled]="busy()" (click)="closeEditor()">Schließen</button>
+          </form>
+        }
+      }
+    </section>

@@ -80,4 +80,41 @@ describe('ParticipantsComponent', () => {
     component.overview.set(current);
     expect(component.requirement('lactose')!.thresholdGramsPerPortion).toBe(0.5);
   });
+  it('filters and sorts existing participants without mutating the source and resolves full structure paths', () => {
+    const first = component.overview()!.participants[0];
+    component.overview.set({ ...component.overview()!, structureNodes: [
+      { id: 'north', parentId: null, name: 'Nord' }, { id: 'leaf', parentId: 'north', name: 'Gruppe' }
+    ], participants: [first, { ...first, data: { ...first.data, id: 'anna', displayName: 'Anna', structureNodeId: 'leaf' } }] });
+    expect(component.filteredParticipants().map(document => document.data.id)).toEqual(['anna', 'person']);
+    expect(component.overview()!.participants[0].data.id).toBe('person');
+    component.groupFilter = 'leaf'; component.search = 'AN';
+    expect(component.filteredParticipants().map(document => document.data.id)).toEqual(['anna']);
+    expect(component.structurePath('leaf')).toBe('Nord › Gruppe');
+    component.groupFilter = 'north'; expect(component.filteredParticipants().map(document => document.data.id)).toEqual(['anna']);
+    component.groupFilter = 'unassigned'; component.search = '';
+    expect(component.filteredParticipants().map(document => document.data.id)).toEqual(['person']);
+  });
+  it('opens a read-only preview without starting an editor or sending a mutation', () => {
+    component.overview.set({ ...component.overview()!, canEdit: false }); fixture.detectChanges();
+    const button = fixture.nativeElement.querySelector('.person-button') as HTMLButtonElement; button.click(); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[aria-label="Teilnehmervorschau"]')?.textContent).toContain('Dummy');
+    expect(component.draft).toBeNull(); expect(api['update']).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).not.toContain('Teilnehmer löschen');
+    expect(fixture.nativeElement.textContent).not.toContain('Teilnehmer hinzufügen');
+    component.search = 'absent'; component.clearHiddenSelection();
+    expect(component.selectedDocument()).toBeNull();
+  });
+  it('protects an edited draft when selecting another participant and preserves filters when closing', () => {
+    const person = component.overview()!.participants[0]; component.edit(person); component.draft!.displayName = 'Changed';
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    component.select(person); expect(component.draft!.displayName).toBe('Changed');
+    expect(component.selectedDocument()).toBeNull();
+    component.search = 'Dummy'; confirm.mockReturnValue(true); component.closeEditor();
+    expect(component.draft).toBeNull(); expect(component.search).toBe('Dummy'); confirm.mockRestore();
+  });
+  it('prevents mutations when the camp becomes frozen', () => {
+    component.edit(component.overview()!.participants[0]);
+    component.overview.set({ ...component.overview()!, isFrozen: true }); component.save();
+    expect(api['update']).not.toHaveBeenCalled();
+  });
 });

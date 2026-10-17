@@ -1,5 +1,13 @@
 # ScoutCampPlanner – Visual Design Guide
 
+## Ergänzung UX Overhaul 1 (2026-10-16)
+
+Für den beauftragten Neuaufbau sind große Änderungen an Templates, Komponentenaufteilung und visuellem Stil ausdrücklich freigegeben. Frühere Einschränkungen auf minimale Anpassungen gelten hierfür nicht. API, Fachlogik, Rechte und Speichersemantik bleiben unverändert.
+
+Die gemeinsame Shell erhält in Organisations- und Lagermodus eine dunkle waldgrüne Sidebar nach den Strukturreferenzen. Dies ersetzt die bisherige helle Sidebar als Gestaltungsziel; es ist kein Dark Theme der Anwendung. Arbeitsflächen bleiben hell. Navigationstokens: Hintergrund `#12392F`, Text `#F3F7F3`, Sekundärtext `#BCCEC5`, Auswahl `#2B5545`, Fokus/Auswahlkante `#C6D9A8`, Trennlinien `#38594E`.
+
+Die Desktop-Sidebar verwendet 272px als bewusste Abweichung vom bisherigen Richtwert, um Marke und lange Kontextnamen ausreichend Raum zu geben. Gemeinsame Inhaltsabstände betragen 32px, schmal 16px; Übersichtscontainer maximal 1200px, links an derselben Inhaltskante wie breite Arbeitsansichten. Der lokale Struktur-/Teilnehmerwechsel steht im Seitenkopf im Dokumentfluss, auch im Bearbeitungsmodus. Große Änderungen sind erst nach gerendertem Bildvergleich visuell abgenommen.
+
 **Status:** Verbindliche UX-/UI-Gestaltungsgrundlage (Version 1.0, 2026-10-13)  
 **Designrichtung:** Modern Outdoor  
 **Geltung:** Web-Anwendung und Desktop-/Offline-Oberfläche  

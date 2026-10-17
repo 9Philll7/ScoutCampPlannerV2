@@ -8,99 +8,8 @@ import { ExplicitPermissionMember, ParticipantData, ParticipantDocument, Partici
 @Component({
   selector: 'scp-participants', standalone: true,
   imports: [FormsModule, MatButtonModule, ActionIconComponent],
-  template: `
-    <section>
-      <div class="heading"><h3>Teilnehmer</h3><button matButton [disabled]="busy()" (click)="load()">Neu laden</button></div>
-      <p class="notice">Entwicklungsfunktion: ausschließlich erfundene Dummy-/Testdaten eingeben. Keine Freigabe für echte Gesundheitsdaten oder deren Offline-Transport.</p>
-      @if (error()) { <p role="alert">{{ error() }}</p> }
-      @if (members().length) {
-        <details><summary>Explizite Zugriffsrechte verwalten</summary>
-          <p>Diese Rechte werden nicht automatisch durch eine Rolle vergeben. Jede Änderung wird protokolliert.</p>
-          @for (member of members(); track member.membershipId) {
-            <fieldset [disabled]="busy()"><legend>{{ member.displayName }}</legend>
-              @for (right of rights; track right.code) {
-                <label class="check"><input type="checkbox" [checked]="member.permissions.includes(right.code)"
-                  (change)="grant(member, right.code, $any($event.target).checked)"/>{{ right.label }}</label>
-              }
-            </fieldset>
-          }
-        </details>
-      }
-      @if (local()) { <p class="hint">Lokale Health-/Verify-Rechte werden ausschließlich über den bewusst ausgeführten Verwaltungsbefehl am Gerät vergeben, nicht durch den Paketimport.</p> }
-      @if (overview(); as view) {
-        @if (initialStructureNodeId(); as nodeId) { <p>Neue Teilnehmer werden dem gewählten Blattknoten vorbelegt. Die Liste bleibt lagerweit.</p> }
-        @if (view.isFrozen) { <p>Offlinephase aktiv – Teilnehmer sind hier schreibgeschützt.</p> }
-        <button matButton [disabled]="!view.canEdit || busy()" (click)="create()">Testteilnehmer anlegen</button>
-        <div class="cards">
-          @for (document of view.participants; track document.data.id) {
-            <article><strong>{{ document.data.displayName }}</strong>
-              <div><button matIconButton [attr.aria-label]="'Teilnehmer öffnen: ' + document.data.displayName" [disabled]="busy()" (click)="edit(document)"><scp-action-icon name="edit"/></button>
-              <button matIconButton aria-label="Teilnehmer löschen" [disabled]="!view.canEdit || busy()" (click)="remove(document)"><scp-action-icon name="remove"/></button></div>
-            </article>
-          } @empty { <p>Noch keine Testteilnehmer vorhanden.</p> }
-        </div>
-        @if (draft; as value) {
-          <form (ngSubmit)="save()">
-            <h4>{{ original ? 'Teilnehmer bearbeiten' : 'Neuer Testteilnehmer' }}</h4>
-            <fieldset [disabled]="!view.canEdit || busy()">
-              <label>Anzeigename<input name="displayName" [(ngModel)]="value.displayName" required maxlength="200"/></label>
-              <label>Strukturknoten<select name="structureNodeId" [(ngModel)]="value.structureNodeId">
-                <option [ngValue]="null">Noch nicht zugeordnet</option>
-                @for (node of participantNodes(); track node.id) { <option [ngValue]="node.id">{{ node.name }}</option> }
-              </select></label>
-              <label>Ernährungsform<select name="diet" [(ngModel)]="value.dietTypeId"><option [ngValue]="null">Keine</option>
-                @for (diet of view.catalog.dietTypes; track diet.id) { <option [ngValue]="diet.id">{{ diet.name }}</option> }
-              </select></label>
-              <details><summary>Anwesenheit (standardmäßig anwesend)</summary>
-                @for (day of days(); track day) {
-                  <label class="check"><input type="checkbox" [checked]="value.absentDays.includes(day)"
-                    (change)="toggle(value.absentDays, day, $any($event.target).checked)"/>{{ day }} ganztägig abwesend</label>
-                }
-                <h5>Einzelne Mahlzeiten abwesend</h5>
-                @for (meal of view.meals; track meal.id) {
-                  <label class="check"><input type="checkbox" [checked]="value.absentMealIds.includes(meal.id)"
-                    [disabled]="value.absentDays.includes(meal.date) || !meal.isActive"
-                    (change)="toggle(value.absentMealIds, meal.id, $any($event.target).checked)"/>
-                    {{ meal.date }} · {{ meal.name }} {{ !meal.isActive ? '(inaktiv)' : '' }}</label>
-                }
-              </details>
-              <details><summary>Allergene</summary>
-                @for (allergen of view.catalog.allergens; track allergen.id) {
-                  <label class="check"><input type="checkbox" [checked]="value.allergenIds.includes(allergen.id)"
-                    (change)="toggle(value.allergenIds, allergen.id, $any($event.target).checked)"/>{{ allergen.name }}</label>
-                }
-              </details>
-              <details><summary>Unverträglichkeiten und individuelle Angaben</summary>
-                <p>Kein medizinischer Standardwert. Ein leeres Feld bedeutet: Grenzwert unbekannt.</p>
-                @for (substance of view.catalog.substances; track substance.id) {
-                  <div class="substance"><label class="check"><input type="checkbox" [checked]="!!requirement(substance.id)"
-                    (change)="toggleRequirement(substance.id, $any($event.target).checked)"/>{{ substance.name }}</label>
-                  @if (requirement(substance.id); as requirement) {
-                    @if (substance.isQuantityDependent) {
-                      <label>Individueller Grenzwert (g/Portion)<input type="number" min="0" max="999999999999.999999" step="0.000001"
-                        [name]="'threshold-' + substance.id" [(ngModel)]="requirement.thresholdGramsPerPortion"/></label>
-                    }
-                    <label>Herkunft des Grenzwerts<input maxlength="500" [name]="'source-' + substance.id" [(ngModel)]="requirement.thresholdSource"/></label>
-                  }</div>
-                }
-              </details>
-              <button matButton type="submit" [disabled]="!value.displayName.trim()">Speichern</button>
-            </fieldset>
-            <button matButton type="button" [disabled]="busy()" (click)="draft = null; original = null">Schließen</button>
-          </form>
-        }
-      }
-    </section>
-  `,
-  styles: [`
-    .heading,article { display:flex;justify-content:space-between;align-items:center;gap:1rem; }
-    .notice { background:#fff3d5;padding:1rem;border-radius:.5rem;color:#553800; }
-    .hint { color:#53635a; } .cards { display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem;margin:1rem 0; }
-    article,fieldset,details { border:1px solid #ccd9d1;border-radius:.5rem;padding:1rem;margin:.5rem 0; }
-    label { display:flex;flex-direction:column;gap:.3rem;margin:.6rem 0; } label.check { flex-direction:row;align-items:center;gap:.6rem; }
-    input:not([type=checkbox]),select { padding:.65rem;border:1px solid #7d9485;border-radius:.3rem;max-width:36rem; }
-    summary { cursor:pointer;font-weight:600; } [role=alert] { color:#9e2828; } .substance { padding:.5rem;border-bottom:1px solid #ddd; }
-  `]
+  templateUrl: './participants.component.html',
+  styleUrl: './participants.component.scss'
 })
 export class ParticipantsComponent {
   readonly campId = input.required<string>();
@@ -111,6 +20,45 @@ export class ParticipantsComponent {
   readonly members = signal<ExplicitPermissionMember[]>([]);
   readonly error = signal('');
   readonly busy = signal(false);
+  search = '';
+  groupFilter = '';
+  sortAscending = true;
+  selectedId: string | null = null;
+  private draftBaseline = '';
+  filteredParticipants() {
+    const term = this.search.trim().toLocaleLowerCase('de');
+    return (this.overview()?.participants ?? []).filter(document =>
+      (!term || document.data.displayName.toLocaleLowerCase('de').includes(term)) &&
+      (!this.groupFilter || (this.groupFilter === 'unassigned' ? !document.data.structureNodeId : this.belongsToBranch(document.data.structureNodeId, this.groupFilter))))
+      .slice().sort((a, b) => a.data.displayName.localeCompare(b.data.displayName, 'de') * (this.sortAscending ? 1 : -1));
+  }
+  selectedDocument() { return this.overview()?.participants.find(document => document.data.id === this.selectedId) ?? null; }
+  private belongsToBranch(id: string | null | undefined, branch: string) {
+    const nodes = this.overview()?.structureNodes ?? []; const visited = new Set<string>();
+    while (id && !visited.has(id)) { if (id === branch) return true; visited.add(id); id = nodes.find(node => node.id === id)?.parentId; }
+    return false;
+  }
+  select(document: ParticipantDocument) { if (!this.closeEditor()) return; this.selectedId = document.data.id; }
+  clearHiddenSelection() { if (!this.filteredParticipants().some(document => document.data.id === this.selectedId)) this.selectedId = null; }
+  initials(name: string) { return name.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join('').toLocaleUpperCase('de'); }
+  structurePath(id: string | null | undefined) {
+    if (!id) return 'Noch nicht zugeordnet';
+    const nodes = this.overview()?.structureNodes ?? [];
+    const parts: string[] = []; const visited = new Set<string>();
+    let current: string | null = id;
+    while (current && !visited.has(current)) {
+      visited.add(current); const node = nodes.find(value => value.id === current);
+      if (!node) { parts.unshift('Zuordnung nicht verfügbar'); break; }
+      parts.unshift(node.name); current = node.parentId;
+    }
+    return parts.join(' › ');
+  }
+  hasPendingChanges() { return this.draft !== null && JSON.stringify(this.draft) !== this.draftBaseline; }
+  closeEditor() {
+    if (this.hasPendingChanges() && !window.confirm('Nicht gespeicherte Änderungen verwerfen?')) return false;
+    this.draft = null; this.original = null; return true;
+  }
+  reload() { if (this.closeEditor()) this.load(); }
   draft: ParticipantData | null = null;
   participantNodes() {
     const view = this.overview();
@@ -142,16 +90,16 @@ export class ParticipantsComponent {
     { code: 'health.participant-requirements.edit', label: 'Teilnehmeranforderungen bearbeiten' },
     { code: 'catering.meal-planning.verify', label: 'Verpflegung verifizieren' },
   ];
-  constructor() { effect(onCleanup => { this.campId(); this.load(); onCleanup(() => this.requests.unsubscribe()); }); }
+  constructor() { effect(onCleanup => { this.campId(); this.search = ''; this.groupFilter = ''; this.sortAscending = true; this.load(); onCleanup(() => this.requests.unsubscribe()); }); }
   load() {
     this.requests.unsubscribe(); this.requests = new Subscription();
-    this.draft = null; this.original = null; this.overview.set(null); this.members.set([]); this.error.set(''); this.busy.set(false);
+    this.draft = null; this.original = null; this.selectedId = null; this.overview.set(null); this.members.set([]); this.error.set(''); this.busy.set(false);
     this.requests.add(this.api.list(this.campId()).subscribe({ next: data => this.overview.set(data),
       error: () => this.error.set('Teilnehmer konnten nicht geladen werden. Ein explizites Leserecht ist erforderlich.') }));
     if (!this.local()) this.requests.add(this.api.members(this.campId()).subscribe({ next: data => this.members.set(data), error: () => {} }));
   }
-  create() { this.original = null; this.draft = { displayName: '', structureNodeId: this.participantNodes().some(node => node.id === this.initialStructureNodeId()) ? this.initialStructureNodeId() : null, dietTypeId: null, absentDays: [], absentMealIds: [], allergenIds: [], intolerances: [] }; }
-  edit(document: ParticipantDocument) { this.original = document; this.draft = structuredClone(document.data); }
+  create() { if (!this.closeEditor()) return; this.original = null; this.draft = { displayName: '', structureNodeId: this.participantNodes().some(node => node.id === this.initialStructureNodeId()) ? this.initialStructureNodeId() : null, dietTypeId: null, absentDays: [], absentMealIds: [], allergenIds: [], intolerances: [] }; this.draftBaseline = JSON.stringify(this.draft); }
+  edit(document: ParticipantDocument) { if (!this.closeEditor()) return; this.original = document; this.draft = structuredClone(document.data); this.draftBaseline = JSON.stringify(this.draft); }
   days(): string[] {
     const view = this.overview(); if (!view?.startDate || !view.endDate) return [];
     const days: string[] = []; const current = new Date(view.startDate + 'T00:00:00Z'); const end = new Date(view.endDate + 'T00:00:00Z');
@@ -170,9 +118,9 @@ export class ParticipantsComponent {
     }
     if (!enabled) this.draft.intolerances = this.draft.intolerances.filter(value => value.substanceId !== id);
   }
-  save() { if (!this.draft || !this.overview()?.canEdit || this.busy()) return;
+  save() { if (!this.draft || !this.overview()?.canEdit || this.overview()?.isFrozen || this.busy()) return;
     this.mutate(this.original ? this.api.update(this.campId(), this.original, this.draft) : this.api.create(this.campId(), this.draft)); }
-  remove(document: ParticipantDocument) { if (!this.overview()?.canEdit || this.busy() || !window.confirm('Diesen Testteilnehmer löschen?')) return;
+  remove(document: ParticipantDocument) { if (!this.overview()?.canEdit || this.overview()?.isFrozen || this.busy() || !window.confirm('Diesen Testteilnehmer löschen?')) return;
     this.mutate(this.api.remove(this.campId(), document)); }
   grant(member: ExplicitPermissionMember, permission: string, enabled: boolean) { this.mutate(this.api.grant(this.campId(), member.membershipId, permission, enabled)); }
   private mutate(request: Observable<unknown>) {
