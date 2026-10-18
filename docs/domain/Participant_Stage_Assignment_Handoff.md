@@ -1,6 +1,8 @@
 # Übergabe: Stufenzuteilung erfasster Teilnehmer
 
-Stand: 2026-10-17. Der aktuelle Frontend-Stand wird als Checkpoint gesichert.
+Stand: 2026-10-18. Diese Übergabe ist historisch: Die erforderlichen Änderungen wurden anschließend vom Benutzer freigegeben und umgesetzt. Maßgeblich sind jetzt [Umsetzung und Prüfstand](../../.codex/participant-stage-assignment-result.md). Keine erneute Freigabe der bereits implementierten Attribute erforderlich; manuelle Abnahme und weitere visuelle Integration bleiben gesondert zu prüfen.
+
+## Historische Übergabe vom 2026-10-17
 
 ## Auftrag für den nächsten Chat
 

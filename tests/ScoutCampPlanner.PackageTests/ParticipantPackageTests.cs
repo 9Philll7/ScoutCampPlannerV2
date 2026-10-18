@@ -130,6 +130,7 @@ public sealed partial class CampPackageTests
         Assert.Empty(await local.Platform.LocalCampPermissionGrants.ToArrayAsync());
         await Assert.ThrowsAsync<CampPackageParticipantAccessException>(() => local.Packages.CreateReturnPackageAsync(campId));
         participant.Rename("Changed dummy");
+        participant.AssignStageAndCategory((await local.Camp.CampStages.SingleAsync()).Id, "ChildYouth");
         participant.SetDayAbsent(new(2027, 7, 3), true);
         await local.SaveAsync();
         byte[] returned = await ParticipantPackages(local).CreateReturnPackageAsync(campId);
@@ -137,6 +138,8 @@ public sealed partial class CampPackageTests
         var after = Assert.Single(await cloud.Camp.GetParticipantsAsync(campId));
         Assert.Equal(before.Id, after.Id);
         Assert.Equal("Changed dummy", after.DisplayName);
+        Assert.Equal((await cloud.Camp.CampStages.SingleAsync()).Id, after.CampStageId);
+        Assert.Equal("ChildYouth", after.Category);
         Assert.Equal(2, after.AbsentDays.Count);
         Assert.Equal(before.Intolerances, after.Intolerances);
         Assert.False((await cloud.Camp.Camps.SingleAsync()).IsFrozen);

@@ -32,19 +32,20 @@
         <div class="participants-workspace" [class.has-preview]="selectedDocument() !== null">
           <div class="table-scroll"><table aria-label="Teilnehmerliste"><thead><tr>
             <th scope="col" [attr.aria-sort]="sortAscending ? 'ascending' : 'descending'"><button class="sort-button" type="button" (click)="sortAscending = !sortAscending" [attr.aria-label]="sortAscending ? 'Name absteigend sortieren' : 'Name aufsteigend sortieren'">Name <span aria-hidden="true">{{ sortAscending ? '↑' : '↓' }}</span></button></th>
-            <th scope="col">Strukturzuordnung</th><th scope="col">Aktion</th>
+            <th scope="col">Stufe</th><th scope="col">Kategorie</th><th scope="col">Strukturzuordnung</th><th scope="col">Aktion</th>
           </tr></thead><tbody>
           @for (document of filteredParticipants(); track document.data.id) {
             <tr [class.selected]="selectedId === document.data.id">
               <th scope="row"><button class="person-button" type="button" (click)="select(document)" [attr.aria-expanded]="selectedId === document.data.id" aria-controls="participant-preview"><span class="avatar" aria-hidden="true">{{ initials(document.data.displayName) }}</span><span>{{ document.data.displayName }}</span></button></th>
-              <td>{{ structurePath(document.data.structureNodeId) }}</td>
+              <td>{{ stageName(document.data.campStageId) }}</td><td>{{ categoryName(document.data.category) }}</td><td>{{ structurePath(document.data.structureNodeId) }}</td>
               <td><button matButton (click)="select(document)" [attr.aria-label]="'Vorschau öffnen: ' + document.data.displayName">Ansehen <span aria-hidden="true">›</span></button></td>
             </tr>
-          } @empty { <tr><td colspan="3" class="empty">{{ view.participants.length ? 'Keine Teilnehmer für diese Auswahl.' : 'Noch keine Teilnehmer erfasst.' }}</td></tr> }
+          } @empty { <tr><td colspan="5" class="empty">{{ view.participants.length ? 'Keine Teilnehmer für diese Auswahl.' : 'Noch keine Teilnehmer erfasst.' }}</td></tr> }
           </tbody></table></div>
           @if (selectedDocument(); as document) {
             <aside id="participant-preview" class="participant-preview" aria-label="Teilnehmervorschau">
               <header><span class="avatar large" aria-hidden="true">{{ initials(document.data.displayName) }}</span><div><h3>{{ document.data.displayName }}</h3><p>Teilnehmervorschau</p></div><button matButton aria-label="Vorschau schließen" (click)="selectedId = null">×</button></header>
+              <section><h4>Stufe und Kategorie</h4><p>{{ stageName(document.data.campStageId) }} · {{ categoryName(document.data.category) }}</p></section>
               <section><h4>Strukturzuordnung</h4><p>{{ structurePath(document.data.structureNodeId) }}</p></section>
               <section><h4>Anwesenheit</h4><p>Standardmäßig anwesend</p><dl><div><dt>Ganze Tage abwesend</dt><dd>{{ document.data.absentDays.length }}</dd></div><div><dt>Einzelne Mahlzeiten abwesend</dt><dd>{{ document.data.absentMealIds.length }}</dd></div></dl></section>
               <footer><button matButton="outlined" (click)="edit(document)" [disabled]="busy()">{{ view.canEdit && !view.isFrozen ? 'Bearbeiten' : 'Details anzeigen' }}</button>
@@ -59,6 +60,12 @@
             <fieldset [disabled]="!view.canEdit || view.isFrozen || busy()">
               <legend>Allgemeine Angaben</legend>
               <label>Anzeigename<input name="displayName" [(ngModel)]="value.displayName" required maxlength="200"/></label>
+              <label>Stufe<select name="campStageId" [(ngModel)]="value.campStageId"><option [ngValue]="null">Nicht zugeordnet</option>
+                @for (stage of view.stages ?? []; track stage.id) { <option [ngValue]="stage.id">{{ stage.name }}</option> }
+              </select></label>
+              <label>Kategorie<select name="category" [(ngModel)]="value.category"><option [ngValue]="null">Nicht zugeordnet</option>
+                <option value="ChildYouth">KiJu</option><option value="LeaderAdult">Leiter/Erwachsene</option>
+              </select></label>
               <label>Strukturknoten<select name="structureNodeId" [(ngModel)]="value.structureNodeId">
                 <option [ngValue]="null">Noch nicht zugeordnet</option>
                 @for (node of participantNodes(); track node.id) { <option [ngValue]="node.id">{{ node.name }}</option> }

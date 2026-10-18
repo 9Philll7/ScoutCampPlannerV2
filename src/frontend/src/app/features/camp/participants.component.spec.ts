@@ -26,6 +26,15 @@ describe('ParticipantsComponent', () => {
     expect(api['grant']).not.toHaveBeenCalled();
     expect(component.days()).toEqual(['2027-07-01', '2027-07-02']);
   });
+  it('keeps legacy assignments unknown and saves stage and category independently', () => {
+    component.overview.set({ ...component.overview()!, stages: [{ id: 'stage', name: 'Biber' }] });
+    component.edit(component.overview()!.participants[0]); fixture.detectChanges();
+    expect(component.draft!.campStageId).toBeNull();
+    expect(component.draft!.category).toBeNull();
+    expect(fixture.nativeElement.querySelector('select[name="campStageId"]').textContent).toContain('Biber');
+    component.draft!.campStageId = 'stage'; component.draft!.category = 'LeaderAdult'; component.save();
+    expect(api['update'].mock.calls[0][2]).toMatchObject({ campStageId: 'stage', category: 'LeaderAdult', dietTypeId: null, absentDays: [] });
+  });
   it('offers only final-depth leaves for a fixed structure', () => {
     component.overview.set({ ...component.overview()!, participantStructureDepth: 2, structureNodes: [
       { id: 'root', parentId: null, name: 'Bereich' },

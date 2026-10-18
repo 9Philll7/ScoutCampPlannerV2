@@ -7,7 +7,7 @@ public sealed record ParticipantPlanningData(
     Guid Id, Guid CampId, string DisplayName, Guid? DietTypeId,
     IReadOnlyList<DateOnly> AbsentDays, IReadOnlyList<Guid> AbsentMealIds,
     IReadOnlyList<Guid> AllergenIds, IReadOnlyList<ParticipantIntoleranceData> Intolerances,
-    Guid? StructureNodeId = null);
+    Guid? StructureNodeId = null, Guid? CampStageId = null, string? Category = null);
 
 /// <summary>Data-minimized meal projection. No names, source metadata or health dossier.</summary>
 public sealed record CateringParticipantData(Guid ParticipantReference, Guid? StructureNodeId,

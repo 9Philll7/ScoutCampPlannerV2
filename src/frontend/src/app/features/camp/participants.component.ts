@@ -98,8 +98,10 @@ export class ParticipantsComponent {
       error: () => this.error.set('Teilnehmer konnten nicht geladen werden. Ein explizites Leserecht ist erforderlich.') }));
     if (!this.local()) this.requests.add(this.api.members(this.campId()).subscribe({ next: data => this.members.set(data), error: () => {} }));
   }
-  create() { if (!this.closeEditor()) return; this.original = null; this.draft = { displayName: '', structureNodeId: this.participantNodes().some(node => node.id === this.initialStructureNodeId()) ? this.initialStructureNodeId() : null, dietTypeId: null, absentDays: [], absentMealIds: [], allergenIds: [], intolerances: [] }; this.draftBaseline = JSON.stringify(this.draft); }
-  edit(document: ParticipantDocument) { if (!this.closeEditor()) return; this.original = document; this.draft = structuredClone(document.data); this.draftBaseline = JSON.stringify(this.draft); }
+  create() { if (!this.closeEditor()) return; this.original = null; this.draft = { displayName: '', campStageId: null, category: null, structureNodeId: this.participantNodes().some(node => node.id === this.initialStructureNodeId()) ? this.initialStructureNodeId() : null, dietTypeId: null, absentDays: [], absentMealIds: [], allergenIds: [], intolerances: [] }; this.draftBaseline = JSON.stringify(this.draft); }
+  edit(document: ParticipantDocument) { if (!this.closeEditor()) return; this.original = document; this.draft = { ...structuredClone(document.data), campStageId: document.data.campStageId ?? null, category: document.data.category ?? null }; this.draftBaseline = JSON.stringify(this.draft); }
+  stageName(id?: string | null) { return this.overview()?.stages?.find(stage => stage.id === id)?.name ?? 'Nicht zugeordnet'; }
+  categoryName(category?: string | null) { return category === 'ChildYouth' ? 'KiJu' : category === 'LeaderAdult' ? 'Leiter/Erwachsene' : 'Nicht zugeordnet'; }
   days(): string[] {
     const view = this.overview(); if (!view?.startDate || !view.endDate) return [];
     const days: string[] = []; const current = new Date(view.startDate + 'T00:00:00Z'); const end = new Date(view.endDate + 'T00:00:00Z');

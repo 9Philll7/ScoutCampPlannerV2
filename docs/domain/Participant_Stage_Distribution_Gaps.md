@@ -1,6 +1,10 @@
 # Erfasste Teilnehmer und Stufenverteilung – vorhandene Fähigkeiten und Lücken
 
-Stand: 2026-10-17. Keine Freigabe für API-/Schemaänderungen durch dieses Dokument; bisherige Vorgabe „API nur dokumentieren“ bleibt eingehalten.
+## Aktualisierung 2026-10-18
+
+Die nachfolgende Analyse beschreibt den historischen Stand vor der ausdrücklich beauftragten Umsetzung. Stufe/Kategorie, stabile Stufen-IDs, datensparsame erfasste Zahlen sowie Persistenz und Pakettransport sind inzwischen implementiert. Aktueller Prüfstand und verbleibende manuelle Abnahme: [Ergebnisbericht](../../.codex/participant-stage-assignment-result.md). Die frühere Einschränkung auf Frontend-Änderungen gilt für diesen freigegebenen Umsetzungsschritt nicht mehr. Die vollständige visuelle Integration in alle Mockup-Spalten bleibt davon getrennt.
+
+## Historischer Stand: 2026-10-17
 
 ## Nachgewiesener Ist-Stand
 

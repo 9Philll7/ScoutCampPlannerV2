@@ -11,6 +11,8 @@ internal sealed class ParticipantPersistenceConfiguration : IEntityTypeConfigura
         entity.ToTable("CampParticipants");
         entity.HasKey(value => value.Id);
         entity.Property(value => value.DisplayName).HasMaxLength(200);
+        entity.Property(value => value.Category).HasMaxLength(20);
+        entity.HasIndex(value => new { value.CampId, value.CampStageId });
         entity.HasIndex(value => value.CampId);
         entity.HasOne<StructureNode>().WithMany().HasForeignKey(value => value.StructureNodeId)
             .OnDelete(DeleteBehavior.Restrict);

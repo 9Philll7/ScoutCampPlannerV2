@@ -90,7 +90,7 @@ public sealed class CampDbContext(DbContextOptions<CampDbContext> options) : DbC
             value.Allergens.Select(allergen => allergen.AllergenId).Order().ToArray(),
             value.Intolerances.OrderBy(item => item.SubstanceId).Select(item =>
                 new ParticipantIntoleranceData(item.SubstanceId, item.ThresholdGramsPerPortion,
-                    item.ThresholdSource)).ToArray(), value.StructureNodeId)).ToArray();
+                    item.ThresholdSource)).ToArray(), value.StructureNodeId, value.CampStageId, value.Category)).ToArray();
     }
 
     public async Task<IReadOnlyList<CateringParticipantData>> GetMealParticipantsAsync(Guid campId,

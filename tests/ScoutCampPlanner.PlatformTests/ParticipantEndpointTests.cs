@@ -46,6 +46,12 @@ public sealed partial class CampManagementServiceTests
             string path = $"/api/camps/{campId}/participants";
             using var denied = await client.GetAsync(path, ct);
             Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode);
+            using var counts = await client.GetAsync($"/api/camps/{campId}/participant-counts", ct);
+            Assert.Equal(HttpStatusCode.OK, counts.StatusCode);
+            Assert.True(counts.Headers.CacheControl!.NoStore);
+            Assert.DoesNotContain("displayName", await counts.Content.ReadAsStringAsync(ct));
+            using var foreignCounts = await client.GetAsync($"/api/camps/{Guid.NewGuid()}/participant-counts", ct);
+            Assert.Equal(HttpStatusCode.NotFound, foreignCounts.StatusCode);
             Guid membership = (await platform.CampMemberships.SingleAsync(ct)).Id;
             foreach (string permission in new[] { Permissions.Health.ReadParticipantRequirements, Permissions.Health.EditParticipantRequirements })
             {

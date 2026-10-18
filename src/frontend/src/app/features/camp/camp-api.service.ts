@@ -111,8 +111,8 @@ export class CampApiService {
     return this.http.get<StageTemplateEntry[]>(`${this.baseUrl}/api/camps/${campId}/stages`, { withCredentials: true });
   }
 
-  updateCampStages(campId: string, stageNames: string[]) {
-    return this.http.put<void>(`${this.baseUrl}/api/camps/${campId}/stages`, { stageNames }, { withCredentials: true });
+  updateCampStages(campId: string, stageNames: string[], stageIds?: (string | null)[]) {
+    return this.http.put<void>(`${this.baseUrl}/api/camps/${campId}/stages`, { stageNames, stageIds }, { withCredentials: true });
   }
 
   getParticipantEstimates(campId: string, nodeId: string) {

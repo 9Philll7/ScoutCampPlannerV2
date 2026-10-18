@@ -13,6 +13,41 @@ public sealed partial class CampManagementServiceTests
 {
     private static ParticipantEditRequest DummyParticipant() => new("Dummy private name", null, [], [], [], []);
 
+    [Fact]
+    public async Task Participant_stage_category_and_stable_stage_ids_survive_edits()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (campId, participants) = await ParticipantFixtureAsync();
+        var stages = (await service.GetCampStagesAsync(otherUserId, campId, ct))!;
+        var stage = stages.First();
+        var nodeId = Guid.NewGuid();
+        camps.StructureNodes.Add(new(nodeId, campId, null, "Dummy group"));
+        camps.ParticipantEstimates.Add(new(Guid.NewGuid(), campId, nodeId, stage.Id, 4, 2));
+        await camps.SaveChangesAsync(ct);
+        Assert.Equal(ParticipantMutationStatus.Invalid, (await participants.SaveAsync(otherUserId, campId, null, null,
+            DummyParticipant() with { CampStageId = Guid.NewGuid(), Category = "ChildYouth" }, ct)).Status);
+        Assert.Equal(ParticipantMutationStatus.Invalid, (await participants.SaveAsync(otherUserId, campId, null, null,
+            DummyParticipant() with { Category = "invalid" }, ct)).Status);
+        Assert.Equal(ParticipantMutationStatus.Success, (await participants.SaveAsync(otherUserId, campId, null, null,
+            DummyParticipant() with { CampStageId = stage.Id, Category = "LeaderAdult" }, ct)).Status);
+        var document = Assert.Single((await participants.ListAsync(otherUserId, campId, ct))!);
+        Assert.Equal(stage.Id, document.Data.CampStageId);
+        Assert.Equal("LeaderAdult", document.Data.Category);
+        Assert.Equal(UpdateStageTemplateFailure.None, await service.UpdateCampStagesAsync(otherUserId, campId,
+            new(stages.Select(value => value.Name).Append("Additional").ToArray(), stages.Select(value => (Guid?)value.Id).Append(null).ToArray()), ct));
+        Assert.Contains((await service.GetCampStagesAsync(otherUserId, campId, ct))!, value => value.Id == stage.Id);
+        var reordered = (await service.GetCampStagesAsync(otherUserId, campId, ct))!.Reverse().ToArray();
+        Assert.Equal(UpdateStageTemplateFailure.None, await service.UpdateCampStagesAsync(otherUserId, campId,
+            new(reordered.Select(value => value.Id == stage.Id ? "Renamed" : value.Name).ToArray(), reordered.Select(value => (Guid?)value.Id).ToArray()), ct));
+        Assert.Contains((await service.GetCampStagesAsync(otherUserId, campId, ct))!, value => value.Id == stage.Id && value.Name == "Renamed");
+        Assert.Equal(4, (await camps.ParticipantEstimates.SingleAsync(ct)).ChildYouthCount);
+        Assert.Equal(UpdateStageTemplateFailure.InvalidStages, await service.UpdateCampStagesAsync(otherUserId, campId, new(["Replacement"]), ct));
+        Assert.Equal(ParticipantMutationStatus.Success, (await participants.SaveAsync(otherUserId, campId, document.Data.Id, document.StateToken,
+            DummyParticipant() with { CampStageId = stage.Id, Category = "ChildYouth" }, ct)).Status);
+        Assert.Equal(ParticipantMutationStatus.Conflict, (await participants.SaveAsync(otherUserId, campId, document.Data.Id, document.StateToken,
+            DummyParticipant(), ct)).Status);
+    }
+
     private async Task<(Guid CampId, ParticipantManagementService Participants)> ParticipantFixtureAsync(bool grantRead = true, bool grantEdit = true,
         bool failAuditAfterOperation = false)
     {

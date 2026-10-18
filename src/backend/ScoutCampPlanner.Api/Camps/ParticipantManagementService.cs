@@ -15,7 +15,8 @@ namespace ScoutCampPlanner.Api.Camps;
 
 public sealed record ParticipantEditRequest(string DisplayName, Guid? DietTypeId,
     IReadOnlyList<DateOnly> AbsentDays, IReadOnlyList<Guid> AbsentMealIds,
-    IReadOnlyList<Guid> AllergenIds, IReadOnlyList<ParticipantIntoleranceData> Intolerances, Guid? StructureNodeId = null);
+    IReadOnlyList<Guid> AllergenIds, IReadOnlyList<ParticipantIntoleranceData> Intolerances, Guid? StructureNodeId = null,
+    Guid? CampStageId = null, string? Category = null);
 public sealed record ParticipantDocument(ParticipantPlanningData Data, string StateToken);
 public enum ParticipantMutationStatus { Success, NotFound, Frozen, Invalid, Conflict }
 public sealed record ParticipantMutationResult(ParticipantMutationStatus Status, Guid? ParticipantId = null);
@@ -128,6 +129,7 @@ public sealed class ParticipantManagementService(
                     {
                         current.Rename(desired!.DisplayName);
                         current.AssignStructureNode(desired.StructureNodeId);
+                        current.AssignStageAndCategory(desired.CampStageId, desired.Category);
                         current.SetRequirements(desired.DietTypeId, desired.Allergens.Select(value => value.AllergenId), desired.Intolerances);
                         foreach (var day in current.AbsentDays.ToArray()) current.SetDayAbsent(day.Date, false);
                         foreach (var meal in current.AbsentMeals.ToArray()) current.SetMealAbsent(meal.MealId, false);
@@ -164,6 +166,8 @@ public sealed class ParticipantManagementService(
 
     private async Task<bool> ReferencesValidAsync(Participant desired, DateOnly? start, DateOnly? end, Guid tenantId, CancellationToken ct)
     {
+        if (desired.CampStageId is Guid stageId && !await camps.CampStages.AnyAsync(
+                value => value.Id == stageId && value.CampId == desired.CampId, ct)) return false;
         if (desired.StructureNodeId is Guid nodeId)
         {
             var nodes = await camps.StructureNodes.Where(value => value.CampId == desired.CampId).ToDictionaryAsync(value => value.Id, ct);
@@ -193,6 +197,7 @@ public sealed class ParticipantManagementService(
         if (request.Intolerances.Any(value => value is null)) throw new ArgumentException("Invalid requirement.");
         var participant = new Participant(id, campId, request.DisplayName);
         participant.AssignStructureNode(request.StructureNodeId);
+        participant.AssignStageAndCategory(request.CampStageId, request.Category);
         participant.SetRequirements(request.DietTypeId, request.AllergenIds, request.Intolerances.Select(value =>
             new ParticipantIntolerance(value.SubstanceId, value.ThresholdGramsPerPortion, value.ThresholdSource)));
         foreach (DateOnly date in request.AbsentDays) participant.SetDayAbsent(date, true);

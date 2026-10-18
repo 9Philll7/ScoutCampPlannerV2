@@ -20,6 +20,16 @@ public sealed class Participant
     public Guid Id { get; private set; }
     public Guid CampId { get; private set; }
     public Guid? StructureNodeId { get; private set; }
+    public Guid? CampStageId { get; private set; }
+    public string? Category { get; private set; }
+    public void AssignStageAndCategory(Guid? stageId, string? category)
+    {
+        if (stageId == Guid.Empty) throw new ArgumentException("Stage ID is invalid.", nameof(stageId));
+        if (category is not (null or "ChildYouth" or "LeaderAdult"))
+            throw new ArgumentException("Participant category is invalid.", nameof(category));
+        CampStageId = stageId;
+        Category = category;
+    }
     public void AssignStructureNode(Guid? nodeId)
     {
         if (nodeId == Guid.Empty) throw new ArgumentException("Structure node ID is invalid.", nameof(nodeId));

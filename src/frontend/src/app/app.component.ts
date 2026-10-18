@@ -1,6 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { StructureDetailHeaderComponent } from './features/camp/structure-detail-header.component';
 import { StageDistributionComponent } from './features/camp/stage-distribution.component';
+import { ActualStageDistributionComponent } from './features/camp/actual-stage-distribution.component';
 import { Component, computed, effect, HostListener, inject, signal, viewChild } from '@angular/core';
 import { TenantRecipesComponent } from './features/recipes/tenant-recipes.component';
 import { MealPlanningApiService } from './features/meal-planning/meal-planning-api.service';
@@ -41,7 +42,7 @@ type CampSection = 'overview' | 'general' | 'structure' | 'catering' | 'particip
 @Component({
   selector: 'scp-root',
   standalone: true,
-  imports: [FormsModule, StageDistributionComponent, MatMenuModule, MatButtonModule, MatButtonToggleModule, MatCardModule, MatCheckboxModule, MatFormFieldModule, MatInputModule,
+  imports: [FormsModule, StageDistributionComponent, ActualStageDistributionComponent, MatMenuModule, MatButtonModule, MatButtonToggleModule, MatCardModule, MatCheckboxModule, MatFormFieldModule, MatInputModule,
     MatProgressSpinnerModule, MatSelectModule, MatTooltipModule, MatDatepickerModule,
     ActionIconComponent, IngredientRevisionEditorComponent, RecipeEditorComponent, MealPlanningComponent, PackageTransferComponent, ParticipantsComponent, DietaryCatalogComponent, TenantRecipesComponent, CurrentNavigationDirective, StructureDetailHeaderComponent],
   providers: [provideNativeDateAdapter(), { provide: MAT_DATE_LOCALE, useValue: 'de-AT' }],
@@ -866,7 +867,7 @@ export class AppComponent {
     afterSave?: () => void) {
     const desired = values.map(value => ({ stageName: value.stageName.trim(), factor: value.factor }));
     this.submitting.set(true); this.error.set(null); this.notice.set(null);
-    this.campApi.updateCampStages(camp.id, desired.map(value => value.stageName)).pipe(
+    this.campApi.updateCampStages(camp.id, desired.map(value => value.stageName), values.map(value => value.campStageId || null)).pipe(
       concatMap(() => this.campApi.getCampStageFoodFactors(camp.id)),
       concatMap(stored => this.campApi.updateCampStageFoodFactors(camp.id,
         stored.map((value, index) => ({ ...value, factor: desired[index]?.factor ?? 1 }))))

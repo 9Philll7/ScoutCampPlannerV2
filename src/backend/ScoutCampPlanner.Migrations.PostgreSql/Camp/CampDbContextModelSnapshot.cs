@@ -116,6 +116,13 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Camp
                     b.Property<Guid>("CampId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("CampStageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<Guid?>("DietTypeId")
                         .HasColumnType("uuid");
 
@@ -132,6 +139,8 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Camp
                     b.HasIndex("CampId");
 
                     b.HasIndex("StructureNodeId");
+
+                    b.HasIndex("CampId", "CampStageId");
 
                     b.ToTable("CampParticipants", "camp");
                 });

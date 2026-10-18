@@ -34,7 +34,8 @@ public sealed record MoveStructureNodeRequest(Guid? ParentId);
 public sealed record StageTemplateEntrySummary(Guid Id, string Name, int SortOrder);
 public sealed record CampStageContext(Guid TenantId, IReadOnlyList<StageTemplateEntrySummary> Stages);
 public sealed record CampMealContext(Guid TenantId, DateOnly StartDate, DateOnly EndDate, bool IsFrozen);
-public sealed record UpdateStageTemplateRequest(IReadOnlyList<string>? StageNames);
+public sealed record UpdateStageTemplateRequest(IReadOnlyList<string>? StageNames, IReadOnlyList<Guid?>? StageIds = null);
+internal sealed class StageListChangedException : Exception { }
 public enum UpdateStageTemplateFailure { None, Forbidden, InvalidStages }
 public sealed record ParticipantEstimateSummary(Guid CampStageId, string StageName, int ChildYouthCount, int LeaderCount);
 public sealed record ParticipantEstimateInput(Guid CampStageId, int ChildYouthCount, int LeaderCount);
@@ -224,32 +225,65 @@ public sealed class CampManagementService(
             return UpdateStageTemplateFailure.Forbidden;
         var camp = await camps.Camps.SingleOrDefaultAsync(value => value.Id == campId, cancellationToken);
         if (camp is null || camp.IsFrozen) return UpdateStageTemplateFailure.Forbidden;
-        if (await camps.ParticipantEstimates.AnyAsync(value => value.CampId == campId, cancellationToken))
-            return UpdateStageTemplateFailure.InvalidStages;
         string[] names = request.StageNames?.Select(value => value?.Trim() ?? string.Empty).ToArray() ?? [];
         if (names.Length == 0 || names.Length > 50 || names.Any(value => value.Length is 0 or > 100) ||
             names.Select(value => value.ToUpperInvariant()).Distinct().Count() != names.Length)
             return UpdateStageTemplateFailure.InvalidStages;
+        var existingStages = await camps.CampStages.AsNoTracking().Where(value => value.CampId == campId)
+            .ToListAsync(cancellationToken);
+        if (request.StageIds is not null && (request.StageIds.Count != names.Length ||
+            request.StageIds.Where(value => value.HasValue).Distinct().Count() != request.StageIds.Count(value => value.HasValue) ||
+            request.StageIds.Any(value => value.HasValue && !existingStages.Any(stage => stage.Id == value))))
+            return UpdateStageTemplateFailure.InvalidStages;
         var entries = names.Select((name, index) => new ScoutCampPlanner.Camp.Domain.CampStage(
-            Guid.NewGuid(), campId, name, index)).ToArray();
+            (request.StageIds is null ? existingStages.FirstOrDefault(stage => stage.NormalizedName == name.ToUpperInvariant())?.Id
+                : request.StageIds[index]) ?? Guid.NewGuid(), campId, name, index)).ToArray();
+        var retained = entries.Select(value => value.Id).ToArray();
+        if (await camps.ParticipantEstimates.AnyAsync(value => value.CampId == campId && !retained.Contains(value.CampStageId), cancellationToken) ||
+            await camps.Participants.AnyAsync(value => value.CampId == campId && value.CampStageId.HasValue && !retained.Contains(value.CampStageId.Value), cancellationToken))
+            return UpdateStageTemplateFailure.InvalidStages;
         var existingFactors = await catering.CampStageFoodFactors.Where(value => value.CampId == campId)
             .ToListAsync(cancellationToken);
         var replacementFactors = entries.Select(stage => new CampStageFoodFactor(Guid.NewGuid(), campId, stage.Id,
-            stage.Name, existingFactors.FirstOrDefault(value =>
-                value.StageName.Trim().ToUpperInvariant() == stage.NormalizedName)?.Factor ?? 1m)).ToArray();
+            stage.Name, existingFactors.FirstOrDefault(value => value.CampStageId == stage.Id)?.Factor ?? 1m)).ToArray();
         var auditEvent = new AuditEventDraft(Guid.NewGuid(), timeProvider.GetUtcNow(), "camp.stages.updated", "success",
             actorUserId, camp.TenantId, camp.Id, "camp-stages", camp.Id, "server", auditRuntime.InstanceId,
             Guid.NewGuid(), null, null, new Dictionary<string, string> { ["stageCount"] = entries.Length.ToString() });
-        await auditedOperation.ExecuteAsync(auditEvent, async operationCancellationToken =>
+        try { await auditedOperation.ExecuteAsync(auditEvent, async operationCancellationToken =>
         {
             var transaction = platform.Database.CurrentTransaction!;
             await camps.Database.UseTransactionAsync(transaction.GetDbTransaction(), operationCancellationToken);
             await catering.Database.UseTransactionAsync(transaction.GetDbTransaction(), operationCancellationToken);
             try
             {
-                await camps.CampStages.Where(value => value.CampId == campId).ExecuteDeleteAsync(operationCancellationToken);
+                // Share the camp row lock with participant mutations and freeze/replace.
+                if (await camps.Camps.Where(value => value.Id == campId && !value.IsFrozen)
+                    .ExecuteUpdateAsync(update => update.SetProperty(value => value.BaselineVersion, value => value.BaselineVersion), operationCancellationToken) != 1)
+                    throw new StageListChangedException();
+                var currentStages = await camps.CampStages.AsNoTracking().Where(value => value.CampId == campId)
+                    .ToListAsync(operationCancellationToken);
+                if (currentStages.Count != existingStages.Count || currentStages.Any(value => !existingStages.Any(previous =>
+                    previous.Id == value.Id && previous.Name == value.Name && previous.SortOrder == value.SortOrder)))
+                    throw new StageListChangedException();
+                if (await camps.ParticipantEstimates.AnyAsync(value => value.CampId == campId && !retained.Contains(value.CampStageId), operationCancellationToken) ||
+                    await camps.Participants.AnyAsync(value => value.CampId == campId && value.CampStageId.HasValue && !retained.Contains(value.CampStageId.Value), operationCancellationToken))
+                    throw new StageListChangedException();
+                await camps.CampStages.Where(value => value.CampId == campId && !retained.Contains(value.Id)).ExecuteDeleteAsync(operationCancellationToken);
+                // Vacate unique names/order positions before swaps; all writes remain atomic.
+                foreach (var stage in existingStages.Where(value => retained.Contains(value.Id)))
+                    await camps.CampStages.Where(value => value.Id == stage.Id).ExecuteUpdateAsync(update => update
+                        .SetProperty(value => value.NormalizedName, "__" + stage.Id.ToString())
+                        .SetProperty(value => value.SortOrder, stage.SortOrder + 1000), operationCancellationToken);
                 await catering.CampStageFoodFactors.Where(value => value.CampId == campId).ExecuteDeleteAsync(operationCancellationToken);
-                camps.CampStages.AddRange(entries); await camps.SaveChangesAsync(operationCancellationToken);
+                foreach (var stage in entries)
+                {
+                    if (existingStages.Any(value => value.Id == stage.Id))
+                        await camps.CampStages.Where(value => value.Id == stage.Id).ExecuteUpdateAsync(update => update
+                            .SetProperty(value => value.Name, stage.Name).SetProperty(value => value.NormalizedName, stage.NormalizedName)
+                            .SetProperty(value => value.SortOrder, stage.SortOrder), operationCancellationToken);
+                    else camps.CampStages.Add(stage);
+                }
+                await camps.SaveChangesAsync(operationCancellationToken);
                 catering.CampStageFoodFactors.AddRange(replacementFactors); await catering.SaveChangesAsync(operationCancellationToken);
             }
             finally
@@ -257,7 +291,8 @@ public sealed class CampManagementService(
                 await camps.Database.UseTransactionAsync(null, CancellationToken.None);
                 await catering.Database.UseTransactionAsync(null, CancellationToken.None);
             }
-        }, cancellationToken);
+        }, cancellationToken); }
+        catch (StageListChangedException) { camps.ChangeTracker.Clear(); catering.ChangeTracker.Clear(); return UpdateStageTemplateFailure.InvalidStages; }
         return UpdateStageTemplateFailure.None;
     }
 

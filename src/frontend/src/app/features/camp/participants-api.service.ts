@@ -6,9 +6,15 @@ export interface ParticipantIntolerance { substanceId: string; thresholdGramsPer
 export interface ParticipantData {
   id?: string; campId?: string; displayName: string; dietTypeId: string | null;
   structureNodeId?: string | null;
+  campStageId?: string | null;
+  category?: 'ChildYouth' | 'LeaderAdult' | null;
   absentDays: string[]; absentMealIds: string[]; allergenIds: string[]; intolerances: ParticipantIntolerance[];
 }
 export interface ParticipantDocument { data: ParticipantData & { id: string }; stateToken: string; }
+export interface ParticipantCounts {
+  stages: { id: string; name: string }[];
+  counts: { structureNodeId: string | null; campStageId: string | null; category: string | null; count: number }[];
+}
 export interface RequirementOption { id: string; code: string; name: string; isQuantityDependent: boolean; parentId: string | null;
   defaultThresholdGramsPerPortion?: number | null; defaultThresholdSource?: string | null; defaultThresholdVersion?: number; }
 export interface ParticipantsOverview {
@@ -16,6 +22,7 @@ export interface ParticipantsOverview {
   participants: ParticipantDocument[]; meals: { id: string; date: string; name: string; isActive: boolean }[];
   structureNodes?: { id: string; parentId: string | null; name: string }[];
   participantStructureDepth?: number | null;
+  stages?: { id: string; name: string }[];
   catalog: { allergens: RequirementOption[]; substances: RequirementOption[]; dietTypes: RequirementOption[] };
 }
 export interface ExplicitPermissionMember { membershipId: string; userId: string; displayName: string; permissions: string[]; }
@@ -27,6 +34,7 @@ export class ParticipantsApiService {
   private readonly options = { withCredentials: true } as const;
   private url(camp: string) { return `${this.base}/api/camps/${camp}`; }
   list(camp: string) { return this.http.get<ParticipantsOverview>(`${this.url(camp)}/participants`, this.options); }
+  counts(camp: string) { return this.http.get<ParticipantCounts>(`${this.url(camp)}/participant-counts`, this.options); }
   create(camp: string, data: ParticipantData) { return this.http.post(`${this.url(camp)}/participants`, data, this.options); }
   update(camp: string, document: ParticipantDocument, data: ParticipantData) {
     return this.http.put(`${this.url(camp)}/participants/${document.data.id}`, { expectedStateToken: document.stateToken, data }, this.options);

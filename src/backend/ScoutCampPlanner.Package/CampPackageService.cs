@@ -331,7 +331,7 @@ public sealed class CampPackageService(
                 entity.EndDate ?? throw new InvalidOperationException("Legacy camps without a period cannot be exported."),
                 entity.StructureMode.ToString(), entity.GetStructureLevelNames()), stages, estimates, foodFactors,
             structureNodes, mealTypes, campMeals, cateringReferenceData, cateringMealPlanningData,
-            new CampParticipantPackageData(2, true, participants, diets)));
+            new CampParticipantPackageData(3, true, participants, diets)));
     }
 
     private async Task DemandParticipantEditAsync(Guid campId, CancellationToken ct)

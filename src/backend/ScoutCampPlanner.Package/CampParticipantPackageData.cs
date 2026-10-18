@@ -32,7 +32,7 @@ internal static class CampParticipantPackageValidation
     public static void Validate(CampPackagePayload package)
     {
         if (package.Participants is not { } data) return; // Pre-increment-2 packages remain readable.
-        if (data.SchemaVersion is not (1 or 2) || !data.DummyDataOnly || data.Items is null || data.DietTypes is null ||
+        if (data.SchemaVersion is not (1 or 2 or 3) || !data.DummyDataOnly || data.Items is null || data.DietTypes is null ||
             data.Items.Any(value => value is null) || data.DietTypes.Any(value => value is null) ||
             data.Items.Select(value => value.Id).Distinct().Count() != data.Items.Count ||
             data.DietTypes.Select(value => value.Id).Distinct().Count() != data.DietTypes.Count ||
@@ -46,6 +46,7 @@ internal static class CampParticipantPackageValidation
         var meals = (package.CampMeals ?? []).Select(value => value.Id).ToHashSet();
         foreach (var item in data.Items)
         {
+            if (item.CampStageId is Guid stage && !package.CampStages.Any(value => value.Id == stage)) throw Invalid();
             if (item.StructureNodeId is Guid node && (!package.StructureNodes.Any(value => value.Id == node) ||
                 package.StructureNodes.Any(value => value.ParentId == node))) throw Invalid();
             if (item.CampId != package.Camp.Id || item.AbsentDays is null || item.AbsentMealIds is null ||
@@ -67,6 +68,7 @@ internal static class CampParticipantPackageValidation
     {
         var participant = new Participant(item.Id, item.CampId, item.DisplayName);
         participant.AssignStructureNode(item.StructureNodeId);
+        participant.AssignStageAndCategory(item.CampStageId, item.Category);
         participant.SetRequirements(item.DietTypeId, item.AllergenIds, item.Intolerances.Select(value =>
             new ParticipantIntolerance(value.SubstanceId, value.ThresholdGramsPerPortion, value.ThresholdSource)));
         foreach (var date in item.AbsentDays) participant.SetDayAbsent(date, true);

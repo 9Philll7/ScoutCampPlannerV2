@@ -633,10 +633,11 @@
                       </section>
                     }
                     @if (!structureEditing()) {
+                      <scp-actual-stage-distribution [campId]="camp.id" [nodeIds]="selectedEstimateNodeIds()" [wholeCamp]="selectedStructureNodeId() === null"/>
                       <scp-stage-distribution [campId]="camp.id" [context]="selectedStructureContext()"
                         [nodeIds]="selectedEstimateNodeIds()" [stageTotals]="selectedStructureNodeId() === null ? planningSummary()?.stageTotals ?? null : null"/>
                     }
-                    <details class="structure-data-note"><summary>Hinweis zu den angezeigten Zahlen</summary><p>Hier werden Schätzwerte angezeigt. Eine Aufteilung erfasster Teilnehmer nach KiJu und Erwachsenen ist noch nicht verfügbar. Schätzwerte und erfasste Teilnehmer werden nicht addiert.</p></details>
+                    <details class="structure-data-note"><summary>Hinweis zu den angezeigten Zahlen</summary><p>Schätzwerte und erfasste Teilnehmer werden getrennt ausgewiesen und nicht addiert. Fehlende Stufen- und Kategoriezuordnungen bleiben ausdrücklich offen.</p></details>
                     </section>
                   </div>
                   }

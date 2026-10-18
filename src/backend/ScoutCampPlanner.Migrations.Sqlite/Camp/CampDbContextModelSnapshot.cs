@@ -110,6 +110,13 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Camp
                     b.Property<Guid>("CampId")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("CampStageId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid?>("DietTypeId")
                         .HasColumnType("TEXT");
 
@@ -126,6 +133,8 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Camp
                     b.HasIndex("CampId");
 
                     b.HasIndex("StructureNodeId");
+
+                    b.HasIndex("CampId", "CampStageId");
 
                     b.ToTable("CampParticipants", (string)null);
                 });

@@ -124,6 +124,11 @@ public sealed partial class DatabaseMigrationTests
         var date = new DateOnly(2026, 10, 4);
         database.Camps.Add(new Camp.Domain.Camp(campId, Guid.NewGuid(), "Dummy participant persistence", date, date.AddDays(2)));
         var participant = new Participant(Guid.NewGuid(), campId, "Dummy One");
+        Assert.Null(participant.CampStageId);
+        Assert.Null(participant.Category);
+        var stage = new CampStage(Guid.NewGuid(), campId, "Dummy stage", 0);
+        database.CampStages.Add(stage);
+        participant.AssignStageAndCategory(stage.Id, "LeaderAdult");
         participant.SetDayAbsent(date, true);
         participant.SetMealAbsent(meal, true);
         participant.SetRequirements(Guid.NewGuid(), [allergen], [new(substance, 1.25m, "Dummy individual value")]);
@@ -132,6 +137,8 @@ public sealed partial class DatabaseMigrationTests
         database.ChangeTracker.Clear();
         var result = Assert.Single(await database.GetParticipantsAsync(campId));
         Assert.Equal(participant.Id, result.Id);
+        Assert.Equal(stage.Id, result.CampStageId);
+        Assert.Equal("LeaderAdult", result.Category);
         Assert.Equal(participant.DietTypeId, result.DietTypeId);
         Assert.Equal(date, Assert.Single(result.AbsentDays));
         Assert.Equal(meal, Assert.Single(result.AbsentMealIds));
