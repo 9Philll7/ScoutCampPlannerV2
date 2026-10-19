@@ -2,7 +2,9 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { StructureDetailHeaderComponent } from './features/camp/structure-detail-header.component';
 import { StageDistributionComponent } from './features/camp/stage-distribution.component';
 import { ActualStageDistributionComponent } from './features/camp/actual-stage-distribution.component';
-import { Component, computed, effect, HostListener, inject, signal, viewChild } from '@angular/core';
+import { LIST_PAGE_SIZE, ListPage, ListPaginationComponent } from './shared/list-pagination.component';
+import { FitListPageDirective } from './shared/fit-list-page.directive';
+import { Component, computed, effect, ElementRef, HostListener, inject, signal, viewChild } from '@angular/core';
 import { TenantRecipesComponent } from './features/recipes/tenant-recipes.component';
 import { MealPlanningApiService } from './features/meal-planning/meal-planning-api.service';
 import { usedRecipeRevisions } from './features/recipes/camp-recipe-navigation';
@@ -20,6 +22,9 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelect, MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatMenuModule } from '@angular/material/menu';
+import { MatTabsModule } from '@angular/material/tabs';
+import { NotificationBannerComponent } from './shared/notification-banner.component';
+import { ParticipantCounts, ParticipantsApiService } from './features/camp/participants-api.service';
 import { concatMap, firstValueFrom, forkJoin } from 'rxjs';
 import { saveOfflinePackage } from './shared/save-offline-package';
 import { desktopCommand, isDesktop } from './core/desktop-runtime';
@@ -42,7 +47,7 @@ type CampSection = 'overview' | 'general' | 'structure' | 'catering' | 'particip
 @Component({
   selector: 'scp-root',
   standalone: true,
-  imports: [FormsModule, StageDistributionComponent, ActualStageDistributionComponent, MatMenuModule, MatButtonModule, MatButtonToggleModule, MatCardModule, MatCheckboxModule, MatFormFieldModule, MatInputModule,
+  imports: [FormsModule, FitListPageDirective, NotificationBannerComponent, StageDistributionComponent, ActualStageDistributionComponent, ListPaginationComponent, MatTabsModule, MatMenuModule, MatButtonModule, MatButtonToggleModule, MatCardModule, MatCheckboxModule, MatFormFieldModule, MatInputModule,
     MatProgressSpinnerModule, MatSelectModule, MatTooltipModule, MatDatepickerModule,
     ActionIconComponent, IngredientRevisionEditorComponent, RecipeEditorComponent, MealPlanningComponent, PackageTransferComponent, ParticipantsComponent, DietaryCatalogComponent, TenantRecipesComponent, CurrentNavigationDirective, StructureDetailHeaderComponent],
   providers: [provideNativeDateAdapter(), { provide: MAT_DATE_LOCALE, useValue: 'de-AT' }],
@@ -56,6 +61,37 @@ export class AppComponent {
   }
   readonly selectedStructureNodeId = signal<string | null>(null);
   readonly selectedStructureContext = computed(() => this.structureNodes().find(node => node.id === this.selectedStructureNodeId())?.name ?? this.openedCamp()?.name ?? 'dieses Lager');
+  readonly actualChartMaximum = signal(0);
+  readonly distributionView = signal<'chart' | 'table'>('chart');
+  readonly actualActiveStages = signal<readonly (string | null)[]>([]);
+  readonly estimatedActiveStages = signal<readonly (string | null)[]>([]);
+  readonly visibleDistributionStages = computed(() => [...new Set([...this.actualActiveStages(), ...this.estimatedActiveStages()])]);
+  readonly participantRevision = signal(0);
+  readonly treeCountMode = signal<'estimated' | 'actual'>('estimated');
+  readonly treeActualCounts = signal<ParticipantCounts | null>(null);
+  private readonly participantsApi = inject(ParticipantsApiService);
+  treeParticipantLabel(nodeId: string | null) {
+    if (this.treeCountMode() === 'estimated') {
+      const value = nodeId === null ? (this.planningSummary() ? { childYouthCount: this.campChildYouthTotal(), leaderCount: this.campLeaderTotal() } : null) : this.structureTotal(nodeId);
+      return value ? `${value.childYouthCount} / ${value.leaderCount}` : '—';
+    }
+    const data = this.treeActualCounts(); if (!data) return '—';
+    const counts = data.counts.filter(row => {
+      if (nodeId === null) return true;
+      let id = row.structureNodeId; const visited = new Set<string>();
+      while (id && !visited.has(id)) {
+        if (id === nodeId) return true;
+        visited.add(id); id = this.structureNodes().find(node => node.id === id)?.parentId ?? null;
+      }
+      return false;
+    });
+    const sum = (category: string | null) => counts.filter(row => row.category === category).reduce((total, row) => total + row.count, 0);
+    const unknown = sum(null);
+    return `${sum('ChildYouth')} / ${sum('LeaderAdult')}${unknown ? ` · ${unknown} offen` : ''}`;
+  }
+  readonly incrementRevision = (value: number) => value + 1;
+  readonly estimatedChartMaximum = signal(0);
+  readonly participantChartScale = computed(() => Math.max(this.actualChartMaximum(), this.estimatedChartMaximum()));
   readonly selectedEstimateNodeIds = computed(() => {
     const selected = this.selectedStructureNodeId();
     if (selected === null) return [];
@@ -63,10 +99,22 @@ export class AppComponent {
     const visit = (id: string) => { if (ids.has(id)) return; ids.add(id); nodes.filter(node => node.parentId === id).forEach(node => visit(node.id)); };
     visit(selected); return [...ids];
   });
-  readonly structureEditing = signal(false);
+  readonly structureActionActive = computed(() => this.movingStructureNodeId() !== null || this.creatingStructureParent() !== null);
+  readonly childrenPageIndex = signal(0);
+  readonly childrenPageSize = signal(LIST_PAGE_SIZE);
+  fitChildrenPage(size: number) { this.childrenPageSize.set(size); this.childrenPageIndex.set(0); }
+  visibleChildrenPageIndex() { return Math.min(this.childrenPageIndex(), Math.max(0, Math.ceil(this.selectedStructureChildren().length / this.childrenPageSize()) - 1)); }
+  pagedStructureChildren() { const start = this.visibleChildrenPageIndex() * this.childrenPageSize(); return this.selectedStructureChildren().slice(start, start + this.childrenPageSize()); }
+  changeChildrenPage(page: ListPage) { this.childrenPageIndex.set(page.pageIndex); }
+  private readonly structureDetails = viewChild<ElementRef<HTMLElement>>('structureDetails');
   selectStructureNode(id: string | null) {
     if (id === this.selectedStructureNodeId() || !this.mayLeave()) return;
     this.selectedStructureNodeId.set(id);
+    this.distributionView.set('chart');
+    this.actualActiveStages.set([]); this.estimatedActiveStages.set([]);
+    this.childrenPageIndex.set(0);
+    const details = this.structureDetails()?.nativeElement;
+    if (details) { details.scrollTop = 0; details.scrollLeft = 0; }
     this.editingStructureNodeId.set(null); this.movingStructureNodeId.set(null);
     this.creatingStructureParent.set(null); this.newStructureNodeName = ''; this.editStructureNodeName = '';
   }
@@ -79,12 +127,6 @@ export class AppComponent {
   }
   selectedStructureChildren() {
     return this.structureNodes().filter(value => value.parentId === this.selectedStructureNodeId());
-  }
-  toggleStructureEditing() {
-    if (!this.mayLeave()) return;
-    this.structureEditing.update(value => !value);
-    this.editingStructureNodeId.set(null); this.movingStructureNodeId.set(null);
-    this.creatingStructureParent.set(null); this.newStructureNodeName = ''; this.editStructureNodeName = '';
   }
   estimateTotal() { return this.participantEstimates().reduce((sum, value) => sum + value.childYouthCount + value.leaderCount, 0); }
   closeEstimates(saved = false) {
@@ -300,6 +342,16 @@ export class AppComponent {
 
   readonly sessionExpiry = inject(SessionExpiry);
   constructor() {
+    effect(cleanup => {
+      const campId = this.openedCampId(); const section = this.campSection(); const mode = this.treeCountMode(); this.participantRevision();
+      this.treeActualCounts.set(null);
+      if (!campId || section !== 'structure' || mode !== 'actual') return;
+      const request = this.participantsApi.counts(campId).subscribe({
+        next: value => this.treeActualCounts.set(value),
+        error: () => this.error.set('Erfasste Teilnehmerzahlen für den Strukturbaum konnten nicht geladen werden.')
+      });
+      cleanup(() => request.unsubscribe());
+    });
     effect(() => {
       if (this.sessionExpiry.expired()) {
         this.clearSession();
@@ -476,7 +528,7 @@ export class AppComponent {
 
   openCamp(camp: CampSummary) {
     if (!this.mayLeave()) return;
-    this.structureEditing.set(false); this.selectedStructureNodeId.set(null);
+    this.selectedStructureNodeId.set(null);
     this.participantInitialNodeId.set(null);
     this.applicationSection.set('camps');
     this.openedCampId.set(camp.id);
@@ -665,6 +717,8 @@ export class AppComponent {
   }
 
   toggleCreateStructureNode(parentId: string | null) {
+    if (!this.mayLeave()) return;
+    this.editingStructureNodeId.set(null); this.editStructureNodeName = ''; this.movingStructureNodeId.set(null);
     const target = parentId ?? 'camp';
     if (this.creatingStructureParent() === target) {
       this.creatingStructureParent.set(null); this.newStructureNodeName = ''; return;
@@ -716,6 +770,7 @@ export class AppComponent {
   }
 
   openEstimates(camp: CampSummary, node: StructureNodeSummary) {
+    if (!this.mayLeave()) return;
     if (this.estimateNodeId() === node.id) {
       this.estimateNodeId.set(null); this.participantEstimates.set([]); this.persistedParticipantEstimates = []; return;
     }
@@ -1005,12 +1060,16 @@ export class AppComponent {
   }
 
   toggleMoveStructureNode(node: StructureNodeSummary) {
+    if (!this.mayLeave()) return;
+    this.creatingStructureParent.set(null); this.newStructureNodeName = '';
     this.editingStructureNodeId.set(null);
     this.editStructureNodeName = '';
     this.movingStructureNodeId.update(current => current === node.id ? null : node.id);
   }
 
   toggleRenameStructureNode(node: StructureNodeSummary) {
+    if (!this.mayLeave()) return;
+    this.creatingStructureParent.set(null); this.newStructureNodeName = '';
     this.movingStructureNodeId.set(null);
     if (this.editingStructureNodeId() === node.id) {
       this.editingStructureNodeId.set(null);

@@ -1,5 +1,6 @@
 .structure-container.content-card { background: transparent; border: 0; box-shadow: none; overflow: visible; }
 .structure-container.content-card > mat-card-content { padding: 0; overflow: visible; }
+.participants-container.content-card > mat-card-actions { display:none; }
 .workspace-layout > main.structure-page { max-width: none; padding: var(--space-8); }
 .structure-page .application-shell { gap: 24px; }
 .structure-page .page-header { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 24px; margin: 0; padding: 0 0 24px; border-bottom: 1px solid var(--color-border); }
@@ -21,6 +22,12 @@
 .structure-edit-notice { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 0 0 20px; padding: 16px 20px; background: var(--color-warning-soft); border: 1px solid var(--color-warning-border); border-radius: var(--radius-control); color: var(--color-warning-text); font-size: 14px; }
 .structure-edit-notice strong { flex-shrink: 0; }
 .structure-browser-heading h2 { margin: 0; font-size: var(--font-section); }
+.tree-count-toggle { display:flex; gap:2px; padding:2px; border:1px solid var(--color-border); border-radius:6px; }
+.structure-browser-heading .tree-count-toggle button { border:0; border-radius:4px; background:transparent; color:var(--color-text-muted); padding:4px 8px; min-height:28px; font:inherit; font-size:12px; cursor:pointer; }
+.structure-browser-heading .tree-count-toggle button[aria-pressed=true] { background:var(--color-primary-soft); color:var(--color-primary); font-weight:600; }
+.tree-count-toggle button:focus-visible { outline:2px solid var(--color-primary); outline-offset:2px; }
+@media(pointer:coarse) { .structure-browser-heading .tree-count-toggle button { min-height:44px; } }
+.structure-browser .structure-count { overflow-wrap:anywhere; white-space:normal; }
 .structure-browser-heading button { border-radius: var(--radius-small); color: var(--color-text); border-color: var(--color-border); font-size: var(--font-small); padding-inline: var(--space-3); }
 .structure-browser, .structure-workspace > .structure-tree { min-width: 0; padding: 24px; border: 1px solid var(--color-border); border-radius: var(--radius-panel); background: var(--color-surface); }
 .structure-browser { overflow-x: auto; min-height: 560px; }
@@ -49,13 +56,13 @@
 .structure-browser-row small { display: block; color: var(--color-text-muted); }
 .structure-browser-row .selected { background: transparent; box-shadow: none; }
 .structure-browser-row .selected .structure-select-name { font-weight: 650; }
-.structure-workspace > .structure-tree { margin: 0; display: block; padding: 28px; min-height: 560px; }
+.structure-workspace > .structure-tree { margin: 0; display: block; padding: 20px; min-height: 560px; }
 .structure-workspace .structure-node-row { display: block; margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
 .structure-workspace .structure-node-actions { justify-content: flex-start; padding: 0; margin: 0; gap: var(--space-2); }
 .structure-workspace .structure-node-actions button, .structure-child-row button { border-radius: var(--radius-control); }
 .structure-editing > .structure-tree { border-color: var(--color-border); }
 .structure-editing .structure-browser-heading button { background: var(--color-primary); color: var(--color-on-primary); }
-.structure-children { border-top: 1px solid var(--color-border); margin-top: 24px; padding-top: 24px; }
+.structure-children { border-top: 1px solid var(--color-border); margin-top: 12px; padding-top: 16px; }
 .structure-children h3 { margin: 0 0 var(--space-3); font-size: var(--font-section); }
 .structure-section-title { display: flex; align-items: center; gap: var(--space-3); color: var(--color-text); }
 .structure-section-title scp-action-icon { color: var(--color-primary); flex-shrink: 0; }
@@ -75,12 +82,17 @@
 .structure-child-name scp-action-icon { width: 24px; height: 24px; }
 .structure-children-table td:last-child { text-align: right; }
 .structure-children-table tbody tr:hover { background: var(--color-canvas); }
-.structure-leaf-content, .structure-editor-section { border-top: 1px solid var(--color-border); padding-top: var(--space-6); }
+.structure-leaf-content, .structure-editor-section { border-top: 1px solid var(--color-border); padding-top: 16px; }
 .structure-editor-section h3 { display: flex; align-items: center; gap: var(--space-3); margin: 0 0 var(--space-4); font-size: 18px; }
 .structure-editor-section h3 scp-action-icon { width: 24px; height: 24px; color: var(--color-primary); }
 .structure-editing .structure-node-actions { margin-top: 24px; padding: 16px; background: var(--color-surface-muted); border-radius: var(--radius-small); border: 1px solid var(--color-border); }
-.structure-editor-form { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 20px; align-items: start; margin-top: 24px; }
+.structure-editor-form { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 12px; align-items: start; margin-top: 12px; }
 .structure-editor-name { min-width: 0; }
+.structure-title-editor { display:flex; align-items:center; gap:4px; margin:0 0 8px; }
+.structure-title-editor input { box-sizing:border-box; flex:1; min-width:0; width:100%; height:40px; padding:4px 8px; border:1px solid var(--color-primary); border-radius:6px; font:inherit; font-size:24px; font-weight:700; color:var(--color-text); background:var(--color-surface); }
+.structure-title-editor button { flex-shrink:0; }
+.structure-editor-form { --mat-form-field-container-height: 40px; --mat-form-field-container-vertical-padding: 8px; }
+@media(pointer:coarse) { .structure-editor-form { --mat-form-field-container-height: 48px; --mat-form-field-container-vertical-padding: 12px; } }
 .structure-properties { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }
 .structure-properties > div { min-width: 0; }
 .structure-properties dt { color: var(--color-text-muted); font-size: 13px; margin-bottom: 6px; }
@@ -89,7 +101,16 @@
 .structure-workspace .structure-node-name-field { min-width: 0; width: 100%; margin-bottom: 0; }
 .structure-path, .structure-data-note { overflow-wrap: anywhere; color: var(--color-text-muted); font-size: var(--font-small); }
 .structure-data-note { margin-top: var(--space-6); }
+.participant-statistics { margin-top:16px; padding-top:16px; border-top:1px solid var(--color-border); }
+.participant-statistics > h3 { margin:0 0 6px; font-size:20px; }
+.participant-statistics > p { margin:0 0 18px; color:var(--color-text-muted); font-size:14px; }
+.participant-statistics-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.participant-statistics-grid > * { min-width:0; }
+.distribution-view-toggle { margin-bottom:16px; }
+@media(max-width:1500px) { .participant-statistics-grid { grid-template-columns:minmax(0,1fr); } }
 .structure-data-note summary { cursor: pointer; padding-block: var(--space-2); }
+.structure-detail-tabs { --mat-tab-header-active-label-text-color:var(--color-primary); --mat-tab-header-active-indicator-color:var(--color-primary); }
+.structure-detail-tabs .structure-children, .structure-detail-tabs .participant-statistics { border-top:0; margin-top:0; padding-top:16px; }
 .structure-estimate-dialog { box-sizing: border-box; max-width: calc(100vw - 32px); max-height: 85dvh; overflow: auto; padding: var(--space-6); color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-panel); }
 .structure-estimate-dialog input { width: 5rem; max-width: 100%; }
 .structure-estimate-dialog { width: 680px; --mat-sys-primary: var(--color-primary); --mat-sys-on-primary: var(--color-on-primary); }
@@ -107,3 +128,19 @@
 @media (max-width: 600px) { .structure-workspace > .structure-tree { padding: var(--space-4); } }
 @media (max-width: 1100px) { .structure-workspace { grid-template-columns: minmax(0, 1fr); } .structure-browser, .structure-workspace > .structure-tree { min-height: 0; } }
 @media (max-width: 600px) { .structure-page .page-header > div { flex: initial; width: 100%; } .structure-section-navigation { align-self: stretch; } .structure-section-navigation button { flex: 1; } }
+
+// Keep navigation and details in the same viewport; each panel owns its overflow.
+// Flex sizing uses the actual header/status height, including wrapped text.
+@media (min-width: 1101px) and (min-height: 600px) {
+  .workspace-layout > main.structure-page:has(.structure-workspace) { height: 100dvh; min-height: 0; }
+  .structure-page:has(.structure-workspace) > .application-shell { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+  .structure-page:has(.structure-workspace) .page-header { flex: 0 0 auto; }
+  .structure-page .structure-container.content-card { flex: 1 1 0; min-height: 0; }
+  .structure-container.content-card > mat-card-content { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; }
+  .structure-container .structure-edit-notice { flex: 0 0 auto; }
+  .structure-workspace { flex: 1 1 0; min-height: 0; align-items: stretch; }
+  .structure-workspace > .structure-browser,
+  .structure-workspace > .structure-tree { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+  .structure-workspace > :focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+  .structure-container.content-card > mat-card-actions { display: none; }
+}

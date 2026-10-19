@@ -21,10 +21,40 @@ describe('ParticipantsComponent', () => {
     fixture = TestBed.createComponent(ParticipantsComponent); component = fixture.componentInstance;
     fixture.componentRef.setInput('campId', 'camp'); fixture.detectChanges();
   });
-  it('shows the dummy boundary and never grants permissions automatically', () => {
-    expect(fixture.nativeElement.textContent).toContain('Dummy-/Testdaten');
+  it('never grants permissions automatically', () => {
     expect(api['grant']).not.toHaveBeenCalled();
     expect(component.days()).toEqual(['2027-07-01', '2027-07-02']);
+  });
+  it('paginates after filtering and sorting, resets search, and clamps shrinking results', () => {
+    const person = component.overview()!.participants[0];
+    component.overview.set({ ...component.overview()!, participants: Array.from({ length: 12 }, (_, index) => ({
+      ...person, data: { ...person.data, id: `person-${index}`, displayName: `Test ${String(index).padStart(2, '0')}` }
+    })) }); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('tbody tr').length).toBe(5);
+    component.fitPage(8); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('tbody tr').length).toBe(8);
+    component.fitPage(5); fixture.detectChanges();
+    component.changePage({ pageIndex: 2, pageSize: 5 }); fixture.detectChanges();
+    expect(component.pagedParticipants().map(row => row.data.id)).toEqual(['person-10', 'person-11']);
+    component.search = 'Test 01'; component.clearHiddenSelection(); fixture.detectChanges();
+    expect(component.pageIndex()).toBe(0);
+    expect(component.pagedParticipants().map(row => row.data.id)).toEqual(['person-1']);
+    component.pageIndex.set(20); expect(component.visiblePageIndex()).toBe(0);
+    component.search = ''; component.changePage({ pageIndex: 0, pageSize: 10 }); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('tbody tr').length).toBe(5);
+  });
+  it('keeps the embedded leaf list scoped even after resetting filters and changing groups', () => {
+    api['list'].mockReturnValue(of({ ...structuredClone(overview), participants: [
+      { ...overview.participants[0], data: { ...overview.participants[0].data, id: 'a', structureNodeId: 'a' } },
+      { ...overview.participants[0], data: { ...overview.participants[0].data, id: 'b', structureNodeId: 'b' } }
+    ] }));
+    fixture.componentRef.setInput('scopedNodeId', 'a'); fixture.detectChanges();
+    component.groupFilter = ''; component.search = '';
+    expect(component.filteredParticipants().map(row => row.data.id)).toEqual(['a']);
+    expect(component.scopedCount()).toBe(1);
+    expect(fixture.nativeElement.textContent).toContain('Teilnehmer dieser Gruppe');
+    fixture.componentRef.setInput('scopedNodeId', 'b'); fixture.detectChanges();
+    expect(component.filteredParticipants().map(row => row.data.id)).toEqual(['b']);
   });
   it('keeps legacy assignments unknown and saves stage and category independently', () => {
     component.overview.set({ ...component.overview()!, stages: [{ id: 'stage', name: 'Biber' }] });
@@ -105,13 +135,54 @@ describe('ParticipantsComponent', () => {
   });
   it('opens a read-only preview without starting an editor or sending a mutation', () => {
     component.overview.set({ ...component.overview()!, canEdit: false }); fixture.detectChanges();
-    const button = fixture.nativeElement.querySelector('.person-button') as HTMLButtonElement; button.click(); fixture.detectChanges();
+    const cell = fixture.nativeElement.querySelector('tbody tr td') as HTMLTableCellElement; cell.click(); fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[aria-label="Teilnehmervorschau"]')?.textContent).toContain('Dummy');
     expect(component.draft).toBeNull(); expect(api['update']).not.toHaveBeenCalled();
     expect(fixture.nativeElement.textContent).not.toContain('Teilnehmer löschen');
     expect(fixture.nativeElement.textContent).not.toContain('Teilnehmer hinzufügen');
     component.search = 'absent'; component.clearHiddenSelection();
     expect(component.selectedDocument()).toBeNull();
+  });
+  it('combines stage, category and diet filters and resets them together', () => {
+    const first = component.overview()!.participants[0];
+    component.overview.set({ ...component.overview()!, participants: [
+      { ...first, data: { ...first.data, id: 'a', campStageId: 'stage', category: 'ChildYouth', dietTypeId: 'diet' } },
+      { ...first, data: { ...first.data, id: 'b', campStageId: 'stage', category: 'LeaderAdult', dietTypeId: null } }
+    ] });
+    component.stageFilter = 'stage'; component.categoryFilter = 'ChildYouth'; component.dietFilter = 'diet';
+    expect(component.filteredParticipants().map(row => row.data.id)).toEqual(['a']);
+    expect(component.summaryCount('ChildYouth')).toBe(1);
+    expect(component.summaryCount('diet')).toBe(1);
+    component.resetFilters(); expect(component.filteredParticipants().length).toBe(2);
+    component.dietFilter = 'unassigned'; expect(component.filteredParticipants().map(row => row.data.id)).toEqual(['b']);
+  });
+  it('opens full details without a draft and preserves edits when switching editor sections', () => {
+    const person = component.overview()!.participants[0];
+    component.openDetails(person); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.participant-detail-grid')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('table[aria-label="Teilnehmerliste"]')).toBeNull();
+    expect(component.draft).toBeNull();
+    component.edit(person); component.draft!.displayName = 'Changed';
+    component.editorSection.set('health'); fixture.detectChanges();
+    expect(component.draft!.displayName).toBe('Changed');
+    expect(component.hasPendingChanges()).toBe(true);
+    expect(api['update']).not.toHaveBeenCalled();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    component.backToList(); expect(component.draft!.displayName).toBe('Changed');
+    confirm.mockReturnValue(true); component.backToList(); fixture.detectChanges();
+    expect(component.detailDocument()).toBeNull(); expect(component.draft).toBeNull();
+    confirm.mockRestore();
+  });
+  it('selects a diet using cards without saving and can clear the choice', () => {
+    component.overview.set({ ...component.overview()!, catalog: { ...component.overview()!.catalog, dietTypes: [
+      { id: 'diet', code: 'TEST', name: 'Test-Ernährung', parentId: null, isQuantityDependent: false }
+    ] } });
+    component.create(); component.editorSection.set('diet'); fixture.detectChanges();
+    (fixture.nativeElement.querySelectorAll('.choice-card')[1] as HTMLButtonElement).click(); fixture.detectChanges();
+    expect(component.draft!.dietTypeId).toBe('diet');
+    expect(fixture.nativeElement.querySelectorAll('.choice-card')[1].getAttribute('aria-pressed')).toBe('true');
+    (fixture.nativeElement.querySelector('.choice-card') as HTMLButtonElement).click();
+    expect(component.draft!.dietTypeId).toBeNull(); expect(api['create']).not.toHaveBeenCalled();
   });
   it('protects an edited draft when selecting another participant and preserves filters when closing', () => {
     const person = component.overview()!.participants[0]; component.edit(person); component.draft!.displayName = 'Changed';

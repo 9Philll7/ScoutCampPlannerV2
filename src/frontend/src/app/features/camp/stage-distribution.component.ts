@@ -1,32 +1,32 @@
-import { Component, effect, inject, input, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { forkJoin, Subscription } from 'rxjs';
 import { CampApiService, ParticipantEstimate } from './camp-api.service';
+import { StageChartComponent } from './stage-chart.component';
 
 /** Read-only projection of existing estimates; never mixes estimates and named participants. */
 @Component({
   selector: 'scp-stage-distribution',
+  imports: [StageChartComponent],
   template: `
-    <details [open]="expanded()" (toggle)="toggle($event)">
-      <summary>Stufenverteilung <span>(geschätzt)</span></summary>
-      @if (expanded()) {
-        <p>Schätzwerte nach Stufe für {{ context() }}. Erfasste Teilnehmer sind darin nicht enthalten.</p>
-        @if (busy()) { <p role="status">Stufenverteilung wird geladen …</p> }
-        @if (error()) { <p role="alert">{{ error() }}</p><button type="button" (click)="load()">Erneut versuchen</button> }
-        @if (!busy() && !error() && rows(); as values) {
+    @if (view() === 'chart' && rows()) { <scp-stage-chart title="Geschätzte Teilnehmer" [values]="chartValues()" [scale]="scale()"/> }
+    @if (busy()) { <p role="status">Geschätzte Stufenverteilung wird geladen …</p> }
+    @if (error()) { <p role="alert">{{ error() }}</p><button type="button" (click)="load()">Erneut versuchen</button> }
+      @if (view() === 'table') {
+        <h3>Geschätzte Teilnehmer</h3>
+        @if (!busy() && !error() && displayRows(); as values) {
           <div class="table-scroll"><table aria-label="Geschätzte Stufenverteilung">
             <thead><tr><th scope="col">Stufe</th><th scope="col">KiJu</th><th scope="col">Leiter/Erwachsene</th><th scope="col">Gesamt</th></tr></thead>
             <tbody>@for (row of values; track row.campStageId) { <tr><th scope="row">{{ row.stageName }}</th><td>{{ row.childYouthCount }}</td><td>{{ row.leaderCount }}</td><td>{{ row.childYouthCount + row.leaderCount }}</td></tr> }
-              @empty { <tr><td colspan="4">Noch keine Stufen vorhanden.</td></tr> }
+              @empty { <tr><td colspan="4">Keine Stufen mit Teilnehmerzahlen in diesem Bereich.</td></tr> }
             </tbody>
             @if (values.length) { <tfoot><tr><th scope="row">Gesamt</th><td>{{ total('childYouthCount') }}</td><td>{{ total('leaderCount') }}</td><td>{{ total('childYouthCount') + total('leaderCount') }}</td></tr></tfoot> }
           </table></div>
           @if (values.length && total('childYouthCount') + total('leaderCount') === 0) { <p>Stufen sind vorhanden, aber für diesen Bereich sind noch keine Schätzwerte eingetragen.</p> }
         }
       }
-    </details>
   `,
   styles: `
-    :host { display: block; margin-top: 24px; border-top: 1px solid var(--color-border); padding-top: 16px; }
+    :host { display: block; min-width:0; }
     summary { cursor: pointer; font-size: 18px; font-weight: 600; padding: 8px 0; } summary span { color: var(--color-text-muted); font-size: 14px; font-weight: 400; }
     p { font-size: 14px; color: var(--color-text-muted); } [role=alert] { color: var(--color-danger); }
     .table-scroll { overflow-x: auto; } table { border-collapse: collapse; width: 100%; min-width: 400px; font-size: 14px; }
@@ -40,23 +40,33 @@ export class StageDistributionComponent {
   readonly context = input.required<string>();
   readonly nodeIds = input<readonly string[]>([]);
   readonly stageTotals = input<ParticipantEstimate[] | null>(null);
-  readonly expanded = signal(false);
+  readonly scale = input(0);
+  readonly maximumChange = output<number>();
+  readonly view = input<'chart' | 'table'>('chart');
+  readonly visibleStageIds = input<readonly (string | null)[] | null>(null);
+  readonly activeStagesChange = output<(string | null)[]>();
   readonly rows = signal<ParticipantEstimate[] | null>(null);
   readonly busy = signal(false);
   readonly error = signal('');
+  readonly activeStageIds = computed(() => (this.rows() ?? []).filter(row => row.childYouthCount + row.leaderCount > 0).map(row => row.campStageId));
+  readonly displayRows = computed(() => {
+    const visible = this.visibleStageIds() ?? this.activeStageIds();
+    return this.rows()?.filter(row => visible.includes(row.campStageId)) ?? null;
+  });
+  readonly chartValues = computed(() => (this.displayRows() ?? []).map(row => ({
+    id: row.campStageId, name: row.stageName, youth: row.childYouthCount, adults: row.leaderCount
+  })));
   private readonly api = inject(CampApiService);
   private request?: Subscription;
   constructor() {
+    effect(() => this.activeStagesChange.emit(this.activeStageIds()));
+    effect(() => this.maximumChange.emit(Math.max(this.total('childYouthCount'), this.total('leaderCount'))));
     effect(onCleanup => {
       this.campId(); this.nodeIds(); const totals = this.stageTotals();
-      this.expanded.set(false); this.rows.set(totals); this.error.set(''); this.busy.set(false);
+      this.rows.set(totals); this.error.set(''); this.busy.set(false);
+      if (totals === null && this.nodeIds().length) untracked(() => this.load());
       onCleanup(() => this.request?.unsubscribe());
     });
-  }
-  toggle(event: Event) {
-    const open = (event.target as HTMLDetailsElement).open;
-    this.expanded.set(open);
-    if (open && this.rows() === null && !this.busy()) this.load();
   }
   load() {
     this.request?.unsubscribe(); this.error.set('');

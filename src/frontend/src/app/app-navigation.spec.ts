@@ -212,7 +212,10 @@ describe('Application navigation', () => {
     app.selectStructureNode('parent'); fixture.detectChanges();
     expect(element.querySelector('[aria-label="Strukturknoten"]')).not.toBeNull();
     expect(element.textContent).not.toContain('Schätzung bearbeiten');
+    const details = element.querySelector('.structure-tree') as HTMLElement;
+    details.scrollTop = 240;
     app.selectStructureNode('leaf'); fixture.detectChanges();
+    expect(details.scrollTop).toBe(0);
     expect(element.textContent).toContain('Schätzung bearbeiten');
     expect(element.querySelector('[aria-label="Eintrag umbenennen"]')).toBeNull();
     app.structureMode.set('Fixed'); app.structureLevelNames.set(['Bereich', 'Gruppe']);
@@ -220,14 +223,15 @@ describe('Application navigation', () => {
     expect(element.textContent).not.toContain('Schätzung bearbeiten');
     expect(element.textContent).not.toContain('Teilnehmerverwaltung öffnen');
   });
-  it('uses a separate edit mode with individual persistence and read-only permissions', () => {
+  it('shows direct node actions while respecting read-only permissions', () => {
     const { app, fixture, element } = structureSetup(); app.selectStructureNode('leaf');
-    app.toggleStructureEditing(); fixture.detectChanges();
+    fixture.detectChanges();
     expect(element.querySelector('[aria-label="Aktionen für Gemischte Gruppe"]')).not.toBeNull();
-    expect(element.textContent).toContain('einzeln gespeichert');
-    expect(element.textContent).not.toContain('Schätzung bearbeiten');
+    expect(element.querySelector('[aria-label="Name bearbeiten: Gemischte Gruppe"]')).not.toBeNull();
+    expect(element.textContent).toContain('Schätzung bearbeiten');
     app.camps.set([{ ...camp, canEdit: false }]); fixture.detectChanges();
     expect(element.querySelector('[aria-label="Aktionen für Gemischte Gruppe"]')).toBeNull();
+    expect(element.querySelector('[aria-label="Name bearbeiten: Gemischte Gruppe"]')).toBeNull();
     expect(element.textContent).not.toContain('Bearbeitung beenden');
   });
   it('does not double count parent estimates and selects collapsed descendants independently', () => {
@@ -287,16 +291,17 @@ describe('Application navigation', () => {
   it('uses one structure page heading and keeps editing in the tree panel', () => {
     const { app, fixture, element } = structureSetup(); fixture.detectChanges();
     expect(element.querySelector('main')?.classList.contains('structure-page')).toBe(true);
-    expect(Array.from(element.querySelectorAll('h1')).map(heading => heading.textContent)).toEqual(['Struktur & Teilnehmer']);
-    expect(element.querySelector('.structure-breadcrumb')?.textContent).toContain(camp.name);
-    expect(element.querySelector('.structure-browser-heading button')?.textContent).toContain('Struktur bearbeiten');
-    expect(element.querySelector('.structure-section-navigation [aria-current="page"]')?.textContent).toBe('Struktur');
+    expect(Array.from(element.querySelectorAll('h1')).map(heading => heading.textContent)).toEqual(['Struktur']);
+    expect(element.querySelector('.page-header')).toBeNull();
+    expect(element.querySelector('[aria-label="Aktionen für das Lager"]')).not.toBeNull();
+    expect(element.querySelector('.camp-navigation-subitems [aria-current="page"]')?.textContent).toBe('Struktur');
     app.navigateCamp('general'); fixture.detectChanges();
     expect(element.querySelector('main')?.classList.contains('structure-page')).toBe(false);
     expect(element.querySelector('h1')?.textContent).toBe(camp.name);
   });
-  it('renders parent details as a header and real child table, and leaf details separately', () => {
+  it('renders parent details as a header and real child table, and leaf details separately', async () => {
     const { app, fixture, element } = structureSetup(); app.selectStructureNode('parent'); fixture.detectChanges();
+    expect(Array.from(element.querySelectorAll('[role="tab"]')).map(tab => tab.textContent?.trim())).toEqual(['Untergruppen', 'Stufenverteilung']);
     expect(element.querySelector('scp-structure-detail-header .detail-symbol')).not.toBeNull();
     expect(element.querySelector('.structure-children-table tbody th')?.textContent).toContain('Gemischte Gruppe');
     expect(element.querySelector('.structure-leaf-content')).toBeNull();
@@ -304,45 +309,80 @@ describe('Application navigation', () => {
     app.selectStructureNode('leaf'); fixture.detectChanges();
     expect(element.querySelector('.structure-children-table')).toBeNull();
     expect(element.querySelector('.structure-leaf-content')).not.toBeNull();
-    app.toggleStructureEditing(); fixture.detectChanges();
-    expect(element.querySelector('.structure-editor-section')?.textContent).toContain('Allgemeine Angaben');
-    expect(element.querySelector('.mode-label')?.textContent).toBe('Bearbeitungsmodus');
-    expect(element.querySelector('.detail-statistics')).toBeNull();
+    expect(element.querySelector('[role="tablist"]')).toBeNull();
+    (element.querySelector('[aria-label="Name bearbeiten: Gemischte Gruppe"]') as HTMLButtonElement).click(); fixture.detectChanges();
+    await fixture.whenStable(); fixture.detectChanges();
+    expect(element.querySelector('scp-structure-detail-header .structure-title-editor')).not.toBeNull();
+    expect(element.querySelector('.structure-editor-section')).toBeNull();
+    expect(element.querySelector('.mode-label')).toBeNull();
+    expect(element.querySelector('.detail-statistics')).not.toBeNull();
     expect((element.querySelector('.structure-node-name-field input') as HTMLInputElement)?.value).toBe('Gemischte Gruppe');
-    app.toggleStructureEditing(); fixture.detectChanges();
+    app.toggleRenameStructureNode(app.structureNodes()[1]); fixture.detectChanges();
     expect(element.querySelector('.detail-statistics')).not.toBeNull();
     expect(element.querySelector('.structure-column-caption')?.textContent).toContain('Geschätzt');
   });
+  it('paginates subgroups without changing full hierarchy totals and resets on node change', () => {
+    const { app, fixture, element } = structureSetup();
+    const parent = app.structureNodes()[0];
+    app.structureNodes.set([parent, ...Array.from({ length: 12 }, (_, index) => ({
+      ...parent, id: `child-${index}`, parentId: parent.id, name: `Gruppe ${index}`
+    }))]);
+    app.selectStructureNode(parent.id); fixture.detectChanges();
+    expect(element.querySelectorAll('.structure-children-table tbody tr').length).toBe(5);
+    expect(app.selectedStructureChildren().length).toBe(12);
+    app.changeChildrenPage({ pageIndex: 2, pageSize: 5 }); fixture.detectChanges();
+    expect(app.pagedStructureChildren().map(row => row.id)).toEqual(['child-10', 'child-11']);
+    app.selectStructureNode(null); fixture.detectChanges();
+    expect(app.childrenPageIndex()).toBe(0);
+  });
+  it('switches tree counts to actual subtree totals without mixing estimates or unassigned people', () => {
+    const { app, fixture } = structureSetup();
+    app.treeCountMode.set('actual'); fixture.detectChanges();
+    expect(app.treeParticipantLabel('parent')).toBe('—');
+    app.treeActualCounts.set({ stages: [], counts: [
+      { structureNodeId: 'leaf', campStageId: null, category: 'ChildYouth', count: 3 },
+      { structureNodeId: 'parent', campStageId: null, category: 'LeaderAdult', count: 2 },
+      { structureNodeId: 'leaf', campStageId: null, category: null, count: 1 },
+      { structureNodeId: null, campStageId: null, category: 'ChildYouth', count: 4 }
+    ] });
+    expect(app.treeParticipantLabel('parent')).toBe('3 / 2 · 1 offen');
+    expect(app.treeParticipantLabel('leaf')).toBe('3 / 0 · 1 offen');
+    expect(app.treeParticipantLabel(null)).toBe('7 / 2 · 1 offen');
+    app.treeCountMode.set('estimated');
+    expect(app.treeParticipantLabel('leaf')).not.toContain('offen');
+  });
   it('keeps the local view switch in the shared page header during editing and participant navigation', () => {
     const { app, fixture, element } = structureSetup();
-    app.selectStructureNode('leaf'); app.toggleStructureEditing(); fixture.detectChanges();
-    expect(element.querySelectorAll('nav[aria-label="Struktur und Teilnehmer"]')).toHaveLength(1);
-    expect(element.querySelector('.page-header nav[aria-label="Struktur und Teilnehmer"]')).not.toBeNull();
-    expect(element.querySelector('.structure-edit-notice')?.textContent).toContain('einzeln gespeichert');
+    app.selectStructureNode('leaf'); app.toggleRenameStructureNode(app.structureNodes()[1]); fixture.detectChanges();
+    expect(element.querySelectorAll('.workspace-sidebar [aria-label="Struktur und Teilnehmer"]')).toHaveLength(1);
+    expect(element.querySelector('.page-header')).toBeNull();
+    expect(element.querySelector('.structure-edit-notice')).toBeNull();
     app.navigateCamp('participants'); fixture.detectChanges();
-    expect(element.querySelector('.page-header h1')?.textContent).toBe('Struktur & Teilnehmer');
-    expect(element.querySelector('.page-header [aria-current="page"]')?.textContent).toBe('Teilnehmer');
-    expect(element.querySelectorAll('nav[aria-label="Struktur und Teilnehmer"]')).toHaveLength(1);
+    expect(element.querySelector('h1')?.textContent).toBe('Teilnehmerübersicht');
+    expect(element.querySelector('.camp-navigation-subitems [aria-current="page"]')?.textContent).toBe('Teilnehmerübersicht');
+    expect(element.querySelectorAll('.workspace-sidebar [aria-label="Struktur und Teilnehmer"]')).toHaveLength(1);
   });
-  it('opens node actions from the tree and starts renaming without persisting a change', async () => {
-    const { app, fixture, element } = structureSetup(); app.selectStructureNode('leaf'); app.toggleStructureEditing(); fixture.detectChanges();
+  it('keeps renaming in the title instead of the node menu without persisting a change', async () => {
+    const { app, fixture, element } = structureSetup(); app.selectStructureNode('leaf'); fixture.detectChanges();
     (element.querySelector('[aria-label="Aktionen für Gemischte Gruppe"]') as HTMLButtonElement).click(); fixture.detectChanges(); await fixture.whenStable();
     const rename = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')).find(button => button.textContent?.trim() === 'Umbenennen');
-    expect(rename).toBeDefined(); rename!.click(); fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    expect(rename).toBeUndefined();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); fixture.detectChanges();
+    (element.querySelector('[aria-label="Name bearbeiten: Gemischte Gruppe"]') as HTMLButtonElement).click(); fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
     expect(app.editingStructureNodeId()).toBe('leaf');
     const input = element.querySelector('.structure-node-name-field input') as HTMLInputElement;
     expect(input.value).toBe('Gemischte Gruppe');
-    expect(element.textContent).toContain('Namen speichern');
+    expect(element.querySelector('[aria-label="Namen speichern"]')).not.toBeNull();
     expect(api['renameStructureNode']).not.toHaveBeenCalled();
   });
   it('does not warn for an unchanged or cancelled structure name but protects a changed draft', () => {
-    const { app, fixture } = structureSetup(); app.selectStructureNode('leaf'); app.toggleStructureEditing(); fixture.detectChanges();
+    const { app, fixture } = structureSetup(); app.selectStructureNode('leaf'); fixture.detectChanges();
     vi.mocked(window.confirm).mockClear();
     app.toggleRenameStructureNode(app.structureNodes()[1]); fixture.detectChanges();
     app.toggleRenameStructureNode(app.structureNodes()[1]); fixture.detectChanges();
-    app.toggleStructureEditing(); expect(window.confirm).not.toHaveBeenCalled();
-    app.toggleStructureEditing(); app.toggleRenameStructureNode(app.structureNodes()[1]); app.editStructureNodeName = 'Changed'; fixture.detectChanges();
-    vi.mocked(window.confirm).mockReturnValue(false); app.toggleStructureEditing();
-    expect(app.structureEditing()).toBe(true); expect(window.confirm).toHaveBeenCalled();
+    expect(window.confirm).not.toHaveBeenCalled();
+    app.toggleRenameStructureNode(app.structureNodes()[1]); app.editStructureNodeName = 'Changed'; fixture.detectChanges();
+    vi.mocked(window.confirm).mockReturnValue(false); app.toggleMoveStructureNode(app.structureNodes()[1]);
+    expect(app.editingStructureNodeId()).toBe('leaf'); expect(window.confirm).toHaveBeenCalled();
   });
 });
