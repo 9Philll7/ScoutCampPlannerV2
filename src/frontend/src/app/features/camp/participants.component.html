@@ -1,4 +1,11 @@
 <section>
+      <ng-template #participantSectionNavigation>
+        <nav class="participant-editor-tabs" aria-label="Teilnehmerbereiche">
+          @for (section of participantSections; track section.id) {
+            <button type="button" [attr.aria-current]="editorSection() === section.id ? 'page' : null" (click)="editorSection.set(section.id)">{{ section.label }}</button>
+          }
+        </nav>
+      </ng-template>
       @if (!draft && !detailDocument()) {
       <div class="heading"><div><h2>{{ scopedNodeId() ? 'Teilnehmer dieser Gruppe' : 'Teilnehmerübersicht' }}</h2></div><div class="heading-actions"><button matButton [disabled]="busy()" (click)="reload()">Neu laden</button>
       @if (!draft && overview()?.canEdit && !overview()?.isFrozen) { <button matButton="filled" [disabled]="busy()" (click)="create()"><scp-action-icon name="add"/>Teilnehmer hinzufügen</button> }</div></div>
@@ -41,34 +48,48 @@
           <label>Ernährung<select [(ngModel)]="dietFilter" (ngModelChange)="clearHiddenSelection()"><option value="">Alle Ernährungsformen</option><option value="unassigned">Keine Angabe</option>@for (diet of view.catalog.dietTypes; track diet.id) { <option [value]="diet.id">{{ diet.name }}</option> }</select></label>
           <button matButton (click)="resetFilters()">Filter zurücksetzen</button>
         </div>
-        <div class="participants-workspace" [class.has-preview]="selectedDocument() !== null">
+        <div class="participants-workspace" [class.has-preview]="!scopedNodeId() && selectedDocument() !== null">
           <div class="participant-list"><div class="table-scroll" scpFitListPage (fittedPageSize)="fitPage($event)"><table aria-label="Teilnehmerliste"><thead><tr>
             <th scope="col" [attr.aria-sort]="sortAscending ? 'ascending' : 'descending'"><button class="sort-button" type="button" (click)="sortAscending = !sortAscending; pageIndex.set(0); selectedId = null" [attr.aria-label]="sortAscending ? 'Name absteigend sortieren' : 'Name aufsteigend sortieren'">Name <span aria-hidden="true">{{ sortAscending ? '↑' : '↓' }}</span></button></th>
             <th scope="col">Stufe</th><th scope="col">Kategorie</th>@if (!scopedNodeId()) { <th scope="col">Gruppe</th> }<th scope="col">Ernährung</th><th scope="col"><span class="visually-hidden">Detailansicht</span></th>
           </tr></thead><tbody>
           @for (document of pagedParticipants(); track document.data.id) {
             <tr [class.selected]="selectedId === document.data.id" (click)="select(document)">
-              <th scope="row"><button class="person-button" type="button" (click)="$event.stopPropagation(); select(document)" [attr.aria-expanded]="selectedId === document.data.id" aria-controls="participant-preview"><span class="avatar" aria-hidden="true">{{ initials(document.data.displayName) }}</span><span>{{ document.data.displayName }}</span></button></th>
+              <th scope="row"><button class="person-button" type="button" (click)="$event.stopPropagation(); select(document)" [attr.aria-expanded]="scopedNodeId() ? null : selectedId === document.data.id" [attr.aria-controls]="scopedNodeId() ? null : 'participant-preview'"><span class="avatar" aria-hidden="true">{{ initials(document.data.displayName) }}</span><span>{{ document.data.displayName }}</span></button></th>
               <td><span class="stage-label"><i aria-hidden="true"></i>{{ stageName(document.data.campStageId) }}</span></td>
               <td><span class="category-badge" [class.youth]="document.data.category === 'ChildYouth'" [class.adult]="document.data.category === 'LeaderAdult'">{{ categoryName(document.data.category) }}</span></td>
               @if (!scopedNodeId()) { <td [title]="structurePath(document.data.structureNodeId)">{{ groupName(document.data.structureNodeId) }}</td> }
               <td><span class="diet-badge" [class.assigned]="document.data.dietTypeId">{{ dietName(document.data.dietTypeId) }}</span></td>
-              <td><button class="row-details" type="button" (click)="$event.stopPropagation(); select(document)" [attr.aria-label]="'Vorschau öffnen: ' + document.data.displayName"><span aria-hidden="true">›</span></button></td>
+              <td class="participant-row-actions">
+                @if (scopedNodeId()) {
+                  <button class="row-details" type="button" (click)="$event.stopPropagation(); openDetails(document)" [attr.aria-label]="'Detailansicht öffnen: ' + document.data.displayName" title="Detailansicht">›</button>
+                } @else {
+                  <button class="row-details" type="button" (click)="$event.stopPropagation(); select(document)" [attr.aria-label]="'Vorschau öffnen: ' + document.data.displayName"><span aria-hidden="true">›</span></button>
+                }
+              </td>
             </tr>
           } @empty { <tr><td [attr.colspan]="scopedNodeId() ? 5 : 6" class="empty">{{ view.participants.length ? 'Keine Teilnehmer für diese Auswahl.' : 'Noch keine Teilnehmer erfasst.' }}</td></tr> }
           </tbody></table></div>
           <scp-list-pagination label="Teilnehmerseiten" [length]="filteredParticipants().length" [pageIndex]="visiblePageIndex()" [pageSize]="pageSize()" (changed)="changePage($event)"/>
           </div>
-          @if (selectedDocument(); as document) {
+          @if (!scopedNodeId() && selectedDocument(); as document) {
             <aside id="participant-preview" class="participant-preview" aria-label="Teilnehmervorschau">
-              <header><span class="avatar large" aria-hidden="true">{{ initials(document.data.displayName) }}</span><div><h3>{{ document.data.displayName }}</h3><p>Teilnehmervorschau</p></div><button matButton aria-label="Vorschau schließen" (click)="selectedId = null">×</button></header>
+              <header><span class="avatar large" aria-hidden="true">{{ initials(document.data.displayName) }}</span><div><h3 [title]="document.data.displayName">{{ document.data.displayName }}</h3>
+                <div class="preview-actions" role="group" aria-label="Teilnehmeraktionen">
+                  <button type="button" aria-label="Detailansicht öffnen" title="Detailansicht öffnen" (click)="openDetails(document)"><scp-action-icon name="info"/></button>
+                  @if (view.canEdit && !view.isFrozen) {
+                    <button type="button" aria-label="Teilnehmer bearbeiten" title="Bearbeiten" [disabled]="busy()" (click)="edit(document)"><scp-action-icon name="edit"/></button>
+                    <button type="button" class="danger" aria-label="Teilnehmer löschen" title="Teilnehmer löschen" [disabled]="busy()" (click)="remove(document)"><scp-action-icon name="remove"/></button>
+                  }
+                </div>
+              </div></header>
+              <div class="preview-body">
               <section><h4>Stufe und Kategorie</h4><p>{{ stageName(document.data.campStageId) }} · {{ categoryName(document.data.category) }}</p></section>
               <section><h4>Strukturzuordnung</h4><p>{{ structurePath(document.data.structureNodeId) }}</p></section>
               <section class="preview-diet"><h4>Ernährung</h4><p><span class="diet-badge" [class.assigned]="document.data.dietTypeId">{{ dietName(document.data.dietTypeId) }}</span></p></section>
               <section><h4>Anwesenheit</h4><p>Standardmäßig anwesend</p><dl><div><dt>Ganze Tage abwesend</dt><dd>{{ document.data.absentDays.length }}</dd></div><div><dt>Einzelne Mahlzeiten abwesend</dt><dd>{{ document.data.absentMealIds.length }}</dd></div></dl></section>
-              <footer><button matButton="outlined" (click)="openDetails(document)">Detailansicht öffnen</button>
-              @if (view.canEdit && !view.isFrozen) { <button matButton="outlined" (click)="edit(document)" [disabled]="busy()">Bearbeiten</button> }
-              @if (view.canEdit && !view.isFrozen) { <button matButton class="danger" [disabled]="busy()" (click)="remove(document)">Teilnehmer löschen</button> }</footer>
+              </div>
+              <div class="preview-mobile-close"><button type="button" (click)="selectedId = null">Vorschau schließen</button></div>
             </aside>
           }
         </div>
@@ -80,17 +101,17 @@
             <div class="person-heading-copy"><h2>{{ document.data.displayName }}</h2><div class="person-context"><span class="category-badge" [class.youth]="document.data.category === 'ChildYouth'" [class.adult]="document.data.category === 'LeaderAdult'">{{ categoryName(document.data.category) }}</span><span>{{ stageName(document.data.campStageId) }}</span><span>{{ structurePath(document.data.structureNodeId) }}</span></div></div>
             @if (view.canEdit && !view.isFrozen) { <button matButton="outlined" (click)="edit(document)"><scp-action-icon name="edit"/>Bearbeiten</button> }
           </header>
-          <div class="participant-detail-grid">
-            <div class="detail-main">
-              <section class="person-card"><h3><scp-action-icon name="people"/>Allgemeine Angaben</h3><dl class="person-facts"><div><dt>Anzeigename</dt><dd>{{ document.data.displayName }}</dd></div><div><dt>Kategorie</dt><dd>{{ categoryName(document.data.category) }}</dd></div><div><dt>Stufe</dt><dd>{{ stageName(document.data.campStageId) }}</dd></div></dl></section>
-              <section class="person-card"><h3><scp-action-icon name="structure"/>Strukturzuordnung</h3><div class="structure-assignment">{{ structurePath(document.data.structureNodeId) }}</div></section>
-              <section class="person-card"><h3>Ernährungs- und Gesundheitsangaben</h3><dl class="person-facts"><div><dt>Ernährungsform</dt><dd><span class="diet-badge" [class.assigned]="document.data.dietTypeId">{{ dietName(document.data.dietTypeId) }}</span></dd></div><div><dt>Allergene</dt><dd>@for (id of document.data.allergenIds; track id) { <span class="diet-badge">{{ allergenName(id) }}</span> } @empty { Keine Angaben }</dd></div></dl>
+          <ng-container [ngTemplateOutlet]="participantSectionNavigation"/>
+          <div class="participant-detail-grid tabbed-participant-detail">
+              <section class="editor-page general-page" [hidden]="editorSection() !== 'general'">
+                <div class="person-card"><h3><scp-action-icon name="people"/>Stammdaten</h3><dl class="person-facts"><div><dt>Anzeigename</dt><dd>{{ document.data.displayName }}</dd></div></dl></div>
+                <div class="person-card"><h3>Teilnahmedaten</h3><dl class="person-facts"><div><dt>Kategorie</dt><dd>{{ categoryName(document.data.category) }}</dd></div><div><dt>Stufe</dt><dd>{{ stageName(document.data.campStageId) }}</dd></div></dl></div>
+              </section>
+              <section class="editor-page person-card" [hidden]="editorSection() !== 'structure'"><h3><scp-action-icon name="structure"/>Struktur & Gruppe</h3><div class="structure-assignment">{{ structurePath(document.data.structureNodeId) }}</div></section>
+              <section class="editor-page person-card" [hidden]="editorSection() !== 'diet'"><h3>Ernährung</h3><h4>Ernährungsform</h4><span class="diet-badge" [class.assigned]="document.data.dietTypeId">{{ dietName(document.data.dietTypeId) }}</span><h4>Allergene</h4><div class="health-tags">@for (group of groupedAllergens(document.data.allergenIds); track group.id) { <span class="diet-badge">{{ group.name }}@if (group.subgroups.length) { <span>: {{ group.subgroups.join(', ') }}</span> }</span> } @empty { <p class="muted">Keine Angaben</p> }</div>
                 <h4>Unverträglichkeiten</h4>@for (item of document.data.intolerances; track item.substanceId) { <div class="requirement-row"><strong>{{ substanceName(item.substanceId) }}</strong><span>{{ item.thresholdGramsPerPortion === null ? 'Grenzwert unbekannt' : item.thresholdGramsPerPortion + ' g/Portion' }}</span>@if (item.thresholdSource) { <small>{{ item.thresholdSource }}</small> }</div> } @empty { <p class="muted">Keine Angaben</p> }
               </section>
-            </div>
-            <aside class="detail-side"><section class="person-card"><h3>Anwesenheit</h3><p>Standardmäßig anwesend</p><h4>Ganze Tage abwesend</h4>@for (day of document.data.absentDays; track day) { <p>{{ day }}</p> } @empty { <p class="muted">Keine Ausnahmen</p> }<h4>Einzelne Mahlzeiten abwesend</h4><p>{{ document.data.absentMealIds.length }}</p></section>
-              @if (view.isFrozen) { <section class="person-card"><h3>Schreibgeschützt</h3><p>Offlinephase aktiv</p></section> }
-            </aside>
+              <section class="editor-page person-card" [hidden]="editorSection() !== 'attendance'"><h3>Anwesenheit</h3><p>Standardmäßig anwesend</p><h4>Ganze Tage abwesend</h4><div class="health-tags">@for (day of document.data.absentDays; track day) { <span class="diet-badge">{{ day }}</span> } @empty { <p class="muted">Keine Ausnahmen</p> }</div><h4>Einzelne Mahlzeiten abwesend</h4><p>{{ document.data.absentMealIds.length }}</p></section>
           </div>
         }
         @if (draft; as value) {
@@ -98,13 +119,7 @@
             <header class="person-heading"><span class="avatar hero" aria-hidden="true">{{ value.displayName ? initials(value.displayName) : '+' }}</span><div class="person-heading-copy"><h2>{{ value.displayName || 'Neuer Teilnehmer' }}</h2><div class="person-context"><span>{{ categoryName(value.category) }}</span><span>{{ stageName(value.campStageId) }}</span></div></div>
               @if (view.canEdit && !view.isFrozen) { <button matButton="filled" type="submit" [disabled]="busy() || !value.displayName.trim()"><scp-action-icon name="save"/>Speichern</button> }
               <button matButton="outlined" type="button" [disabled]="busy()" (click)="closeEditor()">Abbrechen</button></header>
-            <nav class="participant-editor-tabs" aria-label="Teilnehmerbereiche">
-              <button type="button" [attr.aria-current]="editorSection() === 'general' ? 'page' : null" (click)="editorSection.set('general')">Allgemein</button>
-              <button type="button" [attr.aria-current]="editorSection() === 'structure' ? 'page' : null" (click)="editorSection.set('structure')">Struktur & Gruppe</button>
-              <button type="button" [attr.aria-current]="editorSection() === 'diet' ? 'page' : null" (click)="editorSection.set('diet')">Ernährung</button>
-              <button type="button" [attr.aria-current]="editorSection() === 'health' ? 'page' : null" (click)="editorSection.set('health')">Gesundheit</button>
-              <button type="button" [attr.aria-current]="editorSection() === 'attendance' ? 'page' : null" (click)="editorSection.set('attendance')">Anwesenheit</button>
-            </nav>
+            <ng-container [ngTemplateOutlet]="participantSectionNavigation"/>
             <fieldset [disabled]="!view.canEdit || view.isFrozen || busy()">
               <legend class="visually-hidden">Teilnehmer bearbeiten</legend>
               <section class="editor-page general-page" [hidden]="editorSection() !== 'general'"><div class="person-card"><h3>Stammdaten</h3>
@@ -123,12 +138,43 @@
               </select></label>
               <div class="structure-assignment">{{ structurePath(value.structureNodeId) }}</div></section>
               <section class="editor-page person-card" [hidden]="editorSection() !== 'diet'"><h3>Ernährung</h3>
+              <h4>Ernährungsform</h4>
               <div class="choice-grid" role="group" aria-label="Ernährungsform">
                 <button type="button" class="choice-card" [attr.aria-pressed]="value.dietTypeId === null" (click)="value.dietTypeId = null"><span class="choice-symbol" aria-hidden="true">○</span><strong>Keine Angabe</strong></button>
                 @for (diet of view.catalog.dietTypes; track diet.id) {
                   <button type="button" class="choice-card" [attr.aria-pressed]="value.dietTypeId === diet.id" (click)="value.dietTypeId = diet.id"><span class="choice-symbol" aria-hidden="true">{{ value.dietTypeId === diet.id ? '✓' : '○' }}</span><strong>{{ diet.name }}</strong></button>
                 }
               </div>
+              <div class="nutrition-list-heading"><h4>Allergene</h4><button matButton="outlined" type="button" (click)="beginAllergen(); allergenDialog.showModal()" [disabled]="!availableAllergens().length"><scp-action-icon name="add"/>Hinzufügen</button></div>
+              <ul class="nutrition-items" aria-label="Gewählte Allergene">
+                @for (group of groupedAllergens(value.allergenIds); track group.id) { <li><div><strong>{{ group.name }}</strong>@if (group.subgroups.length) { <small>{{ group.subgroups.join(', ') }}</small> }</div><div class="nutrition-item-actions"><button matButton type="button" (click)="beginAllergen(group.id); allergenDialog.showModal()" [attr.aria-label]="'Allergen bearbeiten: ' + group.name">Bearbeiten</button><button matButton type="button" (click)="removeAllergen(group.id)" [attr.aria-label]="'Allergen entfernen: ' + group.name">Entfernen</button></div></li> }
+                @empty { <li class="muted">Noch keine Allergene erfasst.</li> }
+              </ul>
+              <dialog #allergenDialog class="nutrition-dialog" aria-labelledby="allergen-dialog-title" (cancel)="allergenEditor.set(null)" (keydown.enter)="$any($event.target).tagName === 'INPUT' && $event.preventDefault()">
+                <h3 id="allergen-dialog-title">Allergen bearbeiten</h3>
+                <label>Allergengruppe<select name="allergenGroup" [(ngModel)]="allergenGroup" (ngModelChange)="chooseAllergenGroup()"><option value="">Bitte auswählen</option>@for (item of allergenGroups(); track item.id) { <option [value]="item.id">{{ allergenLetters[item.code] }} · {{ item.name }}</option> }</select></label>
+                @if (allergenChildren().length) {
+                  <fieldset class="allergen-subgroups"><legend>Untergruppen</legend>
+                    <div class="allergen-subgroup-options">@for (item of allergenChildren(); track item.id) { <button matButton="outlined" type="button" [attr.aria-pressed]="allergenSubgroups.includes(item.id)" (click)="toggleAllergenSubgroup(item.id)">{{ item.name }}</button> }</div>
+                    <p class="muted">Mehrfachauswahl möglich. Ohne Auswahl wird nur die Hauptgruppe erfasst.</p>
+                  </fieldset>
+                }
+                <div class="nutrition-dialog-actions"><button matButton type="button" (click)="allergenEditor.set(null); allergenDialog.close()">Abbrechen</button><button matButton="filled" type="button" [disabled]="!validAllergenChoice()" (click)="applyAllergen(); allergenDialog.close()">Übernehmen</button></div>
+              </dialog>
+              <div class="nutrition-list-heading"><h4>Unverträglichkeiten</h4><button matButton="outlined" type="button" [disabled]="!availableSubstances().length" (click)="beginIntolerance(); intoleranceDialog.showModal()"><scp-action-icon name="add"/>Hinzufügen</button></div>
+              <dialog #intoleranceDialog class="nutrition-dialog" aria-labelledby="intolerance-dialog-title" (cancel)="addingIntolerance.set(false); editingIntolerance.set(null)" (keydown.enter)="$any($event.target).tagName === 'INPUT' && $event.preventDefault()">
+                <h3 id="intolerance-dialog-title">Unverträglichkeit bearbeiten</h3>
+                <label>Stoff<select name="substanceChoice" [(ngModel)]="substanceChoice" [disabled]="editingIntolerance() !== null" (ngModelChange)="prepareIntolerance()"><option value="">Bitte auswählen</option>@for (item of view.catalog.substances; track item.id) { <option [value]="item.id" [disabled]="!!requirement(item.id) && item.id !== editingIntolerance()">{{ item.name }}</option> }</select></label>
+                @if (quantityDependent(substanceChoice)) { <label>Individueller Grenzwert (g/Portion)<input name="intoleranceThreshold" type="number" min="0" max="999999999999.999999" step="0.000001" [(ngModel)]="intoleranceThreshold"/></label><p class="muted">Leer bedeutet: Grenzwert unbekannt.</p> }
+                <label>Herkunft des Grenzwerts<input name="intoleranceSource" maxlength="500" [(ngModel)]="intoleranceSource"/></label>
+                <div class="nutrition-dialog-actions"><button matButton type="button" (click)="addingIntolerance.set(false); editingIntolerance.set(null); intoleranceDialog.close()">Abbrechen</button><button matButton="filled" type="button" [disabled]="!validIntolerance()" (click)="applyIntolerance(); intoleranceDialog.close()">Übernehmen</button></div>
+              </dialog>
+              <ul class="nutrition-items" aria-label="Gewählte Unverträglichkeiten">
+                @for (item of value.intolerances; track item.substanceId) {
+                  <li><div><strong>{{ substanceName(item.substanceId) }}</strong>@if (quantityDependent(item.substanceId)) { <p class="muted">{{ item.thresholdGramsPerPortion === null ? 'Grenzwert unbekannt' : item.thresholdGramsPerPortion + ' g/Portion' }}</p> }@if (item.thresholdSource) { <small>{{ item.thresholdSource }}</small> }</div><div class="nutrition-item-actions"><button matButton type="button" (click)="beginIntolerance(item.substanceId); intoleranceDialog.showModal()" [attr.aria-label]="'Unverträglichkeit bearbeiten: ' + substanceName(item.substanceId)">Bearbeiten</button><button matButton type="button" (click)="removeIntolerance(item.substanceId)" [attr.aria-label]="'Unverträglichkeit entfernen: ' + substanceName(item.substanceId)">Entfernen</button></div>
+                  </li>
+                } @empty { <li class="muted">Noch keine Unverträglichkeiten erfasst.</li> }
+              </ul>
               </section>
               <section class="editor-page person-card" [hidden]="editorSection() !== 'attendance'"><h3>Anwesenheit</h3><p>Standardmäßig anwesend. Hier werden Abwesenheiten erfasst.</p>
                 <div class="attendance-options">@for (day of days(); track day) {
@@ -141,28 +187,6 @@
                     (change)="toggle(value.absentMealIds, meal.id, $any($event.target).checked)"/>
                     {{ meal.date }} · {{ meal.name }} {{ !meal.isActive ? '(inaktiv)' : '' }}</label>
                 }</div>
-              </section>
-              <section class="editor-page person-card" [hidden]="editorSection() !== 'health'"><h3>Gesundheitsangaben</h3><h4>Allergene</h4>
-                <div class="allergen-options">
-                @for (allergen of view.catalog.allergens; track allergen.id) {
-                  <label class="check"><input type="checkbox" [checked]="value.allergenIds.includes(allergen.id)"
-                    (change)="toggle(value.allergenIds, allergen.id, $any($event.target).checked)"/>{{ allergen.name }}</label>
-                }
-                </div>
-              <h4>Unverträglichkeiten und individuelle Angaben</h4>
-                <p>Kein medizinischer Standardwert. Ein leeres Feld bedeutet: Grenzwert unbekannt.</p>
-                <div class="requirement-options">@for (substance of view.catalog.substances; track substance.id) {
-                  <div class="substance"><label class="check"><input type="checkbox" [checked]="!!requirement(substance.id)"
-                    (change)="toggleRequirement(substance.id, $any($event.target).checked)"/>{{ substance.name }}</label>
-                  @if (requirement(substance.id); as requirement) {
-                    @if (substance.isQuantityDependent) {
-                      <label>Individueller Grenzwert (g/Portion)<input type="number" min="0" max="999999999999.999999" step="0.000001"
-                        [name]="'threshold-' + substance.id" [(ngModel)]="requirement.thresholdGramsPerPortion"/></label>
-                    }
-                    <label>Herkunft des Grenzwerts<input maxlength="500" [name]="'source-' + substance.id" [(ngModel)]="requirement.thresholdSource"/></label>
-                  }</div>
-                }
-                </div>
               </section>
             </fieldset>
           </form>

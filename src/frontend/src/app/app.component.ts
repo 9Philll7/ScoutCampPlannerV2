@@ -34,6 +34,7 @@ import { AuthenticationApiService, AuthenticatedUser } from './features/authenti
 import { CampAdministratorOption, CampApiService, CampMeal, CampMealType, CampPlanningSummary, CampStageFoodFactor, CampSummary, IngredientCatalogEntry, IngredientConflictType, IngredientScope, MeasurementDimension, ParticipantEstimate, StructureConfiguration, StructureNodeSummary, TenantOption, TenantStageFoodFactor, WeightedStageTotal } from './features/camp/camp-api.service';
 import { IngredientRevisionEditorComponent } from './features/ingredients/ingredient-revision-editor.component';
 import { DietaryCatalogComponent } from './features/meal-planning/dietary-catalog.component';
+import { ParticipantFilterSettingsComponent } from './features/meal-planning/participant-filter-settings.component';
 import { MealPlanningComponent } from './features/meal-planning/meal-planning.component';
 import { RecipeEditorComponent } from './features/recipes/recipe-editor.component';
 import { SetupApiService } from './features/setup/setup-api.service';
@@ -49,7 +50,7 @@ type CampSection = 'overview' | 'general' | 'structure' | 'catering' | 'particip
   standalone: true,
   imports: [FormsModule, FitListPageDirective, NotificationBannerComponent, StageDistributionComponent, ActualStageDistributionComponent, ListPaginationComponent, MatTabsModule, MatMenuModule, MatButtonModule, MatButtonToggleModule, MatCardModule, MatCheckboxModule, MatFormFieldModule, MatInputModule,
     MatProgressSpinnerModule, MatSelectModule, MatTooltipModule, MatDatepickerModule,
-    ActionIconComponent, IngredientRevisionEditorComponent, RecipeEditorComponent, MealPlanningComponent, PackageTransferComponent, ParticipantsComponent, DietaryCatalogComponent, TenantRecipesComponent, CurrentNavigationDirective, StructureDetailHeaderComponent],
+    ActionIconComponent, IngredientRevisionEditorComponent, RecipeEditorComponent, MealPlanningComponent, PackageTransferComponent, ParticipantsComponent, DietaryCatalogComponent, ParticipantFilterSettingsComponent, TenantRecipesComponent, CurrentNavigationDirective, StructureDetailHeaderComponent],
   providers: [provideNativeDateAdapter(), { provide: MAT_DATE_LOCALE, useValue: 'de-AT' }],
   templateUrl: './app.component.html'
 })
@@ -160,6 +161,7 @@ export class AppComponent {
   private readonly ingredientRevisionEditor = viewChild(IngredientRevisionEditorComponent);
   private readonly tenantPicker = viewChild<MatSelect>('tenantPicker');
   private readonly participantsEditor = viewChild(ParticipantsComponent);
+  private readonly participantFilters = viewChild(ParticipantFilterSettingsComponent);
   readonly state = signal<ViewState>('loading');
   readonly submitting = signal(false);
   readonly error = signal<string | null>(null);
@@ -213,9 +215,9 @@ export class AppComponent {
       (this.creatingStructureParent() !== null && this.newStructureNodeName.trim() !== '') ||
       (this.movingStructureNodeId() !== null && this.structureNodes().some(node => node.id === this.movingStructureNodeId() && (this.moveTargetParentIds[node.id] || null) !== node.parentId)) ||
       (this.estimateNodeId() !== null && JSON.stringify(this.participantEstimates()) !== JSON.stringify(this.persistedParticipantEstimates)));
-    return this.state() === 'application' && (structureDraft || this.participantsEditor()?.hasPendingChanges() || this.potentialEdits || Array.from(document.querySelectorAll(
+    return this.state() === 'application' && (structureDraft || this.participantsEditor()?.hasPendingChanges() || this.participantFilters()?.hasPendingChanges() || this.potentialEdits || Array.from(document.querySelectorAll(
       'main input:not([disabled]):not([readonly]), main textarea:not([disabled]):not([readonly]), main mat-select:not(.mat-mdc-select-disabled)'
-    )).some(control => !control.closest('.tenant-select, .catalog-search, .structure-workspace, scp-participants')));
+    )).some(control => !control.closest('.tenant-select, .catalog-search, .structure-workspace, scp-participants, scp-participant-filter-settings')));
   }
 
   @HostListener('window:beforeunload', ['$event'])

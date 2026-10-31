@@ -65,6 +65,41 @@ describe('ParticipantsComponent', () => {
     component.draft!.campStageId = 'stage'; component.draft!.category = 'LeaderAdult'; component.save();
     expect(api['update'].mock.calls[0][2]).toMatchObject({ campStageId: 'stage', category: 'LeaderAdult', dietTypeId: null, absentDays: [] });
   });
+  it('opens node details without a preview or a separate edit action in the list', () => {
+    api['list'].mockReturnValue(of({ ...structuredClone(overview), participants: [
+      { ...overview.participants[0], data: { ...overview.participants[0].data, structureNodeId: 'leaf' } }
+    ] }));
+    fixture.componentRef.setInput('scopedNodeId', 'leaf'); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[aria-label="Bearbeiten: Dummy"]')).toBeNull();
+    (fixture.nativeElement.querySelector('tbody td') as HTMLElement).click(); fixture.detectChanges();
+    expect(component.detailDocument()?.data.id).toBe('person');
+    expect(fixture.nativeElement.querySelector('.participant-preview')).toBeNull();
+    (fixture.nativeElement.querySelector('.person-heading button') as HTMLButtonElement).click(); fixture.detectChanges();
+    expect(component.draft?.displayName).toBe('Dummy');
+    expect(api['update']).not.toHaveBeenCalled();
+    component.backToList(); component.overview.set({ ...component.overview()!, canEdit: false }); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[aria-label="Bearbeiten: Dummy"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[aria-label="Detailansicht öffnen: Dummy"]')).not.toBeNull();
+  });
+  it('keeps the general-list preview mounted when switching between different names', () => {
+    const first = component.overview()!.participants[0];
+    const second = { ...first, data: { ...first.data, id: 'long', displayName: 'Ein sehr langer erfundener Teilnehmername mit mehreren Bestandteilen' } };
+    component.overview.set({ ...component.overview()!, participants: [first, second] });
+    component.select(first); fixture.detectChanges();
+    const preview = fixture.nativeElement.querySelector('.participant-preview');
+    (fixture.nativeElement.querySelectorAll('.person-button')[1] as HTMLButtonElement).click(); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.participant-preview')).toBe(preview);
+    expect(preview.querySelector('h3').title).toBe(second.data.displayName);
+    expect(preview.querySelector('.preview-body')).not.toBeNull();
+    expect(preview.querySelector('footer')).toBeNull();
+    expect(preview.querySelector('header [aria-label="Teilnehmer bearbeiten"]')).not.toBeNull();
+    expect(preview.querySelector('header [aria-label="Detailansicht öffnen"]')).not.toBeNull();
+    expect(preview.querySelector('header [aria-label="Teilnehmer löschen"]')).not.toBeNull();
+    expect(component.detailDocument()).toBeNull();
+    (fixture.nativeElement.querySelectorAll('.person-button')[1] as HTMLButtonElement).click(); fixture.detectChanges();
+    expect(component.selectedDocument()).toBeNull();
+    expect(fixture.nativeElement.querySelector('.participant-preview')).toBeNull();
+  });
   it('offers only final-depth leaves for a fixed structure', () => {
     component.overview.set({ ...component.overview()!, participantStructureDepth: 2, structureNodes: [
       { id: 'root', parentId: null, name: 'Bereich' },
@@ -99,6 +134,84 @@ describe('ParticipantsComponent', () => {
     component.create(); component.toggleRequirement('lactose', true);
     expect(component.requirement('lactose')!.thresholdGramsPerPortion).toBeNull();
     component.overview.set({ ...component.overview()!, canEdit: false }); component.save();
+    expect(api['create']).not.toHaveBeenCalled();
+  });
+  it('adds, replaces and removes nutrition entries without duplicates or immediate saving', () => {
+    const option = component.overview()!.catalog.substances[0];
+    component.overview.set({ ...component.overview()!, catalog: { ...component.overview()!.catalog, allergens: [
+      { ...option, id: 'milk', code: 'MILK', name: 'Milch' }, { ...option, id: 'nuts', code: 'TREE_NUTS', name: 'Nüsse' }
+    ] } });
+    component.create(); component.editorSection.set('diet'); fixture.detectChanges();
+    component.beginAllergen(); component.allergenGroup = 'milk'; component.chooseAllergenGroup(); component.applyAllergen();
+    expect(component.draft!.allergenIds).toEqual(['milk']);
+    component.beginAllergen(); component.allergenChoice = 'milk'; component.applyAllergen();
+    expect(component.draft!.allergenIds).toEqual(['milk']);
+    component.beginAllergen('milk'); component.allergenGroup = 'nuts'; component.chooseAllergenGroup(); component.applyAllergen();
+    expect(component.draft!.allergenIds).toEqual(['nuts']);
+    component.substanceChoice = 'lactose'; component.addIntolerance();
+    expect(component.requirement('lactose')!.thresholdGramsPerPortion).toBeNull();
+    component.requirement('lactose')!.thresholdGramsPerPortion = 1.5;
+    component.substanceChoice = 'lactose'; component.addIntolerance();
+    expect(component.draft!.intolerances.length).toBe(1);
+    expect(component.requirement('lactose')!.thresholdGramsPerPortion).toBe(1.5);
+    fixture.detectChanges();
+    const nutrition = fixture.nativeElement.querySelector('.choice-grid').closest('section');
+    expect(nutrition.querySelector('input[type="checkbox"]')).toBeNull();
+    expect(nutrition.querySelector('[aria-label="Gewählte Allergene"]').textContent).toContain('Nüsse');
+    expect(component.participantSections.some(section => section.id === 'health')).toBe(false);
+    component.removeAllergen('nuts'); component.removeIntolerance('lactose');
+    expect(component.draft!.allergenIds).toEqual([]); expect(component.draft!.intolerances).toEqual([]);
+    expect(api['create']).not.toHaveBeenCalled(); expect(api['update']).not.toHaveBeenCalled();
+  });
+  it('supports multiple subgroups or an explicitly unknown subgroup', () => {
+    const option = component.overview()!.catalog.substances[0];
+    component.overview.set({ ...component.overview()!, catalog: { ...component.overview()!.catalog, allergens: [
+      { ...option, id: 'grain', code: 'GLUTEN_CEREALS', name: 'Getreide' },
+      { ...option, id: 'wheat', code: 'WHEAT', name: 'Weizen', parentId: 'grain' },
+      { ...option, id: 'rye', code: 'RYE', name: 'Roggen', parentId: 'grain' },
+      { ...option, id: 'custom', code: 'OTHER', name: 'Sonstiges' }
+    ] } });
+    component.create(); component.beginAllergen(); component.allergenGroup = 'grain'; component.chooseAllergenGroup();
+    expect(component.allergenGroups().map(row => row.id)).toEqual(['grain']);
+    expect(component.validAllergenChoice()).toBe(true);
+    component.allergenChoice = 'grain'; component.applyAllergen();
+    expect(component.draft!.allergenIds).toEqual(['grain']);
+    component.beginAllergen('grain');
+    component.toggleAllergenSubgroup('wheat'); component.toggleAllergenSubgroup('rye'); component.applyAllergen();
+    expect(component.draft!.allergenIds).toEqual(['wheat', 'rye']);
+    expect(component.groupedAllergens(component.draft!.allergenIds)).toEqual([
+      { id: 'grain', name: 'A · Getreide', subgroups: ['Weizen', 'Roggen'] }
+    ]);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.nutrition-items').children.length).toBe(1);
+    expect(component.allergenName('wheat')).toBe('A · Weizen');
+    component.beginAllergen('grain');
+    expect(component.allergenSubgroups).toEqual(['wheat', 'rye']);
+    component.toggleAllergenSubgroup('wheat'); component.toggleAllergenSubgroup('rye');
+    expect(component.allergenSubgroups).toEqual([]);
+    component.applyAllergen();
+    expect(component.draft!.allergenIds).toEqual(['grain']);
+    component.beginAllergen('grain');
+    expect(component.allergenSubgroups).toEqual([]);
+    component.toggleAllergenSubgroup('rye');
+    expect(component.allergenSubgroups).toEqual(['rye']);
+    component.applyAllergen();
+    expect(component.draft!.allergenIds).toEqual(['rye']);
+    component.draft!.allergenIds.push('wheat', 'custom');
+    component.removeAllergen('grain');
+    expect(component.draft!.allergenIds).toEqual(['custom']);
+  });
+  it('stages intolerance popup edits until they are applied', () => {
+    component.create(); component.substanceChoice = 'lactose'; component.addIntolerance();
+    component.requirement('lactose')!.thresholdGramsPerPortion = 1.5;
+    component.beginIntolerance('lactose'); component.intoleranceThreshold = 2;
+    expect(component.requirement('lactose')!.thresholdGramsPerPortion).toBe(1.5);
+    component.beginIntolerance('lactose');
+    expect(component.intoleranceThreshold).toBe(1.5);
+    component.intoleranceThreshold = -1; component.applyIntolerance();
+    expect(component.requirement('lactose')!.thresholdGramsPerPortion).toBe(1.5);
+    component.intoleranceThreshold = 2; component.applyIntolerance();
+    expect(component.requirement('lactose')!.thresholdGramsPerPortion).toBe(2);
     expect(api['create']).not.toHaveBeenCalled();
   });
   it('drops the previous camp draft on camp change', () => {
@@ -160,10 +273,13 @@ describe('ParticipantsComponent', () => {
     const person = component.overview()!.participants[0];
     component.openDetails(person); fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.participant-detail-grid')).not.toBeNull();
+    expect(Array.from(fixture.nativeElement.querySelectorAll('.participant-detail-grid .editor-page')).filter(page => !(page as HTMLElement).hidden).length).toBe(1);
+    component.editorSection.set('diet'); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.participant-detail-grid [hidden]')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('table[aria-label="Teilnehmerliste"]')).toBeNull();
     expect(component.draft).toBeNull();
-    component.edit(person); component.draft!.displayName = 'Changed';
-    component.editorSection.set('health'); fixture.detectChanges();
+    component.edit(person); expect(component.editorSection()).toBe('diet'); component.draft!.displayName = 'Changed';
+    component.editorSection.set('diet'); fixture.detectChanges();
     expect(component.draft!.displayName).toBe('Changed');
     expect(component.hasPendingChanges()).toBe(true);
     expect(api['update']).not.toHaveBeenCalled();

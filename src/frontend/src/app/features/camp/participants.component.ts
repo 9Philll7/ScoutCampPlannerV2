@@ -1,4 +1,5 @@
 import { Component, effect, inject, input, output, signal } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { Observable, Subscription } from 'rxjs';
@@ -10,7 +11,7 @@ import { ExplicitPermissionMember, ParticipantData, ParticipantDocument, Partici
 @Component({
   selector: 'scp-participants', standalone: true,
   host: { '[class.embedded]': 'scopedNodeId() !== null' },
-  imports: [FormsModule, MatButtonModule, ActionIconComponent, ListPaginationComponent, FitListPageDirective],
+  imports: [FormsModule, NgTemplateOutlet, MatButtonModule, ActionIconComponent, ListPaginationComponent, FitListPageDirective],
   templateUrl: './participants.component.html',
   styleUrl: './participants.component.scss'
 })
@@ -45,11 +46,111 @@ export class ParticipantsComponent {
   selectedId: string | null = null;
   readonly detailId = signal<string | null>(null);
   readonly editorSection = signal('general');
+  readonly participantSections = [
+    { id: 'general', label: 'Allgemein' }, { id: 'structure', label: 'Struktur & Gruppe' },
+    { id: 'diet', label: 'Ernährung' },
+    { id: 'attendance', label: 'Anwesenheit' }
+  ];
   detailDocument() { return this.overview()?.participants.find(row => row.data.id === this.detailId()) ?? null; }
-  openDetails(document: ParticipantDocument) { if (!this.closeEditor()) return; this.detailId.set(document.data.id); }
+  openDetails(document: ParticipantDocument) { if (!this.closeEditor()) return; if (this.detailId() !== document.data.id) this.editorSection.set('general'); this.detailId.set(document.data.id); }
   backToList() { if (this.closeEditor()) this.detailId.set(null); }
-  allergenName(id: string) { return this.overview()?.catalog.allergens.find(row => row.id === id)?.name ?? 'Nicht verfügbar'; }
+  allergenName(id: string) {
+    const catalog = this.overview()?.catalog.allergens ?? [];
+    const item = catalog.find(row => row.id === id);
+    if (!item) return 'Nicht verfügbar';
+    const root = item.parentId ? catalog.find(row => row.id === item.parentId) : item;
+    const letter = root ? this.allergenLetters[root.code] : null;
+    return letter ? `${letter} · ${item.name}` : item.name;
+  }
   substanceName(id: string) { return this.overview()?.catalog.substances.find(row => row.id === id)?.name ?? 'Nicht verfügbar'; }
+  groupedAllergens(ids: string[]) {
+    const catalog = this.overview()?.catalog.allergens ?? [];
+    const groups = new Map<string, { id: string; name: string; subgroups: string[] }>();
+    for (const id of new Set(ids)) {
+      const item = catalog.find(row => row.id === id);
+      const groupId = item?.parentId ?? id;
+      let group = groups.get(groupId);
+      if (!group) {
+        group = { id: groupId, name: this.allergenName(groupId), subgroups: [] };
+        groups.set(groupId, group);
+      }
+      if (item?.parentId) group.subgroups.push(item.name);
+    }
+    return [...groups.values()];
+  }
+  readonly allergenEditor = signal<string | null>(null);
+  readonly addingIntolerance = signal(false);
+  readonly editingIntolerance = signal<string | null>(null);
+  allergenGroup = '';
+  readonly allergenLetters: Record<string, string> = { GLUTEN_CEREALS: 'A', CRUSTACEANS: 'B', EGGS: 'C', FISH: 'D', PEANUTS: 'E', SOYBEANS: 'F', MILK: 'G', TREE_NUTS: 'H', CELERY: 'L', MUSTARD: 'M', SESAME: 'N', SULPHUR_DIOXIDE_AND_SULPHITES: 'O', LUPIN: 'P', MOLLUSCS: 'R' };
+  intoleranceThreshold: number | null = null;
+  intoleranceSource: string | null = null;
+  allergenChoice = '';
+  allergenSubgroups: string[] = [];
+  substanceChoice = '';
+  private canChangeNutrition() { return this.draft !== null && this.overview()?.canEdit && !this.overview()?.isFrozen && !this.busy(); }
+  availableAllergens() { return (this.overview()?.catalog.allergens ?? []).filter(row => !this.draft?.allergenIds.includes(row.id) || row.id === this.allergenEditor()); }
+  availableSubstances() { return (this.overview()?.catalog.substances ?? []).filter(row => !this.requirement(row.id)); }
+  allergenGroups() { return (this.overview()?.catalog.allergens ?? []).filter(row => !row.parentId && this.allergenLetters[row.code]).sort((a, b) => this.allergenLetters[a.code].localeCompare(this.allergenLetters[b.code])); }
+  allergenChildren() { return (this.overview()?.catalog.allergens ?? []).filter(row => row.parentId === this.allergenGroup); }
+  chooseAllergenGroup() {
+    this.allergenChoice = this.allergenGroup;
+    this.allergenSubgroups = this.allergenChildren().filter(row => this.draft?.allergenIds.includes(row.id)).map(row => row.id);
+  }
+  toggleAllergenSubgroup(id: string) {
+    this.allergenSubgroups = this.allergenSubgroups.includes(id) ? this.allergenSubgroups.filter(value => value !== id) : [...this.allergenSubgroups, id];
+  }
+  validAllergenChoice() {
+    return this.allergenGroups().some(row => row.id === this.allergenGroup) &&
+      this.allergenSubgroups.every(id => this.allergenChildren().some(row => row.id === id));
+  }
+  beginAllergen(id: string | null = null) {
+    if (!this.canChangeNutrition()) return;
+    const item = this.overview()?.catalog.allergens.find(row => row.id === id);
+    this.allergenEditor.set(id ?? ''); this.allergenGroup = item?.parentId ?? id ?? '';
+    this.chooseAllergenGroup();
+  }
+  beginIntolerance(id: string | null = null) {
+    if (!this.canChangeNutrition()) return;
+    this.editingIntolerance.set(id); this.addingIntolerance.set(id === null); this.substanceChoice = id ?? '';
+    this.prepareIntolerance();
+  }
+  prepareIntolerance() {
+    const existing = this.requirement(this.substanceChoice);
+    const catalog = this.overview()?.catalog.substances.find(row => row.id === this.substanceChoice);
+    this.intoleranceThreshold = existing ? existing.thresholdGramsPerPortion : catalog?.defaultThresholdGramsPerPortion ?? null;
+    this.intoleranceSource = existing ? existing.thresholdSource : this.intoleranceThreshold === null ? null : `Katalogübernahme (Stand ${catalog?.defaultThresholdVersion ?? 0}): ${catalog?.defaultThresholdSource ?? ''}`.slice(0, 500);
+  }
+  validIntolerance() { return !!this.substanceChoice && (this.substanceChoice === this.editingIntolerance() || this.availableSubstances().some(row => row.id === this.substanceChoice)) && (this.intoleranceThreshold === null || (Number.isFinite(this.intoleranceThreshold) && this.intoleranceThreshold >= 0 && this.intoleranceThreshold <= 999999999999.999999)); }
+  applyIntolerance() {
+    if (!this.canChangeNutrition() || !this.validIntolerance()) return;
+    if (!this.requirement(this.substanceChoice)) this.toggleRequirement(this.substanceChoice, true);
+    Object.assign(this.requirement(this.substanceChoice)!, { thresholdGramsPerPortion: this.intoleranceThreshold, thresholdSource: this.intoleranceSource });
+    this.editingIntolerance.set(null); this.addingIntolerance.set(false);
+  }
+  applyAllergen() {
+    if (!this.canChangeNutrition() || this.allergenEditor() === null || !this.validAllergenChoice()) return;
+    const current = this.overview()?.catalog.allergens.find(row => row.id === this.allergenEditor());
+    const replacedGroups = new Set([this.allergenGroup, ...(current ? [current.parentId ?? current.id] : [])]);
+    const replacedIds = new Set((this.overview()?.catalog.allergens ?? []).filter(row => replacedGroups.has(row.parentId ?? row.id)).map(row => row.id));
+    const selected = this.allergenSubgroups.length ? this.allergenSubgroups : [this.allergenGroup];
+    this.draft!.allergenIds = [...new Set([...this.draft!.allergenIds.filter(id => !replacedIds.has(id)), ...selected])];
+    this.allergenEditor.set(null); this.allergenChoice = '';
+  }
+  removeAllergen(id: string) {
+    if (!this.canChangeNutrition()) return;
+    const catalog = this.overview()?.catalog.allergens ?? [];
+    const groupId = catalog.find(row => row.id === id)?.parentId ?? id;
+    this.draft!.allergenIds = this.draft!.allergenIds.filter(value => value !== groupId && catalog.find(row => row.id === value)?.parentId !== groupId);
+    this.allergenEditor.set(null);
+  }
+  addIntolerance() {
+    if (!this.canChangeNutrition() || !this.availableSubstances().some(row => row.id === this.substanceChoice)) return;
+    this.toggleRequirement(this.substanceChoice, true); this.editingIntolerance.set(this.substanceChoice);
+    this.addingIntolerance.set(false); this.substanceChoice = '';
+  }
+  removeIntolerance(id: string) { if (!this.canChangeNutrition()) return; this.toggleRequirement(id, false); if (this.editingIntolerance() === id) this.editingIntolerance.set(null); }
+  quantityDependent(id: string) { return this.overview()?.catalog.substances.find(row => row.id === id)?.isQuantityDependent ?? false; }
   private draftBaseline = '';
   filteredParticipants() {
     const term = this.search.trim().toLocaleLowerCase('de');
@@ -68,7 +169,11 @@ export class ParticipantsComponent {
     while (id && !visited.has(id)) { if (id === branch) return true; visited.add(id); id = nodes.find(node => node.id === id)?.parentId; }
     return false;
   }
-  select(document: ParticipantDocument) { if (!this.closeEditor()) return; this.selectedId = document.data.id; }
+  select(document: ParticipantDocument) {
+    if (this.scopedNodeId()) { this.openDetails(document); return; }
+    if (!this.closeEditor()) return;
+    this.selectedId = this.selectedId === document.data.id ? null : document.data.id;
+  }
   clearHiddenSelection() { this.pageIndex.set(0); if (!this.pagedParticipants().some(document => document.data.id === this.selectedId)) this.selectedId = null; }
   initials(name: string) { return name.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join('').toLocaleUpperCase('de'); }
   structurePath(id: string | null | undefined) {
@@ -86,6 +191,7 @@ export class ParticipantsComponent {
   hasPendingChanges() { return this.draft !== null && JSON.stringify(this.draft) !== this.draftBaseline; }
   closeEditor() {
     if (this.hasPendingChanges() && !window.confirm('Nicht gespeicherte Änderungen verwerfen?')) return false;
+    this.allergenEditor.set(null); this.addingIntolerance.set(false); this.editingIntolerance.set(null); this.allergenChoice = ''; this.substanceChoice = '';
     this.draft = null; this.original = null; return true;
   }
   reload() { if (this.closeEditor()) this.load(); }
@@ -131,7 +237,7 @@ export class ParticipantsComponent {
     if (!this.local() && !this.scopedNodeId()) this.requests.add(this.api.members(this.campId()).subscribe({ next: data => this.members.set(data), error: () => {} }));
   }
   create() { if (!this.closeEditor()) return; this.detailId.set(null); this.editorSection.set('general'); this.original = null; this.draft = { displayName: '', campStageId: null, category: null, structureNodeId: this.participantNodes().some(node => node.id === this.initialStructureNodeId()) ? this.initialStructureNodeId() : null, dietTypeId: null, absentDays: [], absentMealIds: [], allergenIds: [], intolerances: [] }; this.draftBaseline = JSON.stringify(this.draft); }
-  edit(document: ParticipantDocument) { if (!this.closeEditor()) return; this.editorSection.set('general'); this.original = document; this.draft = { ...structuredClone(document.data), campStageId: document.data.campStageId ?? null, category: document.data.category ?? null }; this.draftBaseline = JSON.stringify(this.draft); }
+  edit(document: ParticipantDocument) { if (!this.closeEditor()) return; if (this.detailId() !== document.data.id) this.editorSection.set('general'); this.original = document; this.draft = { ...structuredClone(document.data), campStageId: document.data.campStageId ?? null, category: document.data.category ?? null }; this.draftBaseline = JSON.stringify(this.draft); }
   stageName(id?: string | null) { return this.overview()?.stages?.find(stage => stage.id === id)?.name ?? 'Nicht zugeordnet'; }
   categoryName(category?: string | null) { return category === 'ChildYouth' ? 'KiJu' : category === 'LeaderAdult' ? 'Leiter/Erwachsene' : 'Nicht zugeordnet'; }
   days(): string[] {

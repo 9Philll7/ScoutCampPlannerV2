@@ -97,7 +97,7 @@ public sealed partial class MealPlanningTests
     [Fact]
     public void Projection_contract_has_no_names_health_dossier_or_source_metadata()
     {
-        Assert.Equal(new[] { "AllergenIds", "DietTypeId", "Intolerances", "IsPresent", "ParticipantReference", "RequiresSpecialCatering", "StructureNodeId" },
+        Assert.Equal(new[] { "AllergenIds", "CampStageId", "Category", "DietTypeId", "Intolerances", "IsPresent", "ParticipantReference", "RequiresSpecialCatering", "StructureNodeId" },
             typeof(CateringParticipantData).GetProperties().Select(value => value.Name).Order().ToArray());
         Assert.DoesNotContain(typeof(CateringIntoleranceData).GetProperties(), value => value.Name.Contains("Source"));
     }

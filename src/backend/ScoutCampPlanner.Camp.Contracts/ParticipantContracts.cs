@@ -12,7 +12,7 @@ public sealed record ParticipantPlanningData(
 /// <summary>Data-minimized meal projection. No names, source metadata or health dossier.</summary>
 public sealed record CateringParticipantData(Guid ParticipantReference, Guid? StructureNodeId,
     bool IsPresent, Guid? DietTypeId, IReadOnlyList<Guid> AllergenIds,
-    IReadOnlyList<CateringIntoleranceData> Intolerances)
+    IReadOnlyList<CateringIntoleranceData> Intolerances, Guid? CampStageId = null, string? Category = null)
 {
     public bool RequiresSpecialCatering => DietTypeId.HasValue || AllergenIds.Count > 0 || Intolerances.Count > 0;
 }

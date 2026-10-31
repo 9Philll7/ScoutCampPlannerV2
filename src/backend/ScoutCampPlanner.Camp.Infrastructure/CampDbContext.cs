@@ -99,7 +99,8 @@ public sealed class CampDbContext(DbContextOptions<CampDbContext> options) : DbC
             .Select(value => new CateringParticipantData(value.Id, value.StructureNodeId,
                 !value.AbsentDays.Any(day => day.Date == date) && !value.AbsentMeals.Any(meal => meal.MealId == mealId),
                 value.DietTypeId, value.Allergens.Select(allergen => allergen.AllergenId).ToArray(),
-                value.Intolerances.Select(item => new CateringIntoleranceData(item.SubstanceId, item.ThresholdGramsPerPortion)).ToArray()))
+                value.Intolerances.Select(item => new CateringIntoleranceData(item.SubstanceId, item.ThresholdGramsPerPortion)).ToArray(),
+                value.CampStageId, value.Category))
             .ToArrayAsync(cancellationToken);
 
     public async Task<CampPlanningData?> GetPlanningDataAsync(

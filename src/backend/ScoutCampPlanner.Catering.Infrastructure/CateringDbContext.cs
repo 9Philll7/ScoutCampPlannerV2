@@ -60,6 +60,15 @@ public sealed class CateringDbContext(DbContextOptions<CateringDbContext> option
             entity.HasIndex(x => new { x.CampId, x.SortOrder });
         });
         MealPlanningPersistenceConfiguration.Configure(modelBuilder);
+        modelBuilder.Entity<CampParticipantFilter>(entity =>
+        {
+            entity.ToTable("CampParticipantFilters");
+            entity.HasKey(value => value.Id);
+            entity.HasIndex(value => value.CampId);
+            entity.Property(value => value.Name).HasMaxLength(200);
+            entity.Property(value => value.Version).IsConcurrencyToken();
+            entity.Property(value => value.DefinitionJson).IsRequired();
+        });
         modelBuilder.Entity<CampMealType>(entity =>
         {
             entity.ToTable("CampMealTypes"); entity.HasKey(x => x.Id);

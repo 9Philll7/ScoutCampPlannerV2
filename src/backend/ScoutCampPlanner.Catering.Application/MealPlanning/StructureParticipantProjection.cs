@@ -4,7 +4,7 @@ using ScoutCampPlanner.Catering.Domain;
 namespace ScoutCampPlanner.Catering.Application.MealPlanning;
 
 public sealed record StructureParticipantSelection(Guid CookingUnitId, IReadOnlyList<Guid> StructureNodeIds,
-    CookingUnitParticipantFilter Filter);
+    CookingUnitParticipantFilter Filter, ParticipantFilterDefinition? ConfiguredFilter = null);
 public sealed record StructureParticipantProjectionResult(
     IReadOnlyDictionary<Guid, IReadOnlyList<CateringParticipantData>> ParticipantsByUnit,
     IReadOnlyList<Guid> Unassigned, IReadOnlyList<Guid> Overlapping);
@@ -14,6 +14,12 @@ public static class StructureParticipantProjection
     public static StructureParticipantProjectionResult Derive(IReadOnlyList<CampPlanningNode> nodes,
         IReadOnlyList<CateringParticipantData> participants, IReadOnlyList<StructureParticipantSelection> units)
     {
+        foreach (var unit in units)
+        {
+            unit.ConfiguredFilter?.Validate();
+            if (unit.ConfiguredFilter is not null && unit.Filter != CookingUnitParticipantFilter.All)
+                throw new ArgumentException("Configured and legacy participant filters cannot be combined.");
+        }
         var parents = nodes.ToDictionary(value => value.Id, value => value.ParentId);
         bool Covers(Guid? node, IReadOnlyList<Guid> roots)
         {
@@ -27,7 +33,9 @@ public static class StructureParticipantProjection
         }
         var matches = units.ToDictionary(unit => unit.CookingUnitId, unit =>
             (IReadOnlyList<CateringParticipantData>)participants.Where(person => person.IsPresent &&
-                Covers(person.StructureNodeId, unit.StructureNodeIds) && Matches(unit.Filter, person.RequiresSpecialCatering)).ToArray());
+                Covers(person.StructureNodeId, unit.StructureNodeIds) && (unit.ConfiguredFilter is { } configured
+                    ? ParticipantFilterEvaluator.Matches(configured, person)
+                    : Matches(unit.Filter, person.RequiresSpecialCatering))).ToArray());
         var counts = matches.Values.SelectMany(value => value).GroupBy(value => value.ParticipantReference)
             .ToDictionary(value => value.Key, value => value.Count());
         var overlapping = counts.Where(value => value.Value > 1).Select(value => value.Key).Order().ToArray();

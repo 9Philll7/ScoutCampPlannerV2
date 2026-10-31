@@ -329,6 +329,7 @@
 
                 @if (campSection() === 'participants') { <scp-participants [campId]="camp.id" [local]="localDevice" [initialStructureNodeId]="participantInitialNodeId()"/> }
                 @if (campSection() === 'general') {
+                <scp-participant-filter-settings [campId]="camp.id"/>
                 <section class="settings-section">
                   <div class="section-heading">
                     <div><p class="eyebrow">Allgemein</p><h3>Lagerdaten</h3></div>

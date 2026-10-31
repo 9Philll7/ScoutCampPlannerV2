@@ -194,6 +194,35 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.ToTable("CampMealTypes", (string)null);
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CampParticipantFilter", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CampId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DefinitionJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampId");
+
+                    b.ToTable("CampParticipantFilters", (string)null);
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CampStageFoodFactor", b =>
                 {
                     b.Property<Guid>("Id")

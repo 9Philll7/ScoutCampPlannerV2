@@ -112,6 +112,7 @@ builder.Services.AddScoped<ParticipantManagementService>();
 builder.Services.AddScoped<ParticipantRequirementCatalogStore>();
 builder.Services.AddScoped<IDietaryCatalogStore, DietaryCatalogStore>();
 builder.Services.AddScoped<DietaryCatalogService>();
+builder.Services.AddScoped<ParticipantFilterConfigurationService>();
 builder.Services.AddScoped<CateringPlanningService>();
 builder.Services.AddScoped<MealPlanningStore>();
 builder.Services.AddScoped<IMealPlanningStore>(services => services.GetRequiredService<MealPlanningStore>());
@@ -282,6 +283,7 @@ await using (var scope = app.Services.CreateAsyncScope())
 app.MapCampExplicitPermissionEndpoints();
 app.MapParticipantEndpoints();
 app.MapDietaryCatalogEndpoints();
+app.MapParticipantFilterEndpoints();
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", databaseProvider = provider }));
 app.MapGet("/api/setup/status", async (IInitialSetupService setup, CancellationToken cancellationToken) =>
     Results.Ok(singleDevice.Enabled ? new InitialSetupStatus(false) : await setup.GetStatusAsync(cancellationToken)));

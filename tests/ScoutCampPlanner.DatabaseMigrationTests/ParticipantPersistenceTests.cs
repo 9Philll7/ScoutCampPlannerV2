@@ -139,6 +139,11 @@ public sealed partial class DatabaseMigrationTests
         Assert.Equal(participant.Id, result.Id);
         Assert.Equal(stage.Id, result.CampStageId);
         Assert.Equal("LeaderAdult", result.Category);
+        var catering = Assert.Single(await database.GetMealParticipantsAsync(campId, date, meal));
+        Assert.Equal(stage.Id, catering.CampStageId);
+        Assert.Equal("LeaderAdult", catering.Category);
+        Assert.False(catering.IsPresent);
+        Assert.Empty(await database.GetMealParticipantsAsync(Guid.NewGuid(), date, meal));
         Assert.Equal(participant.DietTypeId, result.DietTypeId);
         Assert.Equal(date, Assert.Single(result.AbsentDays));
         Assert.Equal(meal, Assert.Single(result.AbsentMealIds));

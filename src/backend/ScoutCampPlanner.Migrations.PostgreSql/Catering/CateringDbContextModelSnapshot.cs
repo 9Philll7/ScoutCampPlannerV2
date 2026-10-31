@@ -200,6 +200,35 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                     b.ToTable("CampMealTypes", "catering");
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CampParticipantFilter", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CampId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DefinitionJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampId");
+
+                    b.ToTable("CampParticipantFilters", "catering");
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CampStageFoodFactor", b =>
                 {
                     b.Property<Guid>("Id")
