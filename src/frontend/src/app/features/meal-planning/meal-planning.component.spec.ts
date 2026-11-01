@@ -49,6 +49,7 @@ describe('MealPlanningComponent', () => {
   beforeEach(() => {
     api = {
       overview: vi.fn(() => of(structuredClone(overview))),
+      recipeHints: vi.fn((_camp: string, revisionId: string) => of({ recipeRevisionId: revisionId, basis: 'PublishedStandard', evaluatedAtUtc: '2026-11-01T00:00:00Z', hasUnknownData: true, hints: [] })),
       plan: vi.fn(() => of(structuredClone(plan))),
       savePlan: vi.fn(() => of({ id: 'plan-1', version: 4 })),
       configureMeal: vi.fn(() => of({ id: 'state-1', version: null })),
@@ -63,7 +64,9 @@ describe('MealPlanningComponent', () => {
     fixture.componentRef.setInput('campId', 'camp-1');
     fixture.detectChanges();
     component = fixture.componentInstance;
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
   });
+  afterEach(() => vi.restoreAllMocks());
 
   it('edits a detached copy and discards it on cancel', () => {
     component.openPlan('plan-1');
@@ -75,6 +78,7 @@ describe('MealPlanningComponent', () => {
   });
 
   it('blocks recalculation when a visible supply editor has unsaved decisions', () => {
+    fixture.componentRef.setInput('section', 'units');
     component.overview.update(value => value ? { ...value, operationalMeals: value.operationalMeals.map(state => ({ ...state, supply: { solutions: [], candidates: [], problems: [] } })) } : value);
     fixture.detectChanges();
     const editor = fixture.debugElement.query(By.directive(SupplySolutionsComponent));
@@ -97,6 +101,41 @@ describe('MealPlanningComponent', () => {
     expect(api['savePlan']).toHaveBeenCalledOnce();
     expect(api['savePlan']).toHaveBeenCalledWith('camp-1', expect.objectContaining({ name: 'Sommerlager' }));
     expect(component.editingPlan()).toBeNull();
+  });
+
+  it('retains a changed draft on rejected navigation and a version conflict', () => {
+    component.openPlan('plan-1'); component.editingPlan()!.name = 'Ungespeichert';
+    vi.mocked(window.confirm).mockReturnValue(false);
+    component.cancelPlan(); component.openPlan('another');
+    expect(component.editingPlan()!.name).toBe('Ungespeichert');
+    expect(api['plan']).toHaveBeenCalledTimes(1);
+    api['savePlan'].mockReturnValue(throwError(() => ({ error: { message: 'Versionskonflikt' } })));
+    component.savePlan();
+    expect(component.editingPlan()!.name).toBe('Ungespeichert');
+    expect(component.hasPendingPlanChanges()).toBe(true); expect(component.planBusy()).toBe(false);
+  });
+
+  it('opens a dashboard target once without reloading its draft on later edits', () => {
+    fixture.componentRef.setInput('section', 'plans');
+    fixture.componentRef.setInput('target', { section: 'plans', planId: 'plan-1' }); fixture.detectChanges();
+    expect(api['plan']).toHaveBeenCalledTimes(1);
+    component.editingPlan()!.name = 'Entwurf aus dem Dashboard'; fixture.detectChanges();
+    expect(api['plan']).toHaveBeenCalledTimes(1);
+    expect(component.hasPendingPlanChanges()).toBe(true);
+  });
+
+  it('saves an incomplete plan without serializing empty component placeholders', () => {
+    component.openPlan('plan-1');
+    component.editingPlan()!.offerGroups = [{ id: 'empty', campMealId: 'meal-1', name: 'Noch leer', entries: [], sortOrder: 0 }];
+    component.savePlan();
+    expect(api['savePlan']).toHaveBeenCalledWith('camp-1', expect.objectContaining({ offerGroups: [], version: 3 }));
+    expect(component.notice()).toContain('ausgelassen');
+  });
+
+  it('does not save, create, delete or reorder a read-only plan', () => {
+    component.openPlan('plan-1'); fixture.componentRef.setInput('disabled', true); fixture.detectChanges();
+    component.savePlan(); component.deletePlan('plan-1'); component.createPlan('Test'); component.movePlan(0, 1);
+    expect(api['savePlan']).not.toHaveBeenCalled(); expect(api['deletePlan']).not.toHaveBeenCalled();
   });
 
   it('maps all operational states and resets custom decisions to standard', () => {

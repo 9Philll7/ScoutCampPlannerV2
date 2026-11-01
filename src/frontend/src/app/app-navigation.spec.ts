@@ -28,6 +28,7 @@ describe('Application navigation', () => {
       listStructure: vi.fn(() => of([])), getPlanningSummary: vi.fn(() => of({ stageTotals: [], structureTotals: [] })),
       getParticipantEstimates: vi.fn(() => of([])), updateParticipantEstimates: vi.fn(() => of(undefined)), renameStructureNode: vi.fn(() => of(undefined)),
       getWeightedFoodSummary: vi.fn(() => of([])),
+      getMealPlan: vi.fn(() => of({ mealTypes: [], meals: [] })),
     };
     TestBed.configureTestingModule({ imports: [AppComponent], providers: [
       provideHttpClient(), provideHttpClientTesting(),
@@ -50,6 +51,17 @@ describe('Application navigation', () => {
     expect(app.recentCamps()).toEqual([]);
     app.openCamp(camp); app.closeCamp(); app.showSection('home'); fixture.detectChanges();
     expect(app.recentCamps()).toEqual([camp]);
+  });
+  it('keeps the menu plan draft when leaving its camp section is declined', () => {
+    const { app, fixture } = setup();
+    app.openCamp(camp); app.navigateCamp('catering-plans'); fixture.detectChanges();
+    const editor = app.mealPlanningEditor()!;
+    expect(editor).toBeTruthy();
+    vi.spyOn(editor, 'hasPendingPlanChanges').mockReturnValue(true);
+    const discard = vi.spyOn(editor, 'discardPlan');
+    vi.mocked(window.confirm).mockReturnValue(false);
+    app.navigateCamp('overview');
+    expect(app.campSection()).toBe('catering-plans'); expect(discard).not.toHaveBeenCalled();
   });
   it('marks exactly one active navigation item semantically and opens a named camp action', () => {
     const { app, fixture, element } = setup();

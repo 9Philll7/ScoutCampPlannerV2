@@ -31,6 +31,7 @@ public sealed class SupplySolutionResolver(ISupplySuitabilityReferences referenc
         var partial = new List<SupplySolution>();
         foreach (var selection in Decisions(standard.RecipeRevisionId, standard.RecipeRevisionId.ToString("N"), requirements, [], cancellationToken))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (selection.Count == 0) continue;
             var candidate = standard with { PositionSelections = selection };
             var assessment = Assess(candidate);

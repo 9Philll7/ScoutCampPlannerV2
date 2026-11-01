@@ -35,6 +35,7 @@ import { CampAdministratorOption, CampApiService, CampMeal, CampMealType, CampPl
 import { IngredientRevisionEditorComponent } from './features/ingredients/ingredient-revision-editor.component';
 import { DietaryCatalogComponent } from './features/meal-planning/dietary-catalog.component';
 import { ParticipantFilterSettingsComponent } from './features/meal-planning/participant-filter-settings.component';
+import { CateringSection, CateringTarget } from './features/meal-planning/catering-overview.component';
 import { MealPlanningComponent } from './features/meal-planning/meal-planning.component';
 import { RecipeEditorComponent } from './features/recipes/recipe-editor.component';
 import { SetupApiService } from './features/setup/setup-api.service';
@@ -43,7 +44,7 @@ import { CurrentNavigationDirective } from './shared/current-navigation.directiv
 
 type ViewState = 'loading' | 'setup' | 'login' | 'application' | 'unavailable';
 type ApplicationSection = 'home' | 'camps' | 'recipes' | 'ingredients' | 'organization' | 'centralIngredients';
-type CampSection = 'overview' | 'general' | 'structure' | 'catering' | 'participants' | 'recipes' | 'ingredients';
+type CampSection = 'overview' | 'general' | 'structure' | 'catering' | 'catering-plans' | 'catering-units' | 'catering-issues' | 'participants' | 'recipes' | 'ingredients';
 
 @Component({
   selector: 'scp-root',
@@ -162,6 +163,7 @@ export class AppComponent {
   private readonly tenantPicker = viewChild<MatSelect>('tenantPicker');
   private readonly participantsEditor = viewChild(ParticipantsComponent);
   private readonly participantFilters = viewChild(ParticipantFilterSettingsComponent);
+  readonly mealPlanningEditor = viewChild(MealPlanningComponent);
   readonly state = signal<ViewState>('loading');
   readonly submitting = signal(false);
   readonly error = signal<string | null>(null);
@@ -194,17 +196,18 @@ export class AppComponent {
   }
 
   trackEdit(event: Event) {
-    if (this.state() === 'application' && !(event.target as HTMLElement).closest('.tenant-select, .catalog-search, .structure-workspace, scp-participants, [readonly]')) {
+    if (this.state() === 'application' && !(event.target as HTMLElement).closest('.tenant-select, .catalog-search, .structure-workspace, scp-participants, scp-meal-plan-workspace, [readonly]')) {
       this.potentialEdits = true;
     }
   }
 
   private mayLeave() {
     if (this.restoringNavigation) return true;
-    if (this.submitting()) return false;
+    if (this.submitting() || this.mealPlanningEditor()?.planBusy()) return false;
     // Existing editors do not share a dirty-state contract. Protect their forms
     // conservatively, including programmatic additions not emitting input events.
     if (this.hasPotentialEdits() && !window.confirm('Bereich verlassen? Bitte speichere vorher deine Änderungen. Nicht gespeicherte Eingaben werden verworfen.')) return false;
+    this.mealPlanningEditor()?.discardPlan();
     this.potentialEdits = false;
     return true;
   }
@@ -215,9 +218,9 @@ export class AppComponent {
       (this.creatingStructureParent() !== null && this.newStructureNodeName.trim() !== '') ||
       (this.movingStructureNodeId() !== null && this.structureNodes().some(node => node.id === this.movingStructureNodeId() && (this.moveTargetParentIds[node.id] || null) !== node.parentId)) ||
       (this.estimateNodeId() !== null && JSON.stringify(this.participantEstimates()) !== JSON.stringify(this.persistedParticipantEstimates)));
-    return this.state() === 'application' && (structureDraft || this.participantsEditor()?.hasPendingChanges() || this.participantFilters()?.hasPendingChanges() || this.potentialEdits || Array.from(document.querySelectorAll(
+    return this.state() === 'application' && (structureDraft || this.mealPlanningEditor()?.hasPendingPlanChanges() || this.participantsEditor()?.hasPendingChanges() || this.participantFilters()?.hasPendingChanges() || this.potentialEdits || Array.from(document.querySelectorAll(
       'main input:not([disabled]):not([readonly]), main textarea:not([disabled]):not([readonly]), main mat-select:not(.mat-mdc-select-disabled)'
-    )).some(control => !control.closest('.tenant-select, .catalog-search, .structure-workspace, scp-participants, scp-participant-filter-settings')));
+    )).some(control => !control.closest('.tenant-select, .catalog-search, .structure-workspace, scp-participants, scp-participant-filter-settings, scp-meal-plan-workspace, .catering-meal-settings:not([open])')));
   }
 
   @HostListener('window:beforeunload', ['$event'])
@@ -255,7 +258,7 @@ export class AppComponent {
       if (camp) {
         this.openCamp(camp);
         const section = parts[4] as CampSection;
-        this.navigateCamp(['overview', 'general', 'structure', 'participants', 'catering', 'recipes', 'ingredients'].includes(section) ? section : 'overview');
+        this.navigateCamp(['overview', 'general', 'structure', 'participants', 'catering', 'catering-plans', 'catering-units', 'catering-issues', 'recipes', 'ingredients'].includes(section) ? section : 'overview');
       } else {
         this.openedCampId.set(null);
         const section = parts[2] as ApplicationSection;
@@ -273,7 +276,8 @@ export class AppComponent {
     this.participantInitialNodeId.set(null);
     this.campSection.set(section);
     if (section === 'structure' && this.structureCampId() !== camp.id) this.toggleStructure(camp);
-    if (section === 'catering') { this.loadWeightedFoodSummary(camp.id); this.loadMealPlan(camp.id); }
+    if (section === 'catering-plans') { this.loadWeightedFoodSummary(camp.id); this.loadMealPlan(camp.id); }
+    this.cateringTarget.set(null);
     if (section === 'ingredients') this.loadIngredients(camp.id);
     if (section === 'recipes') {
       this.usedCampRecipes.set(new Set());
@@ -283,6 +287,17 @@ export class AppComponent {
       });
     }
     this.rememberNavigation();
+  }
+  readonly cateringTarget = signal<CateringTarget | null>(null);
+  isCateringSection() { return this.campSection().startsWith('catering'); }
+  cateringSection(): CateringSection {
+    return ({ 'catering': 'overview', 'catering-plans': 'plans', 'catering-units': 'units', 'catering-issues': 'issues' } as const)[this.campSection() as 'catering' | 'catering-plans' | 'catering-units' | 'catering-issues'] ?? 'overview';
+  }
+  openCateringTarget(target: CateringTarget) {
+    const section: CampSection = target.section === 'overview' ? 'catering' : `catering-${target.section}`;
+    if (section === this.campSection()) { if (!this.mayLeave()) return; }
+    else this.navigateCamp(section);
+    if (this.campSection() === section) { this.cateringTarget.set(target); this.rememberNavigation(); }
   }
   readonly structureCampId = signal<string | null>(null);
   readonly structureNodes = signal<StructureNodeSummary[]>([]);
@@ -556,7 +571,7 @@ export class AppComponent {
     if (!this.mayLeave()) return;
     this.openedCampId.set(null);
     this.applicationSection.set('camps');
-    this.campSection.set('general');
+    this.campSection.set('general'); this.cateringTarget.set(null);
     this.editingCampId.set(null);
     this.movingStructureNodeId.set(null);
     this.collapsedStructureNodeIds.set(new Set());
@@ -1149,7 +1164,7 @@ export class AppComponent {
     }
     const tenant = this.tenants().find(candidate => candidate.id === tenantId) ?? null;
     this.selectedTenant.set(tenant); this.camps.set([]); this.administratorCandidates.set([]);
-    this.openedCampId.set(null); this.campSection.set('general'); this.structureCampId.set(null);
+    this.openedCampId.set(null); this.campSection.set('general'); this.cateringTarget.set(null); this.structureCampId.set(null);
     this.selectedAdministratorIds.set(new Set()); this.error.set(null); this.notice.set(null);
     this.applicationSection.set('home');
     this.rememberNavigation();
@@ -1295,7 +1310,7 @@ export class AppComponent {
     this.user.set(null); this.camps.set([]); this.tenants.set([]); this.selectedTenant.set(null);
     this.administratorCandidates.set([]); this.selectedAdministratorIds.set(new Set());
     this.editingCampId.set(null);
-    this.openedCampId.set(null); this.campSection.set('general');
+    this.openedCampId.set(null); this.campSection.set('general'); this.cateringTarget.set(null);
     this.structureCampId.set(null); this.structureNodes.set([]);
     this.error.set(null); this.notice.set(null); this.state.set('login');
   }

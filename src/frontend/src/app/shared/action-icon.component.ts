@@ -2,7 +2,7 @@ import { Component, input } from '@angular/core';
 
 export type ActionIconName = 'add' | 'back' | 'camp' | 'download' | 'edit' | 'info' | 'login' | 'logout' |
   'move' | 'organization' | 'planning' | 'refresh' | 'remove' | 'save' | 'structure' | 'up' | 'down' |
-  'expand' | 'collapse' | 'home' | 'recipe' | 'ingredients' | 'people';
+  'expand' | 'collapse' | 'home' | 'recipe' | 'ingredients' | 'people' | 'cooking' | 'warning' | 'question' | 'check' | 'image';
 
 @Component({
   selector: 'scp-action-icon',
@@ -11,6 +11,11 @@ export type ActionIconName = 'add' | 'back' | 'camp' | 'download' | 'edit' | 'in
   template: `
     <svg viewBox="0 0 24 24" focusable="false">
       @switch (name()) {
+        @case ('image') { <rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="2"/><path d="m3 17 5-5 4 4 4-6 5 7"/> }
+        @case ('cooking') { <path d="M4 10h16l-1 10H5L4 10ZM3 7h18M9 7V4h6v3M2 12h2m16 0h2"/> }
+        @case ('warning') { <path d="m12 3 10 18H2L12 3ZM12 9v5m0 3h.01"/> }
+        @case ('question') { <circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 0 1 6 0c0 2-3 2-3 5m0 3h.01"/> }
+        @case ('check') { <circle cx="12" cy="12" r="9"/><path d="m7 12 3 3 7-7"/> }
         @case ('people') { <circle cx="9" cy="7" r="3" fill="currentColor" stroke="none"/><path d="M2 20v-3a7 7 0 0 1 14 0v3Z" fill="currentColor" stroke="none"/><path d="M16 4a3 3 0 0 1 0 6m2 3a6 6 0 0 1 4 6v1h-4"/> }
         @case ('home') { <path d="m3 11 9-8 9 8M5 10v10h14V10M10 20v-7h4v7"/> }
         @case ('recipe') { <path d="M4 4h7l1 2 1-2h7v16h-7l-1 1-1-1H4zM12 6v15"/> }

@@ -10,6 +10,15 @@ export interface MealSlot { id: string; mealTypeId: string; mealTypeName: string
 export interface StructureNodeOption { id: string; parentId: string | null; name: string; }
 export interface MealPlanSummary { id: string; name: string; sortOrder: number; version: number; missingActiveMealCount: number; }
 export interface RecipeOption { revisionId: string; recipeId: string; name: string; revisionNumber: number; isPortionBased: boolean; suggestedRole: MealEntryRole | null; }
+export interface RecipePlanningHint {
+  kind: 'Allergen' | 'Diet' | 'Substance'; referenceId: string; code: string; name: string;
+  state: 'Contains' | 'NotContained' | 'Compatible' | 'Excluded' | 'Unknown' | 'QuantityDependent';
+  explanation: string; evidence: { ingredientRevisionId: string; ingredientName: string; positionPath: string }[];
+  adjustment?: 'Available' | 'Unavailable' | 'Unknown' | 'NotNeeded';
+}
+export interface RecipePlanningHints {
+  recipeRevisionId: string; basis: 'PublishedStandard'; evaluatedAtUtc: string; hasUnknownData: boolean; hints: RecipePlanningHint[];
+}
 export interface MealPlanEntryDocument { id: string; recipeRevisionId: string; isStandard: boolean; displayName: string | null; role: MealEntryRole | null; note: string | null; sortOrder: number; }
 export interface MealPlanOfferGroupDocument { id: string; campMealId: string; name: string | null; sortOrder: number; entries: MealPlanEntryDocument[]; }
 export interface MealPlanDocument { id: string; campId: string; name: string; sortOrder: number; version: number; offerGroups: MealPlanOfferGroupDocument[]; }
@@ -62,6 +71,7 @@ export class MealPlanningApiService {
   private options = { withCredentials: true } as const;
 
   overview(campId: string) { return this.http.get<MealPlanningOverview>(`${this.baseUrl}/api/camps/${campId}/meal-planning`, this.options); }
+  recipeHints(campId: string, revisionId: string) { return this.http.get<RecipePlanningHints>(`${this.baseUrl}/api/camps/${campId}/meal-planning/recipes/${revisionId}/hints`, this.options); }
   plan(campId: string, planId: string) { return this.http.get<MealPlanDocument>(`${this.baseUrl}/api/camps/${campId}/meal-plans/${planId}`, this.options); }
   createPlan(campId: string, name: string) { return this.http.post<MutationResult>(`${this.baseUrl}/api/camps/${campId}/meal-plans`, { name }, this.options); }
   reorderPlans(campId: string, mealPlanIds: string[]) { return this.http.put<MutationResult>(`${this.baseUrl}/api/camps/${campId}/meal-plans/order`, { mealPlanIds }, this.options); }

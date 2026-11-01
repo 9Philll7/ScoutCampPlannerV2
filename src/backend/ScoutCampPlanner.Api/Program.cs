@@ -115,6 +115,7 @@ builder.Services.AddScoped<DietaryCatalogService>();
 builder.Services.AddScoped<ParticipantFilterConfigurationService>();
 builder.Services.AddScoped<CateringPlanningService>();
 builder.Services.AddScoped<MealPlanningStore>();
+builder.Services.AddScoped<IRecipePlanningHintsReader, RecipePlanningHintsReader>();
 builder.Services.AddScoped<IMealPlanningStore>(services => services.GetRequiredService<MealPlanningStore>());
 builder.Services.AddScoped<MealPlanningService>();
 builder.Services.AddScoped<RecipeDraftStore>();
@@ -879,6 +880,7 @@ app.MapPost("/api/camps/{campId:guid}/cooking-units/{cookingUnitId:guid}/meals/{
         await camps.HasCampPermissionAsync(userId, campId, Permissions.Health.ReadParticipantRequirements, cancellationToken)));
 }).RequireAuthorization();
 app.MapMealSupplyEndpoints();
+app.MapRecipePlanningHintsEndpoints();
 app.MapGet("/api/recipes/central", async (
     ClaimsPrincipal principal, RecipeCatalogService recipes, CancellationToken cancellationToken) =>
 {

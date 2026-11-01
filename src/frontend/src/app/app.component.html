@@ -51,7 +51,17 @@
                 <button matButton [scpCurrent]="campSection() === 'participants'" (click)="navigateCamp('participants')">Teilnehmerübersicht</button>
               </div>
             </div>
-            <button matButton [scpCurrent]="campSection() === 'catering'" (click)="openCampCatering(opened)"><scp-action-icon name="planning"/>Verpflegung</button>
+            <div class="camp-navigation-group">
+              <button matButton type="button" class="navigation-group-title" [attr.aria-expanded]="isCateringSection()" (click)="openCateringTarget({section: 'overview'})"><scp-action-icon name="cooking"/>Verpflegung<scp-action-icon [name]="isCateringSection() ? 'up' : 'down'"/></button>
+              @if (isCateringSection()) {
+                <div class="camp-navigation-subitems" role="group" aria-label="Verpflegung">
+                  <button matButton [scpCurrent]="campSection() === 'catering'" (click)="openCateringTarget({section: 'overview'})"><scp-action-icon name="planning"/>Übersicht</button>
+                  <button matButton [scpCurrent]="campSection() === 'catering-plans'" (click)="openCateringTarget({section: 'plans'})"><scp-action-icon name="recipe"/>Menüpläne</button>
+                  <button matButton [scpCurrent]="campSection() === 'catering-units'" (click)="openCateringTarget({section: 'units'})"><scp-action-icon name="cooking"/>Kocheinheiten</button>
+                  <button matButton [scpCurrent]="campSection() === 'catering-issues'" (click)="openCateringTarget({section: 'issues'})"><scp-action-icon name="warning"/>Konflikte & Entscheidungen</button>
+                </div>
+              }
+            </div>
             <button matButton [scpCurrent]="campSection() === 'recipes'" (click)="navigateCamp('recipes')"><scp-action-icon name="recipe"/>Rezepte</button>
             <button matButton [scpCurrent]="campSection() === 'ingredients'" (click)="navigateCamp('ingredients')"><scp-action-icon name="ingredients"/>Zutaten</button>
             <button matButton [scpCurrent]="campSection() === 'general'" (click)="navigateCamp('general')"><scp-action-icon name="edit"/>Einstellungen</button>
@@ -67,7 +77,7 @@
         </div>
       }
     </aside>
-    <main id="workspace-content" [class.structure-page]="openedCampId() && (campSection() === 'structure' || campSection() === 'participants')" tabindex="-1" (focusin)="sidebarOpen.set(false)" (input)="trackEdit($event)" (change)="trackEdit($event)">
+    <main id="workspace-content" [class.catering-page]="openedCampId() && isCateringSection()" [class.structure-page]="openedCampId() && (campSection() === 'structure' || campSection() === 'participants')" tabindex="-1" (focusin)="sidebarOpen.set(false)" (input)="trackEdit($event)" (change)="trackEdit($event)">
       @switch (state()) {
         @case ('loading') {
           <section class="centered"><mat-spinner diameter="42"/><p>ScoutCampPlanner wird geladen …</p></section>
@@ -120,7 +130,7 @@
           <div class="application-shell">
           @if (openedCampId() && (campSection() === 'structure' || campSection() === 'participants')) {
             <h1 class="structure-page-heading">{{ campSection() === 'structure' ? 'Struktur' : 'Teilnehmerübersicht' }}</h1>
-          } @else {
+          } @else if (!isCateringSection()) {
           <header class="page-header">
             <div>
               @if (openedCampId()) {
@@ -299,7 +309,7 @@
           }
           }
           @for (camp of visibleCamps(); track camp.id) {
-            <mat-card class="content-card camp-card" [class.dashboard-container]="openedCampId() && campSection() === 'overview'" [class.structure-container]="openedCampId() && campSection() === 'structure'" [class.participants-container]="openedCampId() && campSection() === 'participants'">
+            <mat-card class="content-card camp-card" [class.catering-container]="openedCampId() && isCateringSection()" [class.dashboard-container]="openedCampId() && campSection() === 'overview'" [class.structure-container]="openedCampId() && campSection() === 'structure'" [class.participants-container]="openedCampId() && campSection() === 'participants'">
               @if (!openedCampId()) {
                 <mat-card-header><mat-card-title>{{ camp.name }}</mat-card-title></mat-card-header>
               }
@@ -658,10 +668,12 @@
                     </section>
                   </div>
                   }
-                  @if (campSection() === 'catering') {
-                    <section class="settings-section">
-                      <scp-meal-planning [campId]="camp.id" [disabled]="!camp.canEdit || camp.isFrozen"/>
+                  @if (isCateringSection()) {
+                    <section class="catering-workspace">
+                      <scp-meal-planning [campId]="camp.id" [disabled]="!camp.canEdit || camp.isFrozen" [section]="cateringSection()" [target]="cateringTarget()" (navigate)="openCateringTarget($event)"/>
                     </section>
+                    @if (campSection() === 'catering-plans' && !mealPlanningEditor()?.editingPlan()) {
+                    <details class="catering-meal-settings"><summary>Lagermahlzeiten und Berechnungsgrundlagen</summary>
                     <section class="settings-section">
                       <div class="section-heading"><div><p class="eyebrow">Mahlzeiten</p><h3>Tagesplan</h3></div>
                         @if (camp.canEdit) {
@@ -722,6 +734,8 @@
                         </tbody></table>
                       } @else { <p>Noch keine Verpflegungseinheiten vorhanden.</p> }
                     </section>
+                    </details>
+                  }
                   }
                   @if (campSection() === 'recipes') {
                     <section class="settings-section">

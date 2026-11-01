@@ -1,0 +1,65 @@
+@if (!issuesOnly()) {
+  <div class="summary-grid" aria-label="Verpflegungskennzahlen">
+    <button type="button" class="summary-card plans" (click)="navigate.emit({section: 'plans'})">
+      <span class="summary-icon"><scp-action-icon name="planning"/></span>
+      <span class="summary-value"><span>Menüpläne</span><strong>{{ data().mealPlans.length }}</strong></span>
+      <span class="summary-detail">{{ summary().activeMeals }} aktive Lagermahlzeiten<span>{{ summary().missingOffers }} fehlende Belegungen über alle Pläne</span></span>
+      <span class="card-link">Menüplanung öffnen <scp-action-icon name="expand"/></span>
+    </button>
+    <button type="button" class="summary-card units" (click)="navigate.emit({section: 'units'})">
+      <span class="summary-icon"><scp-action-icon name="cooking"/></span>
+      <span class="summary-value"><span>Kocheinheiten</span><strong>{{ data().cookingUnits.length }}</strong></span>
+      <span class="summary-detail">{{ summary().subscribedUnits }} mit Standard-Menüplan<span>{{ summary().pendingVerification }} Mahlzeiten zu verifizieren</span></span>
+      <span class="card-link">Kocheinheiten öffnen <scp-action-icon name="expand"/></span>
+    </button>
+    <button type="button" class="summary-card conflicts" (click)="filter = 'conflict'; navigate.emit({section: 'issues'})">
+      <span class="summary-icon"><scp-action-icon name="warning"/></span>
+      <span class="summary-value"><span>Konflikte</span><strong>{{ summary().conflictMeals }}</strong></span>
+      <span class="summary-detail">Mahlzeiten mit offenen Problemen<span>{{ data().coverageWarnings.length }} Hinweise zur Strukturabdeckung</span></span>
+      <span class="card-link">Jetzt prüfen <scp-action-icon name="expand"/></span>
+    </button>
+    <button type="button" class="summary-card decisions" (click)="filter = 'decision'; navigate.emit({section: 'issues'})">
+      <span class="summary-icon"><scp-action-icon name="question"/></span>
+      <span class="summary-value"><span>Entscheidungen</span><strong>{{ summary().decisions }}</strong></span>
+      <span class="summary-detail">Offene Ask-Entscheidungen<span>Gemeinsam oder getrennt versorgen</span></span>
+      <span class="card-link">Entscheidungen ansehen <scp-action-icon name="expand"/></span>
+    </button>
+  </div>
+}
+<div class="overview-grid" [class.issues-only]="issuesOnly()">
+  <section class="overview-panel action-panel" aria-labelledby="catering-actions-title">
+    <header><div><h3 id="catering-actions-title">Handlungsbedarf <span class="count">{{ summary().actions.length }}</span></h3><p>Offene Punkte für die nächsten Planungsschritte.</p></div>
+      <label class="action-filter catalog-search"><span class="visually-hidden">Handlungsbedarf filtern</span><select [(ngModel)]="filter" (ngModelChange)="page.set(0)"><option value="">Alle Kategorien</option>@for (category of categories; track category.id) { <option [value]="category.id">{{ category.label }}</option> }</select></label>
+    </header>
+    <ul class="action-list">
+      @for (action of visibleActions(); track action.id) {
+        <li><button type="button" class="action-row" (click)="navigate.emit(action.target)">
+          <span class="action-icon" [class]="'action-icon ' + action.kind"><scp-action-icon [name]="action.kind === 'conflict' ? 'warning' : action.kind === 'decision' ? 'question' : action.kind === 'verification' ? 'check' : 'planning'"/></span>
+          <span class="action-copy"><strong>{{ action.title }}</strong><span [title]="action.context">{{ action.context }}@if (action.date) { · {{ action.date | date:'dd.MM.yyyy' }} }</span><small [title]="action.description">{{ action.description }}</small>@if (action.stale) { <small class="stale-note">Gespeicherter Stand veraltet – neu prüfen.</small> }</span>
+          <span class="action-category" [class]="'action-category ' + action.kind">{{ label(action.kind) }}</span><scp-action-icon name="expand"/>
+        </button></li>
+      } @empty {
+        <li class="empty-state"><scp-action-icon name="check"/><strong>{{ filter ? 'Keine offenen Punkte in dieser Kategorie.' : 'Keine offenen Punkte im verfügbaren Stand.' }}</strong><p>Das ist keine automatische Verifikation der Versorgung.</p></li>
+      }
+    </ul>
+    @if (issuesOnly()) { <scp-list-pagination [length]="actions().length" [pageIndex]="page()" [pageSize]="8" (changed)="page.set($event.pageIndex)" label="Handlungsbedarf-Seiten"/> }
+    @else { <button matButton="outlined" type="button" class="all-actions" (click)="navigate.emit({section: 'issues'})">Alle offenen Punkte anzeigen <scp-action-icon name="expand"/></button> }
+  </section>
+  @if (!issuesOnly()) {
+    <section class="overview-panel planning-status" aria-labelledby="catering-status-title">
+      <header><div><h3 id="catering-status-title">Planungsstand</h3><p>Berechnung und Verifikation bleiben getrennt.</p></div></header>
+      <dl class="status-list">
+        <div><dt><span class="status-dot current"></span>Aktuell berechnet</dt><dd>{{ summary().current }}</dd></div>
+        <div><dt><span class="status-dot stale"></span>Berechnung veraltet</dt><dd>{{ summary().stale }}</dd></div>
+        <div><dt><span class="status-dot stale"></span>Berechnung unvollständig</dt><dd>{{ summary().incomplete }}</dd></div>
+        <div><dt><span class="status-dot"></span>Noch nicht berechnet</dt><dd>{{ summary().uncalculated }}</dd></div>
+        <div><dt><scp-action-icon name="check"/>Verifikation vorhanden und aktuell</dt><dd>{{ summary().verified }}</dd></div>
+        <div><dt><scp-action-icon name="info"/>Verifikation ausstehend oder veraltet</dt><dd>{{ summary().pendingVerification }}</dd></div>
+        <div><dt>Keine Versorgung erforderlich</dt><dd>{{ summary().noSupply }}</dd></div>
+      </dl>
+      <p class="status-caption">Gezählt werden Kocheinheit × aktive Mahlzeit. Verifikation ausstehend: gespeicherte Berechnungen mit Versorgungsergebnis.</p>
+      <button matButton="outlined" type="button" class="all-actions" (click)="navigate.emit({section: 'units'})">Mahlzeiten prüfen <scp-action-icon name="expand"/></button>
+    </section>
+  }
+</div>
+<p class="data-note"><scp-action-icon name="info"/>Kennzahlen zu Konflikten und Entscheidungen stammen aus gespeicherten Teilständen. Fehlende oder veraltete Berechnungen erlauben keine Aussage über die vollständige Eignung.</p>

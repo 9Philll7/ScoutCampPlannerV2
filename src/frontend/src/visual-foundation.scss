@@ -61,6 +61,14 @@
 .workspace-layout > main { width: 100%; min-width: 0; max-width: none; margin: 0; padding: 32px; }
 .application-shell { width: 100%; max-width: 1200px; margin: 0; }
 .structure-page .application-shell { max-width: none; }
+.catering-page .application-shell { max-width: none; }
+.catering-container.content-card { background:transparent; border:0; box-shadow:none; overflow:visible; }
+.catering-container.content-card > mat-card-content { padding:0; overflow:visible; }
+.catering-container.content-card > mat-card-actions { display:none; }
+.catering-meal-settings { margin-top:20px; border:1px solid var(--color-border); border-radius:10px; background:var(--color-surface); }
+.catering-meal-settings>summary { cursor:pointer; padding:14px 18px; color:var(--color-text-muted); font-size:14px; }
+.catering-meal-settings>summary:focus-visible { outline:2px solid var(--color-focus); outline-offset:2px; }
+.catering-meal-settings .settings-section { border:0; }
 .workspace-layout > main:focus { outline: none; }
 .camp-navigation-group { display:grid; gap:4px; }
 .navigation-group-title { display:flex; align-items:center; gap:12px; padding:10px 16px 4px; color:var(--color-nav-text); font-size:14px; }

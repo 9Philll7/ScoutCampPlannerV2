@@ -1,0 +1,97 @@
+@if (plan(); as current) {
+  <header class="plan-header">
+    <nav class="plan-breadcrumb" aria-label="Menüplanpfad"><span>Verpflegung</span><scp-action-icon name="expand"/><button type="button" (click)="close.emit()" [disabled]="busy()">Menüpläne</button><scp-action-icon name="expand"/><span class="breadcrumb-name" [title]="current.name">{{ current.name }}</span></nav>
+    <div class="plan-header-main">
+      <div class="plan-heading">
+        <div class="plan-title">
+          @if (renamingPlan()) { <input #renameInput class="plan-name-input" aria-label="Menüplanname" name="menuPlanName" [(ngModel)]="current.name" maxlength="200" [disabled]="locked()" (blur)="finishRename()" (keydown.enter)="finishRename(); $event.preventDefault()" (keydown.escape)="finishRename(true); $event.preventDefault()"/> }
+          @else { <h2><button class="plan-title-trigger" type="button" [matMenuTriggerFor]="planMenu" [disabled]="busy()" aria-label="Menüplan wechseln" [title]="current.name"><span>{{ current.name }}</span><scp-action-icon name="down"/></button></h2> }
+        </div>
+        <div class="plan-status"><span class="badge"><scp-action-icon name="camp"/>{{ disabled() ? 'Leseansicht' : 'In Bearbeitung' }}</span><span class="completion"><scp-action-icon name="planning"/>{{ activeMeals().length - missingMeals() }} / {{ activeMeals().length }} Mahlzeiten belegt</span>@if (missingMeals()) { <span class="missing-offers"><scp-action-icon name="warning"/>{{ missingMeals() }} fehlen</span> }</div>
+      </div>
+      <div class="header-actions">
+        <button matButton="outlined" type="button" [matMenuTriggerFor]="planMenu" [disabled]="busy()"><scp-action-icon name="refresh"/>Plan wechseln</button>
+        <button matIconButton class="plan-more" type="button" [matMenuTriggerFor]="planActions" [disabled]="busy()" aria-label="Menüplanaktionen"><span aria-hidden="true">···</span></button>
+        @if (!disabled()) { <button matButton="filled" type="button" (click)="save.emit()" [disabled]="busy() || !current.name.trim()"><scp-action-icon name="save"/>Speichern</button> }
+        <button matButton="outlined" type="button" (click)="close.emit()" [disabled]="busy()"><span class="discard-symbol" aria-hidden="true">×</span>{{ disabled() ? 'Schließen' : 'Verwerfen' }}</button>
+      </div>
+    </div>
+    <p class="plan-subtitle">Menüplanung · Version {{ current.version }}</p>
+    @if (emptyGroups()) { <p class="empty-warning">{{ emptyGroups() }} leere Komponente(n) werden nicht gespeichert.</p> }
+    <mat-menu #planMenu="matMenu">@for (item of data().mealPlans; track item.id) { <button mat-menu-item type="button" [disabled]="item.id === current.id" (click)="open.emit(item.id)">{{ item.name }}</button> }</mat-menu>
+    <mat-menu #planActions="matMenu">@if (!disabled()) { <button mat-menu-item type="button" (click)="beginRename()"><scp-action-icon name="edit"/>Umbenennen</button> }<button mat-menu-item type="button" (click)="close.emit()">Zur Menüplanliste</button></mat-menu>
+  </header>
+  <div class="plan-editor-layout">
+    <nav class="days-panel" aria-label="Menüplantage"><h3>Tage</h3>
+      @for (day of dates(); track day) {
+        <button type="button" class="day-row" [attr.aria-current]="date() === day ? 'date' : null" [attr.aria-label]="weekday(day) + ', ' + dayLabel(day) + ': ' + coveredForDate(day) + ' von ' + mealsForDate(day).length + ' Mahlzeiten belegt'" (click)="selectDate(day)">
+          <span class="day-weekday" aria-hidden="true">{{ weekday(day) }}</span>
+          <span class="day-copy"><strong>{{ dayLabel(day) }}</strong><small>{{ mealsForDate(day).length }} aktive Mahlzeiten</small></span>
+          <span class="day-status" [class.complete]="coveredForDate(day) === mealsForDate(day).length" aria-hidden="true"><scp-action-icon [name]="coveredForDate(day) === mealsForDate(day).length ? 'check' : 'warning'"/></span>
+          <span class="day-coverage" [class.complete]="coveredForDate(day) === mealsForDate(day).length" aria-hidden="true">{{ coveredForDate(day) }}/{{ mealsForDate(day).length }}</span>
+          <scp-action-icon class="day-chevron" name="expand"/>
+        </button>
+      } @empty { <p>Keine aktiven Lagermahlzeiten.</p> }
+    </nav>
+    <section class="day-workspace" aria-label="Mahlzeiten und Komponenten">
+      <div class="day-heading"><div><h3>{{ date() ? (date() | date:'dd.MM.yyyy') : 'Noch keine aktiven Mahlzeiten' }}</h3><span>{{ coveredForDate(date()) }} von {{ mealsForDate(date()).length }} Mahlzeiten belegt</span></div><div class="date-actions"><button matButton="outlined" type="button" aria-label="Vorheriger Tag" [disabled]="dates().indexOf(date()) <= 0" (click)="moveDate(-1)"><scp-action-icon name="back"/></button><button matButton="outlined" type="button" aria-label="Nächster Tag" [disabled]="dates().indexOf(date()) >= dates().length - 1" (click)="moveDate(1)"><scp-action-icon name="expand"/></button></div></div>
+      <nav class="meal-tabs" aria-label="Aktive Mahlzeiten des Tages">
+        @for (meal of mealsForDate(date()); track meal.id) {
+          <button type="button" [attr.aria-current]="mealId() === meal.id ? 'true' : null" (click)="mealId.set(meal.id)"><scp-action-icon name="cooking"/><span>{{ meal.mealTypeName }}</span><scp-action-icon [name]="covered(meal.id) ? 'check' : 'info'"/></button>
+        }
+      </nav>
+      @if (selectedMeal(); as meal) {
+        <div class="meal-heading"><div><h3>{{ meal.mealTypeName }}</h3><span>{{ groups().length }} Komponenten</span></div>@if (!disabled()) { <button matButton="outlined" type="button" [disabled]="busy()" (click)="addGroup()"><scp-action-icon name="add"/>Komponente hinzufügen</button> }</div>
+        <div class="components">
+          @for (group of groups(); track group.id; let groupIndex = $index) {
+            <article class="component-card">
+              <header class="component-heading"><span class="component-icon"><scp-action-icon name="cooking"/></span><div class="component-title"><div class="component-name-fields"><label><span class="sr-only">Bezeichnung der Komponente {{ groupIndex + 1 }}</span><select [name]="'component-choice-' + group.id" [ngModel]="componentNameChoice(group)" (ngModelChange)="chooseComponentName(group, $event)" [disabled]="locked()"><option value="">Bezeichnung wählen</option>@for (name of componentNames; track name) { <option [value]="name">{{ name }}</option> }<option value="custom">Eigene Bezeichnung</option></select></label>@if (componentNameChoice(group) === 'custom') { <label><span class="sr-only">Eigene Bezeichnung der Komponente {{ groupIndex + 1 }}</span><input [(ngModel)]="group.name" [name]="'component-name-' + group.id" placeholder="Eigene Bezeichnung" maxlength="200" [disabled]="locked()"/></label> }</div><span>{{ standard(group) ? '1 Standardrezept' : 'Noch kein Standardrezept' }} · {{ alternatives(group).length }} Alternativen</span></div>
+                <div class="component-actions">@if (!disabled()) { <button matButton type="button" [disabled]="busy()" (click)="beginPicker(group); recipeDialog.showModal()"><scp-action-icon name="add"/>Rezept hinzufügen</button><button matIconButton type="button" [disabled]="busy()" (click)="removeGroup(group)" [attr.aria-label]="'Komponente entfernen: ' + (group.name || groupIndex + 1)"><scp-action-icon name="remove"/></button> }<button matIconButton type="button" [attr.aria-expanded]="!collapsedGroups().has(group.id)" [attr.aria-controls]="'component-' + group.id" [attr.aria-label]="'Komponente ' + (collapsedGroups().has(group.id) ? 'aufklappen' : 'zuklappen')" (click)="toggleGroup(group.id)"><scp-action-icon [name]="collapsedGroups().has(group.id) ? 'down' : 'up'"/></button></div>
+              </header>
+              <div class="component-columns" [id]="'component-' + group.id" [hidden]="collapsedGroups().has(group.id)">
+                <div class="standard-column">@if (standard(group); as entry) { <ng-container [ngTemplateOutlet]="entryCard" [ngTemplateOutletContext]="{$implicit: entry, group: group, prominent: true}"/> } @else { <div class="empty-recipe"><scp-action-icon name="recipe"/><strong>Noch kein Standardrezept</strong>@if (!disabled()) { <button matButton="outlined" type="button" [disabled]="busy()" (click)="beginPicker(group); recipeDialog.showModal()">Rezept auswählen</button> }</div> }</div>
+                <div class="alternatives-column"><h4>Alternativen <span>({{ alternatives(group).length }})</span></h4><div class="alternatives-list">@for (entry of alternatives(group); track entry.id) { <ng-container [ngTemplateOutlet]="entryCard" [ngTemplateOutletContext]="{$implicit: entry, group: group, prominent: false}"/> } @empty { <p class="muted">Keine Alternativen hinzugefügt.</p> }</div>@if (!disabled() && standard(group)) { <button matButton type="button" [disabled]="busy()" (click)="beginPicker(group); recipeDialog.showModal()"><scp-action-icon name="add"/>Alternative hinzufügen</button> }</div>
+              </div>
+            </article>
+          } @empty { <div class="empty-components"><scp-action-icon name="recipe"/><h4>Für diese Mahlzeit ist noch kein Angebot geplant.</h4><p>Eine Komponente ergänzt ein eigenständiges Gericht. Weitere Rezepte derselben Komponente sind Alternativen.</p>@if (!disabled()) { <button matButton="filled" type="button" [disabled]="busy()" (click)="addGroup()"><scp-action-icon name="add"/>Erste Komponente hinzufügen</button> }</div> }
+        </div>
+      }
+    </section>
+  </div>
+  <ng-template #entryCard let-entry let-group="group" let-prominent="prominent">
+    <div class="recipe-card" [class.standard-recipe]="prominent">
+      <div class="recipe-summary">
+        <div class="recipe-image-placeholder" role="img" aria-label="Kein Rezeptbild vorhanden"><scp-action-icon name="image"/><span>Kein Bild</span></div>
+        <div class="recipe-copy">@if (prominent) { <span class="badge standard-badge">Standard</span> }<strong>{{ recipeName(entry) }}</strong><span>{{ recipe(entry.recipeRevisionId) ? 'Revision ' + recipe(entry.recipeRevisionId)!.revisionNumber : 'Gespeicherte Revision nicht im Auswahlkatalog' }}</span>
+          <scp-recipe-planning-hints [campId]="data().campId" [revisionId]="entry.recipeRevisionId" [name]="recipeName(entry)"/>
+          <div class="recipe-hints" aria-label="Hinweise zum Rezept">
+            @if (!recipe(entry.recipeRevisionId)) { <span class="recipe-warning" tabindex="0" role="img" aria-label="Warnung: Rezeptrevision nicht im Auswahlkatalog verfügbar" matTooltip="Diese gespeicherte Rezeptrevision ist nicht im aktuellen Auswahlkatalog verfügbar. Bitte die Zuordnung prüfen."><scp-action-icon name="warning"/></span> }
+            @if (entry.note) { <span class="recipe-note-hint" tabindex="0" role="img" [attr.aria-label]="'Hinweis: ' + entry.note" [matTooltip]="entry.note"><scp-action-icon name="info"/></span> }
+          </div>
+        </div>
+      </div>
+      @if (!disabled()) { <div class="recipe-actions"><button matIconButton type="button" [disabled]="busy()" [matMenuTriggerFor]="recipeActions" [attr.aria-label]="'Rezeptaktionen: ' + recipeName(entry)"><span aria-hidden="true">⋮</span></button><mat-menu #recipeActions="matMenu">@if (!prominent) { <button mat-menu-item type="button" [disabled]="busy()" (click)="makeStandard(group, entry.id)"><scp-action-icon name="check"/>Als Standard setzen</button> }<button mat-menu-item type="button" (click)="beginPicker(group, entry.id); recipeDialog.showModal()"><scp-action-icon name="refresh"/>Rezept wechseln</button><button mat-menu-item type="button" (click)="metadataEntry.set(metadataEntry() === entry.id ? null : entry.id)"><scp-action-icon name="edit"/>Hinweis bearbeiten</button><button mat-menu-item type="button" (click)="removeEntry(group, entry.id)"><scp-action-icon name="remove"/>Rezept entfernen</button></mat-menu></div>
+      }
+      @if (metadataEntry() === entry.id && !disabled()) { <div class="entry-metadata"><label>Hinweis (optional)<textarea [(ngModel)]="entry.note" [disabled]="busy()" [name]="'note-' + entry.id" rows="2"></textarea></label></div> }
+    </div>
+  </ng-template>
+  <dialog #recipeDialog class="recipe-dialog" aria-labelledby="recipe-picker-title" (cancel)="pickerGroup.set(null)" (keydown.enter)="$any($event.target).tagName === 'INPUT' && $event.preventDefault()">
+    <header><div><h3 id="recipe-picker-title">Rezept auswählen</h3><p>Zugängliche veröffentlichte, portionenbasierte Revisionen</p></div><button matIconButton type="button" aria-label="Rezeptauswahl schließen" (click)="pickerGroup.set(null); recipeDialog.close()">×</button></header>
+    <label class="recipe-search"><scp-action-icon name="recipe"/><span class="sr-only">Veröffentlichte Rezepte durchsuchen</span><input autofocus type="search" placeholder="Rezeptname oder Revision suchen …" [(ngModel)]="recipeSearch" (ngModelChange)="searchedRecipes()" name="publishedRecipeSearch"/></label>
+    <div class="picker-layout"><section class="picker-list" aria-label="Veröffentlichte Rezeptrevisionen">@for (recipe of pagedRecipes(); track recipe.revisionId) { <button type="button" [attr.aria-pressed]="previewRevision() === recipe.revisionId" (click)="previewRevision.set(recipe.revisionId)"><span class="recipe-mark"><scp-action-icon name="recipe"/></span><span><strong>{{ recipe.name }}</strong><small>Revision {{ recipe.revisionNumber }}</small></span><scp-action-icon name="expand"/></button> } @empty { <p class="picker-empty">Keine passende verfügbare Revision. Bereits zugeordnete Revisionen werden hier ausgeschlossen.</p> }<scp-list-pagination [length]="filteredRecipes().length" [pageIndex]="pickerPageIndex()" [pageSize]="8" (changed)="pickerPage.set($event.pageIndex)" label="Rezeptauswahl-Seiten"/></section>
+      <section class="recipe-preview" aria-label="Rezeptvorschau" aria-live="polite">@if (preview(); as recipe) { <div class="preview-hero"><scp-action-icon name="recipe"/></div><span class="badge">Veröffentlicht</span><h3>{{ recipe.name }}</h3><dl><div><dt>Revision</dt><dd>{{ recipe.revisionNumber }}</dd></div><div><dt>Rezepttyp</dt><dd>Portionenbasiert</dd></div></dl><scp-recipe-planning-hints [campId]="data().campId" [revisionId]="recipe.revisionId" [name]="recipe.name"/><p class="revision-note">Diese konkrete Revision bleibt zugeordnet, auch wenn später eine neue veröffentlicht wird.</p><p class="muted">Vollständige Rezeptdetails sind in dieser Vorschau noch nicht verfügbar.</p> } @else { <p>Wähle eine Revision für die Vorschau.</p> }</section>
+    </div>
+    <footer><span>{{ replacingEntry() ? 'Die Zuordnung dieser Revision wird ersetzt.' : 'Erstes Rezept: Standard. Weitere Rezepte: Alternative.' }}</span><button matButton="outlined" type="button" (click)="pickerGroup.set(null); recipeDialog.close()">Abbrechen</button><button matButton="filled" type="button" [disabled]="!preview() || locked()" (click)="applyRecipe() && recipeDialog.close()">Rezept auswählen</button></footer>
+  </dialog>
+} @else {
+  <header class="list-header"><div><h2>Menüpläne</h2><p>Angebote für die aktiven Lagermahlzeiten planen.</p></div>@if (!disabled()) { <button matButton="filled" type="button" [disabled]="busy()" (click)="newPlanName = ''; createDialog.showModal()"><scp-action-icon name="add"/>Menüplan anlegen</button> }</header>
+  <div class="plan-list-toolbar catalog-search"><label><scp-action-icon name="recipe"/><span class="sr-only">Menüpläne suchen</span><input type="search" placeholder="Menüpläne suchen …" [(ngModel)]="search" (ngModelChange)="listPage.set(0)"/></label><span>{{ filteredPlans().length }} Menüpläne · {{ activeMeals().length }} aktive Lagermahlzeiten</span></div>
+  <div class="plan-list" aria-label="Menüpläne">@for (item of listedPlans(); track item.id) {
+    <article class="plan-row"><button type="button" class="plan-open" (click)="open.emit(item.id)" [disabled]="busy()"><span class="plan-icon"><scp-action-icon name="planning"/></span><span class="plan-row-copy"><strong>{{ item.name }}</strong><span>Version {{ item.version }} · {{ activeMeals().length - item.missingActiveMealCount }} / {{ activeMeals().length }} Mahlzeiten belegt</span></span><span class="plan-usage">{{ subscribers(item.id) ? subscribers(item.id) + ' Kocheinheit(en)' : 'Nicht als Standard abonniert' }}</span><span class="badge" [class.missing]="item.missingActiveMealCount > 0">{{ item.missingActiveMealCount ? item.missingActiveMealCount + ' fehlen' : 'Alle Mahlzeiten belegt' }}</span><scp-action-icon name="expand"/></button>
+      @if (!disabled()) { <div class="plan-list-actions"><button matIconButton type="button" [disabled]="busy() || data().mealPlans.indexOf(item) === 0" (click)="reorder.emit({index: data().mealPlans.indexOf(item), direction: -1})" [attr.aria-label]="'Menüplan nach vorne: ' + item.name"><scp-action-icon name="up"/></button><button matIconButton type="button" [disabled]="busy() || data().mealPlans.indexOf(item) === data().mealPlans.length - 1" (click)="reorder.emit({index: data().mealPlans.indexOf(item), direction: 1})" [attr.aria-label]="'Menüplan nach hinten: ' + item.name"><scp-action-icon name="down"/></button><button matIconButton type="button" [disabled]="busy()" (click)="remove.emit(item.id)" [attr.aria-label]="'Menüplan löschen: ' + item.name"><scp-action-icon name="remove"/></button></div> }
+    </article>
+  } @empty { <div class="empty-components"><scp-action-icon name="planning"/><h3>{{ search ? 'Keine passenden Menüpläne.' : 'Noch kein Menüplan vorhanden.' }}</h3><p>Es können mehrere Pläne angelegt und auch unvollständige Planungen gespeichert werden.</p></div> }</div>
+  <scp-list-pagination [length]="filteredPlans().length" [pageIndex]="planPageIndex()" [pageSize]="8" (changed)="listPage.set($event.pageIndex)" label="Menüplanseiten"/>
+  <p class="list-note">Die Belegung beschreibt das Angebot, nicht dessen Eignung oder Verifikation. Die Reihenfolge gilt für Auswahlfelder.</p>
+  <dialog #createDialog class="create-dialog" aria-labelledby="create-menu-plan-title"><form (ngSubmit)="create.emit(newPlanName.trim()); createDialog.close()"><h3 id="create-menu-plan-title">Menüplan anlegen</h3><label>Name<input name="newMenuPlanName" autofocus [(ngModel)]="newPlanName" maxlength="200" required [disabled]="locked()"/></label><footer><button matButton type="button" (click)="createDialog.close()">Abbrechen</button><button matButton="filled" type="submit" [disabled]="locked() || !newPlanName.trim()">Anlegen</button></footer></form></dialog>
+}
