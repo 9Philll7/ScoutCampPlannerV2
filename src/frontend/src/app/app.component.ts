@@ -339,6 +339,7 @@ export class AppComponent {
   readonly editingCampStageIndexes = signal<ReadonlySet<number>>(new Set());
   readonly weightedFoodTotals = signal<WeightedStageTotal[]>([]);
   readonly mealTypes = signal<CampMealType[]>([]);
+  private mealScheduleVersion: number | undefined;
   readonly meals = signal<CampMeal[]>([]);
   readonly ingredients = signal<IngredientCatalogEntry[]>([]);
   readonly ingredientsLoading = signal(false);
@@ -962,10 +963,14 @@ export class AppComponent {
     });
   }
 
+  refreshMealSchedule(campId: string) { this.loadMealPlan(campId); }
+
   private loadMealPlan(campId: string) {
     this.campApi.getMealPlan(campId).subscribe({ next: plan => {
-      this.mealTypes.set(plan.mealTypes); this.meals.set(plan.meals);
-      this.persistedMealTypeNames = plan.mealTypes.map(value => value.name);
+      this.mealScheduleVersion = plan.scheduleVersion;
+      const regularTypes = plan.mealTypes.filter(value => (value.kind ?? 0) === 0);
+      this.mealTypes.set(regularTypes); this.meals.set(plan.meals);
+      this.persistedMealTypeNames = regularTypes.map(value => value.name);
     }, error: () => this.error.set('Der Mahlzeitenplan konnte nicht geladen werden.') });
   }
 
@@ -1015,15 +1020,15 @@ export class AppComponent {
     const names = this.mealTypes().map(value => value.name.trim());
     if (!names.length || names.some(value => !value) || this.submitting()) return;
     this.submitting.set(true); this.error.set(null);
-    this.campApi.updateMealTypes(camp.id, names).subscribe({
+    this.campApi.updateMealTypes(camp.id, names, this.mealScheduleVersion).subscribe({
       next: () => { this.submitting.set(false); this.notice.set('Die Mahlzeitenbezeichnungen wurden gespeichert.'); this.loadMealPlan(camp.id); },
       error: () => { this.submitting.set(false); this.error.set('Die Mahlzeitenbezeichnungen konnten nicht gespeichert werden.'); }
     });
   }
   setMealActivity(camp: CampSummary, meal: CampMeal, isActive: boolean) {
     this.submitting.set(true); this.error.set(null);
-    this.campApi.updateMealActivity(camp.id, meal.id, isActive).subscribe({
-      next: () => { this.submitting.set(false); this.meals.update(values => values.map(value => value.id === meal.id ? { ...value, isActive } : value)); },
+    this.campApi.updateMealActivity(camp.id, meal.id, isActive, this.mealScheduleVersion).subscribe({
+      next: () => { if (this.mealScheduleVersion !== undefined) this.mealScheduleVersion++; this.submitting.set(false); this.meals.update(values => values.map(value => value.id === meal.id ? { ...value, isActive } : value)); },
       error: () => { this.submitting.set(false); this.error.set('Die Mahlzeit konnte nicht geändert werden.'); }
     });
   }

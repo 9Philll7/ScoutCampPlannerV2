@@ -1,8 +1,9 @@
 import { Component, DestroyRef, effect, inject, input, output, signal, untracked, viewChild, viewChildren } from '@angular/core';
+import { Observable, switchMap } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NotificationBannerComponent } from '../../shared/notification-banner.component';
 import { CateringOverviewComponent, CateringSection, CateringTarget } from './catering-overview.component';
-import { MealPlanWorkspaceComponent } from './meal-plan-workspace.component';
+import { MealPlanWorkspaceComponent, MealScheduleAction } from './meal-plan-workspace.component';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -63,7 +64,7 @@ interface MealDraft {
 
         }
         @if (section() === 'plans') {
-          <scp-meal-plan-workspace [data]="data" [plan]="editingPlan()" [disabled]="disabled()" [busy]="planBusy()"
+          <scp-meal-plan-workspace [data]="data" [plan]="editingPlan()" [disabled]="disabled()" [busy]="planBusy()" [planDirty]="hasPendingPlanChanges()" (schedule)="changeSchedule($event)" (refreshSchedule)="load()"
             (open)="openPlan($event)" (close)="cancelPlan()" (save)="savePlan()" (create)="createPlan($event)"
             (remove)="deletePlan($event)" (reorder)="movePlan($event.index, $event.direction)"/>
         }
@@ -192,6 +193,7 @@ export class MealPlanningComponent {
   readonly section = input<CateringSection>('overview');
   readonly target = input<CateringTarget | null>(null);
   readonly navigate = output<CateringTarget>();
+  readonly scheduleChanged = output<void>();
   sectionTitle() { return { overview: 'Verpflegung – Übersicht', plans: 'Menüpläne', units: 'Kocheinheiten', issues: 'Konflikte & Entscheidungen' }[this.section()]; }
   visibleUnits(data: MealPlanningOverview) { return data.cookingUnits.filter(unit => !this.target()?.unitId || unit.id === this.target()?.unitId); }
   visibleMeals(data: MealPlanningOverview) { return this.activeMeals(data).filter(meal => !this.target()?.mealId || meal.id === this.target()?.mealId); }
@@ -219,6 +221,37 @@ export class MealPlanningComponent {
   discardPlan() { this.editingPlan.set(null); this.planBaseline = ''; }
   private mayDiscardPlan() { return !this.hasPendingPlanChanges() || window.confirm('Nicht gespeicherte Menüplanänderungen verwerfen?'); }
   reload() { if (this.planBusy() || !this.mayDiscardPlan()) return; this.discardPlan(); this.load(); }
+  changeSchedule(action: MealScheduleAction) {
+    const data = this.overview();
+    if (!data || this.disabled() || this.planBusy() || ((action.kind === 'add' || action.kind === 'remove') && this.hasPendingPlanChanges()) || data.scheduleVersion === undefined) return;
+    const campId = this.campId(), version = data.scheduleVersion;
+    const request: Observable<unknown> = action.kind === 'add' ? this.api.addAdditionalMeal(campId, action.date, action.name, version)
+      : action.kind === 'order' ? this.api.orderDayMeals(campId, action.date, action.mealIds, version)
+      : action.kind === 'remove' ? this.api.removeAdditionalMeal(campId, action.mealId, version)
+      : this.api.setMealActivity(campId, action.mealId, action.isActive, version);
+    this.planBusy.set(true);
+    let successMessage = 'Mahlzeitenrahmen gespeichert.';
+    request.pipe(switchMap(result => {
+      if (action.kind === 'remove') successMessage = (result as { outcome: string }).outcome === 'Deactivated'
+        ? 'Zusatzmahlzeit deaktiviert. Vorhandene Zuordnungen bleiben erhalten.' : 'Zusatzmahlzeit entfernt.';
+      return this.api.overview(campId);
+    }), takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: value => {
+        if (campId !== this.campId()) return;
+        this.overview.set(value); this.buildMealDrafts(value); this.planBusy.set(false); this.error.set('');
+        if (action.kind === 'add' && this.planWorkspace()) this.planWorkspace()!.additionalMealName = '';
+        this.notice.set(successMessage); this.scheduleChanged.emit();
+      },
+      error: error => {
+        this.planBusy.set(false);
+        const code = error.error?.code;
+        this.error.set(code === 'meal_schedule_changed' ? 'Der Mahlzeitenrahmen wurde inzwischen geändert. Bitte neu laden; dein Menüplanentwurf bleibt erhalten.'
+          : code === 'meal_already_exists' ? 'Diese Mahlzeit existiert an diesem Tag bereits. Gegebenenfalls wieder aktivieren.'
+          : code === 'meal_name_conflict' ? 'Diese Bezeichnung wird bereits für eine regelmäßige Mahlzeit verwendet.'
+          : 'Der Mahlzeitenrahmen konnte nicht gespeichert oder neu geladen werden. Bitte den Stand prüfen.');
+      }
+    });
+  }
   createPlan(name: string) {
     if (this.disabled() || this.planBusy() || !name.trim()) return;
     this.planBusy.set(true);

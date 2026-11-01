@@ -559,6 +559,7 @@ app.MapGet("/api/camps/{campId:guid}/meal-plan", async (
     return context is null ? Results.NotFound() : Results.Ok(await catering.GetMealPlanAsync(
         campId, context.StartDate, context.EndDate, cancellationToken));
 }).RequireAuthorization();
+app.MapMealScheduleEndpoints();
 app.MapPut("/api/camps/{campId:guid}/meal-types", async (
     Guid campId, UpdateCampMealTypesRequest request, ClaimsPrincipal principal,
     CampManagementService camps, CateringPlanningService catering, CancellationToken cancellationToken) =>
@@ -572,6 +573,9 @@ app.MapPut("/api/camps/{campId:guid}/meal-types", async (
         context.StartDate, context.EndDate, context.IsFrozen, request, cancellationToken);
     return failure switch { UpdateCampMealsFailure.None => Results.NoContent(),
         UpdateCampMealsFailure.Frozen => Results.Conflict(new { code = "camp_frozen" }),
+        UpdateCampMealsFailure.Changed => Results.Conflict(new { code = "meal_schedule_changed" }),
+        UpdateCampMealsFailure.NameConflict => Results.Conflict(new { code = "meal_name_conflict" }),
+        UpdateCampMealsFailure.InUse => Results.Conflict(new { code = "meal_in_use" }),
         _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["names"] = ["Ungültige oder doppelte Mahlzeitenbezeichnungen."] }) };
 }).RequireAuthorization();
 app.MapPut("/api/camps/{campId:guid}/meals/{mealId:guid}/activity", async (
@@ -585,7 +589,11 @@ app.MapPut("/api/camps/{campId:guid}/meals/{mealId:guid}/activity", async (
     if (context is null) return Results.NotFound();
     var failure = await catering.SetMealActivityAsync(actorId, context.TenantId, campId, mealId, context.IsFrozen, request, cancellationToken);
     return failure switch { UpdateCampMealsFailure.None => Results.NoContent(),
-        UpdateCampMealsFailure.Frozen => Results.Conflict(new { code = "camp_frozen" }), _ => Results.NotFound() };
+        UpdateCampMealsFailure.Frozen => Results.Conflict(new { code = "camp_frozen" }),
+        UpdateCampMealsFailure.Changed => Results.Conflict(new { code = "meal_schedule_changed" }),
+        UpdateCampMealsFailure.NameConflict => Results.Conflict(new { code = "meal_name_conflict" }),
+        UpdateCampMealsFailure.InUse => Results.Conflict(new { code = "meal_in_use" }),
+        UpdateCampMealsFailure.Invalid => Results.BadRequest(new { code = "invalid_meal_schedule" }), _ => Results.NotFound() };
 }).RequireAuthorization();
 app.MapPut("/api/camps/{campId:guid}/stages", async (
     Guid campId, UpdateStageTemplateRequest request, ClaimsPrincipal principal,

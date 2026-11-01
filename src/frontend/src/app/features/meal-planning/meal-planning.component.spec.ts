@@ -177,4 +177,69 @@ describe('MealPlanningComponent', () => {
     component.deletePlan('plan-1');
     expect(component.error()).toContain('Kocheinheit: Küche');
   });
+
+  it('blocks schedule changes while a menu plan has unsaved changes', () => {
+    component.overview.set({ ...structuredClone(overview), scheduleVersion: 4 });
+    api['addAdditionalMeal'] = vi.fn(() => of({ scheduleVersion: 5 }));
+    component.openPlan('plan-1'); component.editingPlan()!.name = 'Draft';
+    component.changeSchedule({ kind: 'add', date: '2027-07-02', name: 'Snack' });
+    expect(api['addAdditionalMeal']).not.toHaveBeenCalled();
+    expect(component.editingPlan()!.name).toBe('Draft');
+  });
+  it('saves the shared schedule immediately and retains the unchanged open plan', () => {
+    component.overview.set({ ...structuredClone(overview), scheduleVersion: 4 });
+    component.openPlan('plan-1');
+    const open = component.editingPlan();
+    api['addAdditionalMeal'] = vi.fn(() => of({ scheduleVersion: 5 }));
+    api['overview'].mockReturnValue(of({ ...structuredClone(overview), scheduleVersion: 5 }));
+    component.changeSchedule({ kind: 'add', date: '2027-07-02', name: 'Snack' });
+    expect(api['addAdditionalMeal']).toHaveBeenCalledWith('camp-1', '2027-07-02', 'Snack', 4);
+    expect(component.overview()!.scheduleVersion).toBe(5);
+    expect(component.editingPlan()).toBe(open);
+    expect(api['savePlan']).not.toHaveBeenCalled();
+    expect(component.planBusy()).toBe(false);
+  });
+  it('reorders meals with an unsaved component without saving or discarding the plan draft', () => {
+    component.overview.set({ ...structuredClone(overview), scheduleVersion: 4 });
+    component.openPlan('plan-1');
+    const draft = component.editingPlan()!;
+    draft.offerGroups.push({ id: 'new-component', campMealId: 'meal-1', name: 'Beilage', sortOrder: 1, entries: [] });
+    api['orderDayMeals'] = vi.fn(() => of({ scheduleVersion: 5 }));
+    api['overview'].mockReturnValue(of({ ...structuredClone(overview), scheduleVersion: 5 }));
+    component.changeSchedule({ kind: 'order', date: '2027-07-02', mealIds: ['meal-1'] });
+    expect(api['orderDayMeals']).toHaveBeenCalledWith('camp-1', '2027-07-02', ['meal-1'], 4);
+    expect(component.editingPlan()).toBe(draft);
+    expect(component.editingPlan()!.offerGroups.some(group => group.id === 'new-component')).toBe(true);
+    expect(component.hasPendingPlanChanges()).toBe(true);
+    expect(api['savePlan']).not.toHaveBeenCalled();
+    expect(component.overview()!.scheduleVersion).toBe(5);
+  });
+  it('keeps the plan on schedule conflicts and never automatically retries the mutation', () => {
+    component.overview.set({ ...structuredClone(overview), scheduleVersion: 4 });
+    component.openPlan('plan-1');
+    api['removeAdditionalMeal'] = vi.fn(() => throwError(() => ({ error: { code: 'meal_schedule_changed' } })));
+    component.changeSchedule({ kind: 'remove', mealId: 'meal-1' });
+    expect(api['removeAdditionalMeal']).toHaveBeenCalledOnce();
+    expect(component.editingPlan()!.id).toBe('plan-1');
+    expect(component.error()).toContain('inzwischen geändert');
+    expect(component.planBusy()).toBe(false);
+  });
+  it.each([false, true])('changes meal activity to %s with recipe edits still pending', isActive => {
+    const data = structuredClone(overview);
+    data.scheduleVersion = 4; data.meals[0].kind = 1; data.meals[0].isActive = !isActive;
+    component.overview.set(data);
+    component.openPlan('plan-1');
+    const draft = component.editingPlan()!;
+    draft.offerGroups[0].entries[0].note = 'Ungespeicherter Hinweis';
+    api['setMealActivity'] = vi.fn(() => of(undefined));
+    api['overview'].mockReturnValue(of({ ...data, scheduleVersion: 5,
+      meals: data.meals.map(meal => ({ ...meal, isActive })) }));
+    component.changeSchedule({ kind: 'activity', mealId: 'meal-1', isActive });
+    expect(api['setMealActivity']).toHaveBeenCalledWith('camp-1', 'meal-1', isActive, 4);
+    expect(component.editingPlan()).toBe(draft);
+    expect(draft.offerGroups[0].entries[0].note).toBe('Ungespeicherter Hinweis');
+    expect(component.hasPendingPlanChanges()).toBe(true);
+    expect(component.overview()!.meals[0].isActive).toBe(isActive);
+    expect(api['savePlan']).not.toHaveBeenCalled();
+  });
 });

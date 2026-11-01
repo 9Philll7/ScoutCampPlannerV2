@@ -29,6 +29,49 @@ describe('MealPlanWorkspaceComponent', () => {
   });
   function openEditor() { fixture.componentRef.setInput('plan', plan); fixture.detectChanges(); }
   function choose(revision: string) { component.previewRevision.set(revision); expect(component.applyRecipe()).toBe(true); }
+  it('reorders components within one meal and preserves recipes, identities and other meals', () => {
+    openEditor();
+    component.addGroup(); const first = component.groups()[0];
+    component.beginPicker(first); choose('rice-1');
+    component.addGroup(); const second = component.groups()[1];
+    component.beginPicker(second); choose('pasta');
+    first.sortOrder = 5; second.sortOrder = 20;
+    component.mealId.set('dinner'); component.addGroup(); const dinner = component.groups()[0];
+    component.mealId.set('lunch');
+    component.moveGroup(second, -1);
+    expect(component.groups().map(group => group.id)).toEqual([second.id, first.id]);
+    expect(component.groups().map(group => group.sortOrder)).toEqual([0, 1]);
+    expect(first.entries[0].recipeRevisionId).toBe('rice-1');
+    expect(second.entries[0].recipeRevisionId).toBe('pasta');
+    expect(dinner.sortOrder).toBe(0);
+    const baseline = JSON.stringify(plan);
+    component.moveGroup(second, -1); component.moveGroup(first, 1); component.moveGroup(dinner, -1);
+    expect(JSON.stringify(plan)).toBe(baseline);
+    for (const input of ['disabled', 'busy']) {
+      fixture.componentRef.setInput(input, true); fixture.detectChanges();
+      component.moveGroup(first, -1);
+      expect(JSON.stringify(plan)).toBe(baseline);
+      fixture.componentRef.setInput(input, false); fixture.detectChanges();
+    }
+    component.moveGroup(second, 1);
+    expect(component.groups().map(group => group.id)).toEqual([first.id, second.id]);
+  });
+  it('expands the note from its icon and supports reading it without edit permission', async () => {
+    openEditor(); component.addGroup(); component.beginPicker(plan.offerGroups[0]); choose('rice-1');
+    plan.offerGroups[0].entries[0].note = 'Bei Bedarf weniger Salz verwenden.';
+    fixture.detectChanges();
+    const button = () => fixture.nativeElement.querySelector('.recipe-note-hint') as HTMLButtonElement;
+    expect(button().getAttribute('aria-expanded')).toBe('false');
+    button().click(); fixture.detectChanges();
+    await fixture.whenStable();
+    expect(button().getAttribute('aria-expanded')).toBe('true');
+    expect(fixture.nativeElement.querySelector('.entry-metadata textarea').value).toBe('Bei Bedarf weniger Salz verwenden.');
+    fixture.componentRef.setInput('disabled', true); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.entry-note-text').textContent).toContain('Bei Bedarf weniger Salz verwenden.');
+    expect(fixture.nativeElement.querySelector('.entry-metadata textarea')).toBeNull();
+    button().click(); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.entry-metadata')).toBeNull();
+  });
   it('separates the plan list from the editor and navigates only active in-period meals', () => {
     expect(fixture.nativeElement.querySelector('.plan-list')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('.plan-editor-layout')).toBeNull();
@@ -36,7 +79,10 @@ describe('MealPlanWorkspaceComponent', () => {
     expect(fixture.nativeElement.querySelector('.plan-list')).toBeNull();
     expect(component.dates()).toEqual(['2027-07-02']);
     expect(component.mealsForDate(component.date()).map(meal => meal.id)).toEqual(['lunch', 'dinner']);
-    expect(fixture.nativeElement.querySelector('.meal-tabs').textContent).not.toContain('Inaktiv');
+    const inactive = fixture.nativeElement.querySelector('.meal-tabs button.inactive') as HTMLButtonElement;
+    expect(inactive.textContent).toContain('Inaktiv');
+    expect(inactive.textContent).toContain('Entfällt');
+    expect(inactive.disabled).toBe(true);
   });
   it('makes the first selection standard, further selections alternatives and switches only the current component', () => {
     openEditor(); component.addGroup(); const group = plan.offerGroups[0];
@@ -91,5 +137,54 @@ describe('MealPlanWorkspaceComponent', () => {
       expect(component.applyRecipe()).toBe(false); expect(JSON.stringify(plan)).toBe(baseline);
       fixture.componentRef.setInput(input, false); fixture.detectChanges();
     }
+  });
+
+  it('keeps a day with no active meals reachable for reactivation and additional meals', () => {
+    fixture.componentRef.setInput('data', { ...data, scheduleVersion: 0, meals: data.meals.map(meal => ({ ...meal, isActive: false })) });
+    openEditor();
+    expect(component.dates()).toEqual(['2027-07-02']);
+    expect(component.dayMeals()).toHaveLength(3);
+    expect(component.mealsForDate(component.date())).toHaveLength(0);
+    expect(component.scheduleLocked()).toBe(false);
+    fixture.componentRef.setInput('planDirty', true); fixture.detectChanges();
+    expect(component.scheduleLocked()).toBe(true);
+    expect(component.scheduleOrderLocked()).toBe(false);
+  });
+  it('allows ordering and activity with a dirty plan while keeping removal blocked', () => {
+    fixture.componentRef.setInput('data', { ...data, scheduleVersion: 4 });
+    fixture.componentRef.setInput('planDirty', true);
+    openEditor();
+    const actions: unknown[] = [];
+    component.schedule.subscribe(action => actions.push(action));
+    component.moveMeal(0, 1);
+    component.removeAdditionalMeal('lunch');
+    component.changeActivity('lunch', false);
+    expect(actions).toEqual([{ kind: 'order', date: '2027-07-02', mealIds: ['inactive', 'lunch', 'dinner'] },
+      { kind: 'activity', mealId: 'lunch', isActive: false }]);
+    fixture.componentRef.setInput('busy', true); fixture.detectChanges();
+    component.moveMeal(0, 1);
+    component.changeActivity('lunch', true);
+    expect(actions).toHaveLength(2);
+  });
+  it('keeps deactivated meals visible without counting their recipes as active coverage', () => {
+    openEditor();
+    component.addGroup(); component.beginPicker(plan.offerGroups[0]); choose('rice-1');
+    fixture.componentRef.setInput('data', { ...data, meals: data.meals.map(meal => meal.id === 'lunch' ? { ...meal, isActive: false } : meal) });
+    fixture.detectChanges();
+    expect(component.displayedMealsForDate(component.date()).map(meal => meal.id)).toContain('lunch');
+    expect(component.mealsForDate(component.date()).map(meal => meal.id)).toEqual(['dinner']);
+    expect(component.coveredForDate(component.date())).toBe(0);
+    expect(plan.offerGroups[0].entries[0].recipeRevisionId).toBe('rice-1');
+    expect(fixture.nativeElement.querySelectorAll('.meal-tabs button.inactive')).toHaveLength(2);
+  });
+  it('renders German characters correctly in the meal editor', () => {
+    openEditor();
+    const text = fixture.nativeElement.querySelector('.schedule-dialog').textContent;
+    expect(text).toContain('Änderungen gelten sofort für alle Menüpläne.');
+    expect(text).toContain('Zusätzliche Mahlzeit');
+    expect(text).toContain('Regelmäßig');
+    expect(text).toContain('Hinzufügen');
+    expect(text).toContain('Schließen');
+    expect(text).not.toContain('?');
   });
 });

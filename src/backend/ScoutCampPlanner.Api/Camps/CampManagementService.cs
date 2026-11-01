@@ -831,7 +831,7 @@ public sealed class CampManagementService(
         var mealTypes = defaultMealNames.Select((name, index) => new CampMealType(Guid.NewGuid(), camp.Id, name, index)).ToArray();
         var meals = Enumerable.Range(0, request.EndDate.DayNumber - request.StartDate.DayNumber + 1)
             .SelectMany(offset => mealTypes.Select(type => new CampMeal(
-                Guid.NewGuid(), camp.Id, type.Id, request.StartDate.AddDays(offset)))).ToArray();
+                Guid.NewGuid(), camp.Id, type.Id, request.StartDate.AddDays(offset), sortOrder: type.SortOrder))).ToArray();
         var auditEvent = new AuditEventDraft(
             Guid.NewGuid(), timeProvider.GetUtcNow(), "camp.created", "success", actorUserId, tenantId, camp.Id,
             "camp", camp.Id, "server", auditRuntime.InstanceId, Guid.NewGuid(), null, null,
@@ -852,6 +852,7 @@ public sealed class CampManagementService(
                     catering.CampStageFoodFactors.AddRange(campFactors);
                     catering.CampMealTypes.AddRange(mealTypes);
                     catering.CampMeals.AddRange(meals);
+                    catering.CampMealScheduleStates.Add(new CampMealScheduleState(camp.Id));
                     foreach (TenantMembership administrator in administrators)
                     {
                         var membership = new CampMembership(Guid.NewGuid(), administrator.Id, camp.Id);
@@ -925,15 +926,25 @@ public sealed class CampManagementService(
                 try
                 {
                     camp.UpdateDetails(request.Name, request.StartDate, request.EndDate);
-                    var mealTypes = await catering.CampMealTypes.Where(value => value.CampId == campId)
-                        .ToListAsync(operationCancellationToken);
-                    var existing = await catering.CampMeals.Where(value => value.CampId == campId)
-                        .Select(value => new { value.Date, value.MealTypeId }).ToListAsync(operationCancellationToken);
-                    var existingKeys = existing.Select(value => (value.Date, value.MealTypeId)).ToHashSet();
+                    var schedule = await catering.CampMealScheduleStates.SingleOrDefaultAsync(value => value.CampId == campId, operationCancellationToken);
+                    if (schedule is null) { schedule = new(campId); catering.Add(schedule); }
+                    schedule.Advance();
+                    var mealTypes = await catering.CampMealTypes.Where(value => value.CampId == campId && value.Kind == CampMealKind.Regular)
+                        .OrderBy(value => value.SortOrder).ToListAsync(operationCancellationToken);
+                    var existing = await catering.CampMeals.Where(value => value.CampId == campId).ToListAsync(operationCancellationToken);
                     for (DateOnly date = request.StartDate; date <= request.EndDate; date = date.AddDays(1))
+                    {
+                        var day = existing.Where(value => value.Date == date).OrderBy(value => value.SortOrder).ToList();
                         foreach (var type in mealTypes)
-                            if (!existingKeys.Contains((date, type.Id)))
-                                catering.CampMeals.Add(new CampMeal(Guid.NewGuid(), campId, type.Id, date));
+                            if (!day.Any(value => value.MealTypeId == type.Id))
+                            {
+                                int insertion = day.FindIndex(value => !mealTypes.Any(t => t.Id == value.MealTypeId));
+                                if (insertion < 0) insertion = day.Count;
+                                var meal = new CampMeal(Guid.NewGuid(), campId, type.Id, date);
+                                day.Insert(insertion, meal); catering.Add(meal);
+                            }
+                        for (int index = 0; index < day.Count; index++) day[index].SetSortOrder(index);
+                    }
                     await camps.SaveChangesAsync(operationCancellationToken);
                     await catering.SaveChangesAsync(operationCancellationToken);
                 }

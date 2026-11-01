@@ -5,7 +5,7 @@ namespace ScoutCampPlanner.Package;
 
 public static class CampPackageVersions
 {
-    public const int Current = 1;
+    public const int Current = 2;
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<CampPackageDirection>))]
@@ -37,7 +37,8 @@ public sealed record CampPackagePayload(
     IReadOnlyList<CampMealData>? CampMeals = null,
     JsonElement CateringReferenceData = default,
     JsonElement CateringMealPlanningData = default,
-    CampParticipantPackageData? Participants = null);
+    CampParticipantPackageData? Participants = null,
+    long MealScheduleVersion = 0);
 
 public sealed record TenantData(Guid Id, string Name);
 public sealed record CampData(
@@ -48,9 +49,9 @@ public sealed record CampStageData(Guid Id, Guid CampId, string Name, int SortOr
 public sealed record ParticipantEstimateData(Guid Id, Guid CampId, Guid StructureNodeId, Guid CampStageId,
     int ChildYouthCount, int LeaderCount);
 public sealed record CampStageFoodFactorData(Guid Id, Guid CampId, Guid CampStageId, string StageName, decimal Factor);
-public sealed record CampMealTypeData(Guid Id, Guid CampId, string Name, int SortOrder);
+public sealed record CampMealTypeData(Guid Id, Guid CampId, string Name, int SortOrder, int Kind = 0);
 public sealed record CampMealData(
-    Guid Id, Guid CampId, Guid MealTypeId, DateOnly Date, bool IsActive, int ChangeVersion = 0);
+    Guid Id, Guid CampId, Guid MealTypeId, DateOnly Date, bool IsActive, int ChangeVersion = 0, int SortOrder = 0);
 
 public sealed class CampPackageValidationException(string message, string code = "invalid_package_or_transfer") : Exception(message)
 {

@@ -43,6 +43,7 @@ public static class CampPackageSerializer
             var package = JsonSerializer.Deserialize<CampPackagePayload>(payload, Options)
                 ?? throw new CampPackageValidationException("Package payload is empty.");
             Validate(package);
+            package = UpgradeMealSchedule(package);
             package = UpgradeParticipantStructure(package);
             Validate(package);
             return package;
@@ -52,6 +53,18 @@ public static class CampPackageSerializer
         {
             throw new CampPackageValidationException($"Package cannot be read: {exception.Message}");
         }
+    }
+
+    public static CampPackagePayload UpgradeMealSchedule(CampPackagePayload package)
+    {
+        if (package.Manifest.FormatVersion != 1) return package;
+        var types = (package.CampMealTypes ?? []).ToDictionary(x => x.Id);
+        var meals = (package.CampMeals ?? []).GroupBy(x => x.Date).SelectMany(day => day
+            .OrderBy(x => types.GetValueOrDefault(x.MealTypeId)?.SortOrder ?? int.MaxValue).ThenBy(x => x.Id)
+            .Select((meal, index) => meal with { SortOrder = index })).ToArray();
+        return package with { Manifest = package.Manifest with { FormatVersion = CampPackageVersions.Current },
+            CampMealTypes = (package.CampMealTypes ?? []).Select(x => x with { Kind = 0 }).ToArray(),
+            CampMeals = meals, MealScheduleVersion = 0 };
     }
 
     public static CampPackagePayload UpgradeParticipantStructure(CampPackagePayload package)
@@ -95,7 +108,7 @@ public static class CampPackageSerializer
         }
         CampOfflineReferenceStore.Validate(package.CateringReferenceData, package.Camp.Id,
             CampMealPlanningPackageStore.ReadRecipeRevisionIds(package.CateringMealPlanningData, package.Camp.Id));
-        if (package.Manifest.FormatVersion != CampPackageVersions.Current)
+        if (package.Manifest.FormatVersion is not (1 or CampPackageVersions.Current))
             throw new CampPackageValidationException($"Unsupported package version {package.Manifest.FormatVersion}.");
         if (package.Manifest.TenantId != package.Tenant.Id || package.Manifest.CampId != package.Camp.Id)
             throw new CampPackageValidationException("Manifest identity does not match package data.");
@@ -121,13 +134,18 @@ public static class CampPackageSerializer
             (package.CampMeals ?? []).Any(x => x.CampId != package.Camp.Id))
             throw new CampPackageValidationException("Package contains data for another camp.");
         var mealTypes = package.CampMealTypes ?? [];
+        if (package.Manifest.FormatVersion == 1 && (mealTypes.Any(x => x.Kind != 0) || package.MealScheduleVersion != 0))
+            throw new CampPackageValidationException("Legacy package cannot contain additional meal semantics.");
+        if ((package.CampMeals ?? []).Select(x => x.Id).Distinct().Count() != (package.CampMeals ?? []).Count ||
+            (package.CampMeals ?? []).Select(x => (x.CampId, x.Date, x.MealTypeId)).Distinct().Count() != (package.CampMeals ?? []).Count)
+            throw new CampPackageValidationException("Duplicate meal schedule entries.");
         var mealTypeIds = mealTypes.Select(x => x.Id).ToHashSet();
         if (mealTypeIds.Count != mealTypes.Count || mealTypes.Any(x => x.Id == Guid.Empty ||
-            string.IsNullOrWhiteSpace(x.Name) || x.Name.Trim().Length > 100 || x.SortOrder < 0) ||
+            string.IsNullOrWhiteSpace(x.Name) || x.Name.Trim().Length > 100 || x.SortOrder < 0 || x.Kind is < 0 or > 1) ||
             mealTypes.Select(x => x.Name.Trim().ToUpperInvariant()).Distinct().Count() != mealTypes.Count ||
             mealTypes.Select(x => x.SortOrder).Order().Where((value, index) => value != index).Any() ||
             (package.CampMeals ?? []).Any(x => x.Id == Guid.Empty || !mealTypeIds.Contains(x.MealTypeId) ||
-                x.Date == default || x.ChangeVersion < 0))
+                x.Date == default || x.ChangeVersion < 0 || x.SortOrder < 0) || package.MealScheduleVersion < 0)
             throw new CampPackageValidationException("Camp meal schedule is invalid.");
         if (package.CampStages.Count == 0 || package.CampStages.Select(x => x.Id).Distinct().Count() != package.CampStages.Count ||
             package.CampStages.Select(x => x.Name.Trim().ToUpperInvariant()).Distinct().Count() != package.CampStages.Count ||

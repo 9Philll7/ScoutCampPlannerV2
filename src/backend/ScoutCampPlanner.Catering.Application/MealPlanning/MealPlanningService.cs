@@ -27,7 +27,7 @@ public sealed record MealPlanSummary(
 
 public sealed record MealSlotSummary(
     Guid Id, Guid MealTypeId, string MealTypeName, DateOnly Date, bool IsActive,
-    bool IsInsideCampPeriod, int ChangeVersion);
+    bool IsInsideCampPeriod, int ChangeVersion, int SortOrder = 0, CampMealKind Kind = CampMealKind.Regular);
 
 public sealed record StructureNodeOption(Guid Id, Guid? ParentId, string Name);
 
@@ -64,7 +64,7 @@ public sealed record MealPlanningOverview(
     IReadOnlyList<CookingUnitDocument> CookingUnits,
     IReadOnlyList<CookingUnitMealDocument> OperationalMeals,
     IReadOnlyList<MealPlanningRecipeOption> RecipeOptions,
-    IReadOnlyList<string> CoverageWarnings);
+    IReadOnlyList<string> CoverageWarnings, long ScheduleVersion = 0);
 
 public sealed record SaveMealPlanRequest(
     int ExpectedVersion, string Name, int SortOrder, IReadOnlyList<MealPlanOfferGroupDocument>? OfferGroups);
@@ -117,7 +117,7 @@ public sealed record MealPlanningData(
     IReadOnlyList<CookingUnitMealState> MealStates,
     IReadOnlyList<CookingUnitMealOfferTarget> OfferTargets,
     IReadOnlyList<CookingUnitMealRecipeChoice> RecipeChoices,
-    MealPlanningParticipantConfiguration? ParticipantConfiguration = null);
+    MealPlanningParticipantConfiguration? ParticipantConfiguration = null, long ScheduleVersion = 0);
 
 public interface IMealPlanningStore
 {
@@ -186,10 +186,11 @@ public sealed partial class MealPlanningService(
             campId, camp.TenantId, cancellationToken);
         var mealTypes = data.MealTypes.ToDictionary(value => value.Id);
         MealSlotSummary[] meals = data.Meals.OrderBy(value => value.Date)
-            .ThenBy(value => mealTypes.GetValueOrDefault(value.MealTypeId)?.SortOrder ?? int.MaxValue)
+            .ThenBy(value => value.SortOrder).ThenBy(value => value.Id)
             .Select(value => new MealSlotSummary(
                 value.Id, value.MealTypeId, mealTypes.GetValueOrDefault(value.MealTypeId)?.Name ?? "?",
-                value.Date, value.IsActive, IsInsideCamp(value.Date, camp), value.ChangeVersion)).ToArray();
+                value.Date, value.IsActive, IsInsideCamp(value.Date, camp), value.ChangeVersion, value.SortOrder,
+                mealTypes.GetValueOrDefault(value.MealTypeId)?.Kind ?? CampMealKind.Regular)).ToArray();
         Guid[] activeMealIds = data.Meals.Where(value => value.IsActive && IsInsideCamp(value.Date, camp))
             .Select(value => value.Id).ToArray();
         MealPlanSummary[] plans = data.MealPlans.OrderBy(value => value.SortOrder).Select(plan =>
@@ -217,7 +218,7 @@ public sealed partial class MealPlanningService(
             new StructureNodeOption(value.Id, value.ParentId, value.Name)).ToArray();
         MealPlanDocument[] documents = data.MealPlans.Select(value => ToDocument(value, data)).ToArray();
         return new MealPlanningOverview(campId, meals, nodes, plans, documents, groups, units, operational, recipes,
-            BuildCoverageWarnings(data, camp));
+            BuildCoverageWarnings(data, camp), data.ScheduleVersion);
     }
 
     public async Task<MealPlanDocument?> GetMealPlanAsync(
@@ -554,8 +555,8 @@ public sealed partial class MealPlanningService(
             return "Angebotsgruppen oder Einträge enthalten doppelte IDs.";
         var validMeals = meals.ToDictionary(value => value.Id);
         if (groups.Any(group => group.Id == Guid.Empty || !validMeals.TryGetValue(group.CampMealId, out CampMeal? meal) ||
-                !meal.IsActive || !IsInsideCamp(meal.Date, camp) || group.SortOrder < 0 || group.Entries is null))
-            return "Eine Angebotsgruppe verweist nicht auf eine aktive Lagermahlzeit.";
+                !IsInsideCamp(meal.Date, camp) || group.SortOrder < 0 || group.Entries is null))
+            return "Eine Angebotsgruppe verweist nicht auf eine gültige Lagermahlzeit im Lagerzeitraum.";
         foreach (IGrouping<Guid, MealPlanOfferGroupDocument> slot in groups.GroupBy(value => value.CampMealId))
         {
             if (slot.Select(value => value.SortOrder).Distinct().Count() != slot.Count())

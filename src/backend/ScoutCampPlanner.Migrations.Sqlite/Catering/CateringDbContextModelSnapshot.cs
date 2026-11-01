@@ -151,6 +151,9 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.Property<Guid>("MealTypeId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.HasIndex("MealTypeId");
@@ -161,6 +164,21 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.ToTable("CampMeals", (string)null);
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CampMealScheduleState", b =>
+                {
+                    b.Property<Guid>("CampId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("CampId");
+
+                    b.ToTable("CampMealScheduleStates", (string)null);
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CampMealType", b =>
                 {
                     b.Property<Guid>("Id")
@@ -169,6 +187,9 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
 
                     b.Property<Guid>("CampId")
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Name")
                         .IsRequired()

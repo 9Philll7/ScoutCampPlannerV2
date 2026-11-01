@@ -571,7 +571,7 @@ public sealed partial class CampManagementServiceTests : IAsyncLifetime
         service = new CampManagementService(platform, camps, catering, new AuditedOperationExecutor(platform, keys),
             new AuditRuntimeState(instanceId), new FixedTimeProvider(Now));
         cateringService = new CateringPlanningService(platform, catering,
-            new AuditedOperationExecutor(platform, keys), new AuditRuntimeState(instanceId), new FixedTimeProvider(Now));
+            new AuditedOperationExecutor(platform, keys), new AuditRuntimeState(instanceId), new FixedTimeProvider(Now), camps);
     }
 
     public async ValueTask DisposeAsync()

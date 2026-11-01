@@ -155,9 +155,10 @@ public sealed class CampPackageService(
                 x.Id, x.CampId, x.StructureNodeId, x.CampStageId, x.ChildYouthCount, x.LeaderCount)));
             catering.CampStageFoodFactors.AddRange(package.CampStageFoodFactors.Select(x => new CampStageFoodFactor(
                 x.Id, x.CampId, x.CampStageId, x.StageName, x.Factor)));
-            catering.CampMealTypes.AddRange((package.CampMealTypes ?? []).Select(x => new CampMealType(x.Id, x.CampId, x.Name, x.SortOrder)));
+            catering.CampMealScheduleStates.Add(new CampMealScheduleState(package.Camp.Id, package.MealScheduleVersion));
+            catering.CampMealTypes.AddRange((package.CampMealTypes ?? []).Select(x => new CampMealType(x.Id, x.CampId, x.Name, x.SortOrder, (CampMealKind)x.Kind)));
             catering.CampMeals.AddRange((package.CampMeals ?? []).Select(x => new CampMeal(
-                x.Id, x.CampId, x.MealTypeId, x.Date, x.IsActive, x.ChangeVersion)));
+                x.Id, x.CampId, x.MealTypeId, x.Date, x.IsActive, x.ChangeVersion, x.SortOrder)));
             await new CampOfflineReferenceStore(catering).ImportAsync(
                 package.CateringReferenceData, package.Camp.Id, cancellationToken,
                 CampMealPlanningPackageStore.ReadRecipeRevisionIds(package.CateringMealPlanningData, package.Camp.Id));
@@ -235,6 +236,7 @@ public sealed class CampPackageService(
             }
             await camp.CampStages.Where(x => x.CampId == existing.Id).ExecuteDeleteAsync(cancellationToken);
             await new CampMealPlanningPackageStore(catering).DeleteCampDataAsync(existing.Id, cancellationToken);
+            await catering.CampMealScheduleStates.Where(x => x.CampId == existing.Id).ExecuteDeleteAsync(cancellationToken);
             await catering.CampMeals.Where(x => x.CampId == existing.Id).ExecuteDeleteAsync(cancellationToken);
             await catering.CampMealTypes.Where(x => x.CampId == existing.Id).ExecuteDeleteAsync(cancellationToken);
             await catering.CampStageFoodFactors.Where(x => x.CampId == existing.Id).ExecuteDeleteAsync(cancellationToken);
@@ -252,9 +254,10 @@ public sealed class CampPackageService(
             camp.CampStages.AddRange(package.CampStages.Select(x => new CampStage(x.Id, x.CampId, x.Name, x.SortOrder)));
             camp.ParticipantEstimates.AddRange(package.ParticipantEstimates.Select(x => new ParticipantEstimate(
                 x.Id, x.CampId, x.StructureNodeId, x.CampStageId, x.ChildYouthCount, x.LeaderCount)));
-            catering.CampMealTypes.AddRange((package.CampMealTypes ?? []).Select(x => new CampMealType(x.Id, x.CampId, x.Name, x.SortOrder)));
+            catering.CampMealScheduleStates.Add(new CampMealScheduleState(package.Camp.Id, package.MealScheduleVersion));
+            catering.CampMealTypes.AddRange((package.CampMealTypes ?? []).Select(x => new CampMealType(x.Id, x.CampId, x.Name, x.SortOrder, (CampMealKind)x.Kind)));
             catering.CampMeals.AddRange((package.CampMeals ?? []).Select(x => new CampMeal(
-                x.Id, x.CampId, x.MealTypeId, x.Date, x.IsActive, x.ChangeVersion)));
+                x.Id, x.CampId, x.MealTypeId, x.Date, x.IsActive, x.ChangeVersion, x.SortOrder)));
             catering.CampStageFoodFactors.AddRange(package.CampStageFoodFactors.Select(x => new CampStageFoodFactor(
                 x.Id, x.CampId, x.CampStageId, x.StageName, x.Factor)));
             await new CampMealPlanningPackageStore(catering).ImportAsync(
@@ -314,10 +317,10 @@ public sealed class CampPackageService(
                     ? factor.Factor : 1m)));
         }
         var mealTypes = await catering.CampMealTypes.Where(x => x.CampId == entity.Id).OrderBy(x => x.SortOrder)
-            .Select(x => new CampMealTypeData(x.Id, x.CampId, x.Name, x.SortOrder)).ToListAsync(cancellationToken);
+            .Select(x => new CampMealTypeData(x.Id, x.CampId, x.Name, x.SortOrder, (int)x.Kind)).ToListAsync(cancellationToken);
         var campMeals = await catering.CampMeals.Where(x => x.CampId == entity.Id)
             .Select(x => new CampMealData(
-                x.Id, x.CampId, x.MealTypeId, x.Date, x.IsActive, x.ChangeVersion)).ToListAsync(cancellationToken);
+                x.Id, x.CampId, x.MealTypeId, x.Date, x.IsActive, x.ChangeVersion, x.SortOrder)).ToListAsync(cancellationToken);
         JsonElement cateringReferenceData = await new CampOfflineReferenceStore(catering)
             .ExportAsync(entity.Id, cancellationToken,
                 CampMealPlanningPackageStore.ReadRecipeRevisionIds(cateringMealPlanningData, entity.Id));
@@ -331,7 +334,8 @@ public sealed class CampPackageService(
                 entity.EndDate ?? throw new InvalidOperationException("Legacy camps without a period cannot be exported."),
                 entity.StructureMode.ToString(), entity.GetStructureLevelNames()), stages, estimates, foodFactors,
             structureNodes, mealTypes, campMeals, cateringReferenceData, cateringMealPlanningData,
-            new CampParticipantPackageData(3, true, participants, diets)));
+            new CampParticipantPackageData(3, true, participants, diets),
+            await catering.CampMealScheduleStates.Where(x => x.CampId == entity.Id).Select(x => x.Version).SingleOrDefaultAsync(cancellationToken)));
     }
 
     private async Task DemandParticipantEditAsync(Guid campId, CancellationToken ct)

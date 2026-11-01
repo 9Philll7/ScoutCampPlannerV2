@@ -27,7 +27,11 @@ public sealed class MealPlanningStore(CateringDbContext database) : IMealPlannin
     }
 
     public async Task<MealPlanningData> LoadAsync(
-        Guid campId, CancellationToken cancellationToken = default) => new(
+        Guid campId, CancellationToken cancellationToken = default)
+    {
+        long scheduleVersion = await database.CampMealScheduleStates.AsNoTracking().Where(x => x.CampId == campId)
+            .Select(x => x.Version).SingleOrDefaultAsync(cancellationToken);
+        return new(
         await database.MealPlans.AsNoTracking().Where(value => value.CampId == campId)
             .OrderBy(value => value.SortOrder).ToArrayAsync(cancellationToken),
         await database.MealPlanSnapshots.AsNoTracking().Where(value => value.CampId == campId)
@@ -62,7 +66,8 @@ public sealed class MealPlanningStore(CateringDbContext database) : IMealPlannin
                 on choice.CookingUnitMealStateId equals state.Id
             where state.CampId == campId select choice).ToArrayAsync(cancellationToken),
         await database.Set<MealPlanningParticipantConfiguration>().AsNoTracking()
-            .SingleOrDefaultAsync(value => value.CampId == campId, cancellationToken));
+            .SingleOrDefaultAsync(value => value.CampId == campId, cancellationToken), scheduleVersion);
+    }
 
     public async Task<MealPlanningMutationResult> SaveParticipantConfigurationAsync(Guid campId, int expectedVersion,
         MealPlanningDemandMode mode, string assignmentsJson, CancellationToken ct = default)
@@ -220,6 +225,18 @@ public sealed class MealPlanningStore(CateringDbContext database) : IMealPlannin
                 .Select(value => $"E:{value.Entry.Id}:{value.GroupId}:{value.Entry.RecipeRevisionId}:{value.Entry.IsStandard}:{value.Entry.Role}")));
         bool supplyChanged = plan.Version == 0 ||
             !string.Equals(existingSupply, incomingSupply, StringComparison.Ordinal);
+        if (existingGroups.Length > 0 && groups.Any(group =>
+            !groupsById.TryGetValue(group.Id, out var previous) || previous.SortOrder != group.SortOrder))
+        {
+            // Free the unique (plan, meal, order) positions before swaps or replacements.
+            // Both saves remain inside this transaction; IDs and operative references stay intact.
+            long temporaryOrder = Math.Max(existingGroups.Max(group => group.SortOrder),
+                groups.Select(group => group.SortOrder).DefaultIfEmpty(-1).Max()) + 1L;
+            if (temporaryOrder + existingGroups.Length - 1 > int.MaxValue)
+                return Invalid("meal_plan_sort_order_invalid", "Die Sortierreihenfolge ist zu groß.");
+            foreach (var group in existingGroups) group.Update(group.Name, (int)temporaryOrder++);
+            await database.SaveChangesAsync(cancellationToken);
+        }
         plan.Rename(name);
         plan.SetSortOrder(sortOrder);
         foreach (MealPlanEntry removed in existingEntries.Where(value => removedEntryIds.Contains(value.Id)))

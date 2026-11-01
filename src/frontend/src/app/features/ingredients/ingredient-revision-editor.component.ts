@@ -287,7 +287,7 @@ import { IngredientNutritionEditorComponent } from './ingredient-nutrition-edito
               @if (revision.state === draftState && !disabled()) {
                 <button matButton type="button" (click)="addUnitConversion(revision)"
                   [disabled]="!availableConversionUnits(revision).length">
-                  <scp-action-icon name="add"/>Einheit ergÃ¤nzen
+                  <scp-action-icon name="add"/>Einheit ergänzen
                 </button>
               }
             </div>
@@ -958,7 +958,7 @@ export class IngredientRevisionEditorComponent {
   readonly conversionPrecisions = [
     { value: IngredientConversionPrecision.Exact, label: 'Exakt' },
     { value: IngredientConversionPrecision.Average, label: 'Durchschnitt' },
-    { value: IngredientConversionPrecision.Estimated, label: 'GeschÃ¤tzt' }
+    { value: IngredientConversionPrecision.Estimated, label: 'Geschätzt' }
   ] as const;
   private readonly allergenLetters: Readonly<Record<string, string>> = {
     GLUTEN_CEREALS: 'A', CRUSTACEANS: 'B', EGGS: 'C', FISH: 'D', PEANUTS: 'E', SOYBEANS: 'F',

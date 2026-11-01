@@ -38,7 +38,7 @@ public static class ParticipantEndpoints
             var meals = await (from meal in catering.CampMeals.AsNoTracking()
                 join type in catering.CampMealTypes.AsNoTracking() on meal.MealTypeId equals type.Id
                 where meal.CampId == campId && meal.Date >= camp.StartDate && meal.Date <= camp.EndDate
-                orderby meal.Date, type.SortOrder
+                orderby meal.Date, meal.SortOrder, meal.Id
                 select new { meal.Id, meal.Date, type.Name, meal.IsActive }).ToArrayAsync(ct);
             return Results.Ok(new
             {

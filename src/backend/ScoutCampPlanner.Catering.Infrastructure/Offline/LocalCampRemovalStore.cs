@@ -11,6 +11,7 @@ public sealed class LocalCampRemovalStore(CateringDbContext database)
     public async Task DeleteAsync(Guid campId, CancellationToken ct)
     {
         await new CampMealPlanningPackageStore(database).DeleteCampDataAsync(campId, ct);
+        await database.CampMealScheduleStates.Where(x => x.CampId == campId).ExecuteDeleteAsync(ct);
         await database.CampMeals.Where(x => x.CampId == campId).ExecuteDeleteAsync(ct);
         await database.CampMealTypes.Where(x => x.CampId == campId).ExecuteDeleteAsync(ct);
         await database.CampStageFoodFactors.Where(x => x.CampId == campId).ExecuteDeleteAsync(ct);

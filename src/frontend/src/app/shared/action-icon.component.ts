@@ -2,7 +2,7 @@ import { Component, input } from '@angular/core';
 
 export type ActionIconName = 'add' | 'back' | 'camp' | 'download' | 'edit' | 'info' | 'login' | 'logout' |
   'move' | 'organization' | 'planning' | 'refresh' | 'remove' | 'save' | 'structure' | 'up' | 'down' |
-  'expand' | 'collapse' | 'home' | 'recipe' | 'ingredients' | 'people' | 'cooking' | 'warning' | 'question' | 'check' | 'image';
+  'expand' | 'collapse' | 'home' | 'recipe' | 'ingredients' | 'people' | 'cooking' | 'warning' | 'question' | 'check' | 'image' | 'power' | 'lock' | 'ban';
 
 @Component({
   selector: 'scp-action-icon',
@@ -11,6 +11,9 @@ export type ActionIconName = 'add' | 'back' | 'camp' | 'download' | 'edit' | 'in
   template: `
     <svg viewBox="0 0 24 24" focusable="false">
       @switch (name()) {
+        @case ('ban') { <circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/> }
+        @case ('lock') { <rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/> }
+        @case ('power') { <path d="M12 3v9M7 5.5a8 8 0 1 0 10 0"/> }
         @case ('image') { <rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="2"/><path d="m3 17 5-5 4 4 4-6 5 7"/> }
         @case ('cooking') { <path d="M4 10h16l-1 10H5L4 10ZM3 7h18M9 7V4h6v3M2 12h2m16 0h2"/> }
         @case ('warning') { <path d="m12 3 10 18H2L12 3ZM12 9v5m0 3h.01"/> }

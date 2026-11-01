@@ -9,6 +9,8 @@ import { ActionIconComponent } from '../../shared/action-icon.component';
 import { ListPaginationComponent } from '../../shared/list-pagination.component';
 import { MealPlanDocument, MealPlanEntryDocument, MealPlanOfferGroupDocument, MealPlanningOverview, RecipeOption } from './meal-planning-api.service';
 
+export type MealScheduleAction = { kind: 'add'; date: string; name: string } | { kind: 'order'; date: string; mealIds: string[] } | { kind: 'remove'; mealId: string } | { kind: 'activity'; mealId: string; isActive: boolean };
+
 @Component({
   selector: 'scp-meal-plan-workspace', standalone: true,
   imports: [DatePipe, NgTemplateOutlet, FormsModule, MatButtonModule, MatMenuModule, MatTooltipModule, ActionIconComponent, ListPaginationComponent, RecipePlanningHintsComponent],
@@ -19,6 +21,10 @@ export class MealPlanWorkspaceComponent {
   readonly plan = input<MealPlanDocument | null>(null);
   readonly disabled = input(false);
   readonly busy = input(false);
+  readonly planDirty = input(false);
+  readonly schedule = output<MealScheduleAction>();
+  readonly refreshSchedule = output<void>();
+  additionalMealName = "";
   readonly open = output<string>();
   readonly close = output<void>();
   readonly save = output<void>();
@@ -41,7 +47,7 @@ export class MealPlanWorkspaceComponent {
   private nameBeforeRename = '';
   search = ''; recipeSearch = ''; newPlanName = '';
   readonly activeMeals = computed(() => this.data().meals.filter(meal => meal.isActive && meal.isInsideCampPeriod));
-  readonly dates = computed(() => [...new Set(this.activeMeals().map(meal => meal.date))].sort());
+  readonly dates = computed(() => [...new Set(this.data().meals.filter(meal => meal.isInsideCampPeriod).map(meal => meal.date))].sort());
 
   constructor() {
     effect(() => {
@@ -63,7 +69,24 @@ export class MealPlanWorkspaceComponent {
   planPageIndex() { return Math.min(this.listPage(), Math.max(0, Math.ceil(this.filteredPlans().length / 8) - 1)); }
   listedPlans() { return this.filteredPlans().slice(this.planPageIndex() * 8, (this.planPageIndex() + 1) * 8); }
   subscribers(id: string) { return this.data().cookingUnits.filter(unit => unit.standardMealPlanId === id).length; }
+  scheduleOrderLocked() { return this.locked() || this.data().scheduleVersion === undefined; }
+  scheduleLocked() { return this.scheduleOrderLocked() || this.planDirty(); }
+  dayMeals() { return this.data().meals.filter(meal => meal.isInsideCampPeriod && meal.date === this.date()); }
+  addAdditionalMeal() {
+    if (this.scheduleLocked() || !this.additionalMealName.trim()) return;
+    this.schedule.emit({ kind: 'add', date: this.date(), name: this.additionalMealName.trim() });
+  }
+  moveMeal(index: number, direction: number) {
+    if (this.scheduleOrderLocked()) return;
+    const ids = this.dayMeals().map(meal => meal.id); const target = index + direction;
+    if (target < 0 || target >= ids.length) return;
+    [ids[index], ids[target]] = [ids[target], ids[index]];
+    this.schedule.emit({ kind: 'order', date: this.date(), mealIds: ids });
+  }
+  changeActivity(mealId: string, isActive: boolean) { if (!this.scheduleOrderLocked()) this.schedule.emit({ kind: 'activity', mealId, isActive }); }
+  removeAdditionalMeal(mealId: string) { if (!this.scheduleLocked()) this.schedule.emit({ kind: 'remove', mealId }); }
   mealsForDate(date: string) { return this.activeMeals().filter(meal => meal.date === date); }
+  displayedMealsForDate(date: string) { return this.data().meals.filter(meal => meal.isInsideCampPeriod && meal.date === date); }
   private readonly weekdayFormatter = new Intl.DateTimeFormat('de-AT', { weekday: 'short', timeZone: 'UTC' });
   private readonly dayFormatter = new Intl.DateTimeFormat('de-AT', { day: 'numeric', month: 'long', timeZone: 'UTC' });
   weekday(date: string) { return this.weekdayFormatter.format(new Date(`${date}T12:00:00Z`)).replace('.', ''); }
@@ -101,6 +124,15 @@ export class MealPlanWorkspaceComponent {
   removeGroup(group: MealPlanOfferGroupDocument) {
     const plan = this.plan(); if (!plan || this.locked()) return;
     plan.offerGroups = plan.offerGroups.filter(value => value.id !== group.id);
+  }
+  moveGroup(group: MealPlanOfferGroupDocument, direction: -1 | 1) {
+    if (this.locked()) return;
+    const groups = this.groups();
+    const index = groups.findIndex(value => value.id === group.id);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= groups.length) return;
+    [groups[index], groups[target]] = [groups[target], groups[index]];
+    groups.forEach((value, sortOrder) => value.sortOrder = sortOrder);
   }
   toggleGroup(id: string) { const values = new Set(this.collapsedGroups()); values.has(id) ? values.delete(id) : values.add(id); this.collapsedGroups.set(values); }
   makeStandard(group: MealPlanOfferGroupDocument, id: string) {

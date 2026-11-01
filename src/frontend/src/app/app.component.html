@@ -670,7 +670,7 @@
                   }
                   @if (isCateringSection()) {
                     <section class="catering-workspace">
-                      <scp-meal-planning [campId]="camp.id" [disabled]="!camp.canEdit || camp.isFrozen" [section]="cateringSection()" [target]="cateringTarget()" (navigate)="openCateringTarget($event)"/>
+                      <scp-meal-planning [campId]="camp.id" [disabled]="!camp.canEdit || camp.isFrozen" [section]="cateringSection()" [target]="cateringTarget()" (navigate)="openCateringTarget($event)" (scheduleChanged)="refreshMealSchedule(camp.id)"/>
                     </section>
                     @if (campSection() === 'catering-plans' && !mealPlanningEditor()?.editingPlan()) {
                     <details class="catering-meal-settings"><summary>Lagermahlzeiten und Berechnungsgrundlagen</summary>

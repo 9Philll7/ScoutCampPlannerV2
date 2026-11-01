@@ -6,7 +6,7 @@ export type MealSubscriptionState = 0 | 1 | 2;
 export type OperationalStatus = 0 | 1 | 2;
 export type MealEntryRole = 0 | 1 | 2 | 3 | 4 | 5;
 
-export interface MealSlot { id: string; mealTypeId: string; mealTypeName: string; date: string; isActive: boolean; isInsideCampPeriod: boolean; changeVersion: number; }
+export interface MealSlot { id: string; mealTypeId: string; mealTypeName: string; date: string; isActive: boolean; isInsideCampPeriod: boolean; changeVersion: number; sortOrder?: number; kind?: number; }
 export interface StructureNodeOption { id: string; parentId: string | null; name: string; }
 export interface MealPlanSummary { id: string; name: string; sortOrder: number; version: number; missingActiveMealCount: number; }
 export interface RecipeOption { revisionId: string; recipeId: string; name: string; revisionNumber: number; isPortionBased: boolean; suggestedRole: MealEntryRole | null; }
@@ -57,7 +57,7 @@ export interface CommonSupplyChoice {
 export interface SupplyProblem { category: number; code: number; requirementGroupKey: string | null; referenceId: string | null; positionPath: string | null; }
 export interface SupplyPositionOption { path: string; name: string; choices: { label: string; selection: { replacementRuleId: string | null; variantKey: string | null } | null }[]; }
 export interface MealPlanningOverview {
-  campId: string; meals: MealSlot[]; structureNodes: StructureNodeOption[]; mealPlans: MealPlanSummary[];
+  campId: string; scheduleVersion?: number; meals: MealSlot[]; structureNodes: StructureNodeOption[]; mealPlans: MealPlanSummary[];
   mealPlanDocuments: MealPlanDocument[];
   cookingUnitGroups: CookingUnitGroup[]; cookingUnits: CookingUnit[]; operationalMeals: CookingUnitMeal[];
   recipeOptions: RecipeOption[]; coverageWarnings: string[];
@@ -72,6 +72,18 @@ export class MealPlanningApiService {
 
   overview(campId: string) { return this.http.get<MealPlanningOverview>(`${this.baseUrl}/api/camps/${campId}/meal-planning`, this.options); }
   recipeHints(campId: string, revisionId: string) { return this.http.get<RecipePlanningHints>(`${this.baseUrl}/api/camps/${campId}/meal-planning/recipes/${revisionId}/hints`, this.options); }
+  addAdditionalMeal(campId: string, date: string, name: string, expectedScheduleVersion: number) {
+    return this.http.post<{ scheduleVersion: number }>(`${this.baseUrl}/api/camps/${campId}/meals/additional`, { date, name, expectedScheduleVersion }, this.options);
+  }
+  orderDayMeals(campId: string, date: string, mealIds: string[], expectedScheduleVersion: number) {
+    return this.http.put<{ scheduleVersion: number }>(`${this.baseUrl}/api/camps/${campId}/meals/days/${date}/order`, { mealIds, expectedScheduleVersion }, this.options);
+  }
+  removeAdditionalMeal(campId: string, mealId: string, version: number) {
+    return this.http.delete<{ outcome: string; scheduleVersion: number }>(`${this.baseUrl}/api/camps/${campId}/meals/${mealId}`, { ...this.options, headers: { 'If-Match': `"${version}"` } });
+  }
+  setMealActivity(campId: string, mealId: string, isActive: boolean, expectedScheduleVersion: number) {
+    return this.http.put<void>(`${this.baseUrl}/api/camps/${campId}/meals/${mealId}/activity`, { isActive, expectedScheduleVersion }, this.options);
+  }
   plan(campId: string, planId: string) { return this.http.get<MealPlanDocument>(`${this.baseUrl}/api/camps/${campId}/meal-plans/${planId}`, this.options); }
   createPlan(campId: string, name: string) { return this.http.post<MutationResult>(`${this.baseUrl}/api/camps/${campId}/meal-plans`, { name }, this.options); }
   reorderPlans(campId: string, mealPlanIds: string[]) { return this.http.put<MutationResult>(`${this.baseUrl}/api/camps/${campId}/meal-plans/order`, { mealPlanIds }, this.options); }

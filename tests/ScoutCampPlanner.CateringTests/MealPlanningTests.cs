@@ -13,6 +13,56 @@ namespace ScoutCampPlanner.CateringTests;
 public sealed partial class MealPlanningTests
 {
     [Fact]
+    public async Task Store_swaps_existing_component_order_without_replacing_ids_or_supply_versions()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        Guid campId = Guid.NewGuid(), planId = Guid.NewGuid(), typeId = Guid.NewGuid(), mealId = Guid.NewGuid();
+        fixture.Database.AddRange(new MealPlan(planId, campId, "Plan"),
+            new CampMealType(typeId, campId, "Mittagessen", 0), new CampMeal(mealId, campId, typeId, new(2027, 7, 2)));
+        await fixture.Database.SaveChangesAsync(ct);
+        var first = new MealPlanOfferGroupDocument(Guid.NewGuid(), mealId, "Hauptspeise", 0,
+            [new(Guid.NewGuid(), Guid.NewGuid(), true, null, null, null, 0)]);
+        var second = new MealPlanOfferGroupDocument(Guid.NewGuid(), mealId, "Beilage", 1,
+            [new(Guid.NewGuid(), Guid.NewGuid(), true, null, null, null, 0)]);
+        var store = new MealPlanningStore(fixture.Database);
+        var created = await store.SaveMealPlanAsync(campId, planId, 0, "Plan", 0, [first, second], "{}", DateTimeOffset.UtcNow, ct);
+        Assert.True(created.IsSuccess);
+        var reordered = await store.SaveMealPlanAsync(campId, planId, 1, "Plan", 0,
+            [first with { SortOrder = 1 }, second with { SortOrder = 0 }], "{}", DateTimeOffset.UtcNow, ct);
+        Assert.True(reordered.IsSuccess);
+        Assert.Equal(1, reordered.Version);
+        fixture.Database.ChangeTracker.Clear();
+        Assert.Equal([second.Id, first.Id], await fixture.Database.MealPlanOfferGroups.OrderBy(group => group.SortOrder).Select(group => group.Id).ToArrayAsync(ct));
+        Assert.Equal(2, await fixture.Database.MealPlanEntries.CountAsync(ct));
+        Assert.Equal(first.Entries[0].RecipeRevisionId, (await fixture.Database.MealPlanEntries.SingleAsync(entry => entry.Id == first.Entries[0].Id, ct)).RecipeRevisionId);
+        Assert.Equal(1, await fixture.Database.MealPlanSnapshots.CountAsync(ct));
+    }
+
+    [Fact]
+    public async Task Saving_a_plan_preserves_recipe_components_of_deactivated_meals()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var context = CreateContext(includeCompletePlan: true);
+        var store = new RecordingStore(context.Data);
+        var service = new MealPlanningService(store, new PlanningLookup(context.Camp), TimeProvider.System);
+        var document = await service.GetMealPlanAsync(context.CampId, context.PlanId, ct);
+        Assert.NotNull(document);
+        Assert.NotEmpty(document.OfferGroups);
+        context.Data.Meals.Single(meal => meal.Id == context.MealId).SetActive(false);
+
+        var result = await service.SaveMealPlanAsync(context.CampId, context.PlanId, Guid.NewGuid(),
+            new(document.Version, document.Name, document.SortOrder, document.OfferGroups), ct);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, store.SavePlanCalls);
+        var overview = await service.GetOverviewAsync(context.CampId, ct);
+        Assert.NotNull(overview);
+        Assert.Equal(0, overview.MealPlans.Single().MissingActiveMealCount);
+        Assert.NotEmpty(overview.MealPlanDocuments.Single().OfferGroups.Single().Entries);
+    }
+
+    [Fact]
     public async Task Plan_requires_exactly_one_standard_and_no_duplicate_revision_per_group()
     {
         TestContextData context = CreateContext();

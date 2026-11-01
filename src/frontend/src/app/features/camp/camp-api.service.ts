@@ -32,9 +32,9 @@ export interface CampStageFoodFactor { campStageId: string; stageName: string; f
 export interface WeightedStageTotal extends CampStageFoodFactor {
   childYouthCount: number; leaderCount: number; foodUnits: number;
 }
-export interface CampMealType { id: string; name: string; sortOrder: number; }
+export interface CampMealType { kind?: number; id: string; name: string; sortOrder: number; }
 export interface CampMeal { id: string; mealTypeId: string; mealTypeName: string; date: string; isActive: boolean; }
-export interface CampMealPlan { mealTypes: CampMealType[]; meals: CampMeal[]; }
+export interface CampMealPlan { scheduleVersion?: number; mealTypes: CampMealType[]; meals: CampMeal[]; }
 export type IngredientScope = 'Central' | 'Tenant' | 'Camp';
 export type MeasurementDimension = 'Mass' | 'Volume' | 'Count';
 export type IngredientConflictType = 'Allergen' | 'Intolerance' | 'DietaryRequirement';
@@ -159,13 +159,13 @@ export class CampApiService {
       { withCredentials: true });
   }
 
-  updateMealTypes(campId: string, names: string[]) {
-    return this.http.put<void>(`${this.baseUrl}/api/camps/${campId}/meal-types`, { names }, { withCredentials: true });
+  updateMealTypes(campId: string, names: string[], expectedScheduleVersion?: number) {
+    return this.http.put<void>(`${this.baseUrl}/api/camps/${campId}/meal-types`, { names, expectedScheduleVersion }, { withCredentials: true });
   }
 
-  updateMealActivity(campId: string, mealId: string, isActive: boolean) {
+  updateMealActivity(campId: string, mealId: string, isActive: boolean, expectedScheduleVersion?: number) {
     return this.http.put<void>(`${this.baseUrl}/api/camps/${campId}/meals/${mealId}/activity`,
-      { isActive }, { withCredentials: true });
+      { isActive, expectedScheduleVersion }, { withCredentials: true });
   }
 
   create(tenantId: string, request: CreateCampRequest) {

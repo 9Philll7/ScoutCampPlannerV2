@@ -157,6 +157,9 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                     b.Property<Guid>("MealTypeId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("MealTypeId");
@@ -167,6 +170,21 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                     b.ToTable("CampMeals", "catering");
                 });
 
+            modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CampMealScheduleState", b =>
+                {
+                    b.Property<Guid>("CampId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("CampId");
+
+                    b.ToTable("CampMealScheduleStates", "catering");
+                });
+
             modelBuilder.Entity("ScoutCampPlanner.Catering.Domain.CampMealType", b =>
                 {
                     b.Property<Guid>("Id")
@@ -175,6 +193,9 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
 
                     b.Property<Guid>("CampId")
                         .HasColumnType("uuid");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Name")
                         .IsRequired()

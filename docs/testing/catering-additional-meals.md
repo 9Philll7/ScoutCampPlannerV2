@@ -1,0 +1,26 @@
+# Abnahme: regelmäßige und zusätzliche Mahlzeiten
+
+Stand: 2026-11-01. Voraussetzung: aktuelle API mit Migration `AdditionalDayMeals`, Frontend und ein bearbeitbares Testlager mit mehreren Tagen. Vorhandenen dokumentierten Testzugang verwenden.
+
+1. **Zusatz nur für einen Tag:** Verpflegung → Menüpläne → Plan öffnen → Tag auswählen → „Mahlzeiten“. „Mitternachtssnack“ hinzufügen. Der Zusatz erscheint hinter den bisherigen Mahlzeiten dieses Tages. An anderen Tagen entsteht kein neuer Slot. In einem anderen Menüplan desselben Lagers ist derselbe Slot verfügbar.
+2. **Normale Planung:** Den Dialog schließen, den Zusatz auswählen und eine Komponente mit Standardrezept anlegen. Der Menüplan wird weiterhin ausdrücklich über „Speichern“ gespeichert; ein unbelegter aktiver Zusatz zählt bis dahin als offen.
+3. **Schutz des Entwurfs:** Eine Planänderung vornehmen. „Mahlzeiten“, Tagesreihenfolge und Aktivierung/Deaktivierung bleiben bedienbar; der Entwurf bleibt unverändert und ungespeichert. Nur Hinzufügen und Entfernen bleiben bis zum Speichern oder Verwerfen gesperrt. Auch nach dem Deaktivieren einer Mahlzeit muss sich der Menüplan mit ihren vorhandenen Komponenten und Rezepten speichern lassen.
+4. **Tagesreihenfolge:** Im Dialog eine Mahlzeit nach vorne/hinten verschieben. Tabs, Anwesenheitsauswahl und operative Mahlzeitennavigation müssen dieselbe Reihenfolge zeigen. Ein anderer Tag bleibt unverändert. Die Umordnung allein macht Mengenberechnungen nicht veraltet.
+5. **Entfallen/Reaktivieren:** Eine Mahlzeit mit gespeicherten oder ungespeicherten Rezeptkomponenten als „Entfällt“ markieren und wieder aktivieren. Sie bleibt im Verwaltungsdialog erreichbar und wird als ausgegrauter Tab mit „Entfällt“ angezeigt. Auch ein Tag, an dem alle Mahlzeiten entfallen, bleibt in der Tagenavigation erreichbar. Deaktivierte Mahlzeiten zählen nicht als offene Angebote. Entfallen ist lagerweit und unabhängig von „Keine Versorgung“ einer einzelnen Kocheinheit.
+6. **Entfernen:** Einen frisch angelegten, unbenutzten Zusatz entfernen: Slot verschwindet. Einen Zusatz mit gespeicherter Komponente oder anderem Bezug entfernen: Slot wird deaktiviert und eine entsprechende Meldung erscheint; vorhandene Zuordnungen bleiben gespeichert.
+7. **Namen:** Derselbe Zusatzname darf an einem anderen Tag erneut verwendet werden. Ein zweiter gleich benannter Slot am selben Tag wird mit Hinweis auf Reaktivierung abgewiesen. Ein Name einer regelmäßigen Mahlzeit wird nicht als Zusatz übernommen.
+8. **Zeitraum:** Lagerzeitraum verkürzen und wieder erweitern. Vorhandene Zusatzslots samt IDs/Belegungen/Aktivität bleiben erhalten; zusätzliche neue Tage bekommen nur regelmäßige Mahlzeiten. Bewusst deaktivierte Slots bleiben deaktiviert.
+9. **Mehrere Sitzungen:** In zwei Sitzungen denselben Stand öffnen. Nach einer Rahmenänderung in Sitzung A muss eine Änderung mit dem alten Stand in B abgewiesen werden. Über „Neu laden“ im Dialog den Rahmen aktualisieren; kein automatisches Wiederholen der Mutation.
+10. **Berechtigungen und Pakete:** Viewer und eingefrorene Lager dürfen den Rahmen nicht ändern. Cloud→Local→Cloud muss Zusätze, Reihenfolge und vorhandene Referenzen einschließlich außerhalb des Lagerzeitraums liegender Slots erhalten. Ältere Anwendungen unterstützen das neue äußere Paketformat 2 nicht.
+11. **Komponentenreihenfolge:** Mindestens zwei Komponenten derselben Mahlzeit mit Rezepten speichern. Über die Auf-/Ab-Pfeile im Komponentenkopf tauschen und den Menüplan speichern. Nach erneutem Öffnen bleibt die Reihenfolge erhalten; andere Mahlzeiten, Komponenten-IDs und Rezeptzuordnungen bleiben unverändert. Verwerfen verwirft auch die Umordnung. Erste/letzte Position sowie Leseansicht und laufendes Speichern sperren die jeweils unzulässigen Aktionen.
+
+## Automatischer Nachweis und Grenzen
+
+- 92 ausgewählte Platform-/HTTP-Tests grün, darunter neue Tagesoperationen, Namenskonflikte, alle geprüften Referenzarten, zwei konkurrierende Schreiber und Audit-Rollback.
+- 318 Catering-Tests grün, einschließlich Erhalt und Speichern von Komponenten deaktivierter Mahlzeiten und kollisionsfreiem Tausch gespeicherter Komponentenpositionen.
+- 19 Pakettests grün; der neue SQLite-Rundlauf prüft explizit Zusatzart, Slot-ID, Aktivität, ChangeVersion, Tagesreihenfolge, Rahmenversion und Slots außerhalb des Zeitraums. PostgreSQL-Fälle des bestehenden Testprojekts kehren ohne konfigurierte Testdatenbank vorzeitig zurück und sind kein Live-Nachweis.
+- 13 SQLite-Migrationstests grün, einschließlich Upgrade alter Mahlzeiten mit Erhalt von IDs/Aktivität/Versionen und Initialisierung der Tagesreihenfolge.
+- 145 Frontend-Tests grün, einschließlich Aktivitätsänderungen mit offenen Rezeptänderungen, ausgegrauter Tabs, korrekter Umlaute, aufklappbarem Rezepthinweis und mahlzeitbezogener Komponentenreihenfolge.
+- Lokale Test-API neu gestartet; authentifizierter HTTP-Lesetest auf `/meal-plan` und `/meal-planning` erfolgreich. Dabei wurden keine Angebote oder Zusatzmahlzeiten im Testlager angelegt.
+- Edge-Verbindung meldet „The browser access host is unavailable“: keine visuelle Browserabnahme und keine neuen Screenshots.
+- PostgreSQL-Migration vorhanden, aber keine laufende PostgreSQL-Testdatenbank/Docker-Engine verfügbar. Live-Ausführung dort bleibt offen.

@@ -18,6 +18,7 @@ public sealed class CateringDbContext(DbContextOptions<CateringDbContext> option
     public DbSet<CookingUnitMealOfferTarget> CookingUnitMealOfferTargets => Set<CookingUnitMealOfferTarget>();
     public DbSet<CookingUnitMealRecipeChoice> CookingUnitMealRecipeChoices => Set<CookingUnitMealRecipeChoice>();
     public DbSet<CampMealType> CampMealTypes => Set<CampMealType>();
+    public DbSet<CampMealScheduleState> CampMealScheduleStates => Set<CampMealScheduleState>();
     public DbSet<CampMeal> CampMeals => Set<CampMeal>();
     public DbSet<TenantStageFoodFactor> TenantStageFoodFactors => Set<TenantStageFoodFactor>();
     public DbSet<CampStageFoodFactor> CampStageFoodFactors => Set<CampStageFoodFactor>();
@@ -68,6 +69,12 @@ public sealed class CateringDbContext(DbContextOptions<CateringDbContext> option
             entity.Property(value => value.Name).HasMaxLength(200);
             entity.Property(value => value.Version).IsConcurrencyToken();
             entity.Property(value => value.DefinitionJson).IsRequired();
+        });
+        modelBuilder.Entity<CampMealScheduleState>(entity =>
+        {
+            entity.ToTable("CampMealScheduleStates");
+            entity.HasKey(x => x.CampId);
+            entity.Property(x => x.Version).IsConcurrencyToken();
         });
         modelBuilder.Entity<CampMealType>(entity =>
         {
