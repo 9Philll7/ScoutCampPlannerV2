@@ -10,6 +10,138 @@ namespace ScoutCampPlanner.CateringTests;
 
 public sealed partial class MealPlanningTests
 {
+    [Fact]
+    public async Task Meal_participant_filter_changes_only_this_meals_demand_and_survives_recipe_saves()
+    {
+        var ct = TestContext.Current.CancellationToken; var context = CreateContext(true, true);
+        var f = new SupplySolutionTests.Fixture(); var recipe = f.Recipe(f.Position(f.Ingredient(IngredientPropertyState.DoesNotContain, f.Plant)));
+        f.Recipes[context.Data.Entries[0].RecipeRevisionId] = f.Recipes[recipe];
+        var state = new CookingUnitMealState(Guid.NewGuid(), context.CampId, context.UnitId, context.MealId);
+        state.SaveManualSupply(new ManualSupplyDocument([], [], false, CookingUnitParticipantFilter.SpecialCateringOnly).Serialize());
+        var store = new RecordingStore(context.Data with { MealStates = [state] });
+        var people = new ParticipantLookup(); people.Values.AddRange([Person(context.LeafNodeId), Person(context.LeafNodeId, true)]);
+        var service = new MealPlanningService(store, new PlanningLookup(context.Camp), TimeProvider.System, people, f);
+        await service.SaveParticipantConfigurationAsync(context.CampId, new(0, MealPlanningDemandMode.UseActualParticipants), ct);
+        await service.CalculateAsync(context.CampId, context.UnitId, context.MealId, ct);
+        var current = Assert.Single((await service.GetOverviewAsync(context.CampId, ct))!.OperationalMeals);
+        Assert.Equal(1, current.CalculatedDemand); Assert.Equal(CookingUnitParticipantFilter.SpecialCateringOnly, current.ParticipantFilterOverride);
+        Assert.Equal(CookingUnitParticipantFilter.All, context.Data.CookingUnits[0].ParticipantFilter);
+        Assert.True((await service.SaveSupplyAsync(context.CampId, context.UnitId, context.MealId, new(current.SupplyVersion, []), ct)).IsSuccess);
+        Assert.Equal(CookingUnitParticipantFilter.SpecialCateringOnly, MealPlanningService.ReadParticipantFilterOverride(state));
+    }
+
+    [Fact]
+    public async Task Suggestion_preview_is_read_only_and_apply_revalidates_identity_and_version()
+    {
+        var ct = TestContext.Current.CancellationToken; var context = CreateContext(true, true);
+        var f = new SupplySolutionTests.Fixture();
+        var bad = f.Recipe(f.Position(f.Ingredient(IngredientPropertyState.Contains, f.Plant)));
+        var good = f.Recipe(f.Position(f.Ingredient(IngredientPropertyState.DoesNotContain, f.Plant)));
+        f.Recipes[context.Data.Entries[0].RecipeRevisionId] = f.Recipes[bad];
+        context.Data.CookingUnits[0].SetTogetherPreference(CookingTogetherPreference.AlwaysTogether);
+        var store = new RecordingStore(context.Data) { AccessibleRecipes = [new(good, Guid.NewGuid(), "Good", 1, true)] };
+        var people = new ParticipantLookup(); people.Values.AddRange([Person(context.LeafNodeId), Person(context.LeafNodeId) with { AllergenIds = [f.Allergen] }]);
+        var service = new MealPlanningService(store, new PlanningLookup(context.Camp), TimeProvider.System, people, f);
+        await service.SaveParticipantConfigurationAsync(context.CampId, new(0, MealPlanningDemandMode.UseActualParticipants), ct);
+        await service.CalculateAsync(context.CampId, context.UnitId, context.MealId, ct);
+        var preview = (await service.GetSupplySuggestionsAsync(context.CampId, context.UnitId, context.MealId, ct))!;
+        var option = Assert.Single(Assert.Single(preview.Offers).Options, value => value.Scope == "whole");
+        Assert.Empty((await service.GetOverviewAsync(context.CampId, ct))!.OperationalMeals.Single().ManualSupplySolutions!);
+        // Free manual choices are allowed; read-only preview exposes their conflicts.
+        var unsuitable = option.Solution with { RecipeRevisionId = bad, Source = SupplyDecisionSource.Manual };
+        var assessed = await service.PreviewSupplyAsync(context.CampId, context.UnitId, context.MealId,
+            new(preview.ExpectedVersion, [unsuitable]), ct);
+        Assert.Contains(Assert.Single(assessed!).Problems, value => value.Code == MealPlanningProblemCode.AllergenConflict);
+        Assert.Empty((await service.GetOverviewAsync(context.CampId, ct))!.OperationalMeals.Single().ManualSupplySolutions!);
+        Assert.Equal(MealPlanningMutationStatus.Conflict, (await service.ApplySupplySuggestionAsync(context.CampId, context.UnitId, context.MealId, new(preview.ExpectedVersion - 1, option.Id), ct)).Status);
+        Assert.Equal(MealPlanningMutationStatus.Conflict, (await service.ApplySupplySuggestionAsync(context.CampId, context.UnitId, context.MealId, new(preview.ExpectedVersion, "forged"), ct)).Status);
+        store.AccessibleRecipes = [];
+        Assert.Equal(MealPlanningMutationStatus.Conflict, (await service.ApplySupplySuggestionAsync(context.CampId, context.UnitId, context.MealId, new(preview.ExpectedVersion, option.Id), ct)).Status);
+        store.AccessibleRecipes = [new(good, Guid.NewGuid(), "Good", 1, true)];
+        Assert.True((await service.ApplySupplySuggestionAsync(context.CampId, context.UnitId, context.MealId, new(preview.ExpectedVersion, option.Id), ct)).IsSuccess);
+        await service.CalculateAsync(context.CampId, context.UnitId, context.MealId, ct);
+        var state = Assert.Single((await service.GetOverviewAsync(context.CampId, ct))!.OperationalMeals);
+        Assert.Empty(state.Supply!.Problems); Assert.Equal(good, Assert.Single(state.Supply.Solutions).RecipeRevisionId);
+        Assert.True((await service.SaveSupplyAsync(context.CampId, context.UnitId, context.MealId,
+            new(state.SupplyVersion, [unsuitable], [], true), ct)).IsSuccess);
+        await service.CalculateAsync(context.CampId, context.UnitId, context.MealId, ct);
+        state = Assert.Single((await service.GetOverviewAsync(context.CampId, ct))!.OperationalMeals);
+        Assert.Contains(state.Supply!.Problems, value => value.Code == MealPlanningProblemCode.AllergenConflict);
+
+    }
+
+    [Fact]
+    public async Task Complete_own_supply_is_atomic_ignores_plan_changes_and_can_return_to_the_plan()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var context = CreateContext(true, true);
+        var f = new SupplySolutionTests.Fixture();
+        var recipe = f.Recipe(f.Position(f.Ingredient(IngredientPropertyState.DoesNotContain, f.Plant)));
+        f.Recipes[context.Data.Entries[0].RecipeRevisionId] = f.Recipes[recipe];
+        var store = new RecordingStore(context.Data);
+        var service = new MealPlanningService(store, new PlanningLookup(context.Camp), TimeProvider.System, supplyReferences: f);
+        await service.CalculateAsync(context.CampId, context.UnitId, context.MealId, ct);
+        var state = Assert.Single((await service.GetOverviewAsync(context.CampId, ct))!.OperationalMeals);
+        var manual = state.Supply!.Solutions.Select(value => value with { Source = SupplyDecisionSource.Manual }).ToArray();
+        Assert.True((await service.SaveSupplyAsync(context.CampId, context.UnitId, context.MealId,
+            new(state.SupplyVersion, manual, [], true), ct)).IsSuccess);
+        Assert.Equal(MealPlanningMutationStatus.Conflict, (await service.SaveSupplyAsync(context.CampId, context.UnitId, context.MealId,
+            new(state.SupplyVersion, [], [], false), ct)).Status);
+        await service.CalculateAsync(context.CampId, context.UnitId, context.MealId, ct);
+        state = Assert.Single((await service.GetOverviewAsync(context.CampId, ct))!.OperationalMeals);
+        Assert.True(state.CompleteOwnSupply); Assert.Equal(OperationalMealPlanStatus.Current, state.Status);
+        Assert.Null(state.MealPlanId); Assert.All(state.Supply!.Solutions, value => Assert.Equal(SupplyDecisionSource.Manual, value.Source));
+        // Mutating the plan entry would invalidate a plan-following calculation.
+        context.Data.Entries[0].Update(Guid.NewGuid(), true, null, null, null, 0);
+        state = Assert.Single((await service.GetOverviewAsync(context.CampId, ct))!.OperationalMeals);
+        Assert.Equal(OperationalMealPlanStatus.Current, state.Status);
+        await service.CalculateAsync(context.CampId, context.UnitId, context.MealId, ct);
+        state = Assert.Single((await service.GetOverviewAsync(context.CampId, ct))!.OperationalMeals);
+        Assert.True(state.CompleteOwnSupply); Assert.Equal(manual[0].RecipeRevisionId, state.Supply!.Solutions[0].RecipeRevisionId);
+        // Restore an available recipe and then explicitly rejoin the plan.
+        context.Data.Entries[0].Update(manual[0].RecipeRevisionId, true, null, null, null, 0);
+        Assert.True((await service.SaveSupplyAsync(context.CampId, context.UnitId, context.MealId,
+            new(state.SupplyVersion, [], [], false), ct)).IsSuccess);
+        await service.CalculateAsync(context.CampId, context.UnitId, context.MealId, ct);
+        state = Assert.Single((await service.GetOverviewAsync(context.CampId, ct))!.OperationalMeals);
+        Assert.False(state.CompleteOwnSupply); Assert.Equal(context.PlanId, state.MealPlanId);
+        Assert.All(state.Supply!.Solutions, value => Assert.Equal(SupplyDecisionSource.Automatic, value.Source));
+    }
+
+    [Fact]
+    public async Task Ask_direction_is_persisted_versioned_and_reset_without_losing_old_array_compatibility()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var context = CreateContext(true, true);
+        var f = new SupplySolutionTests.Fixture();
+        var recipe = f.Recipe(f.Position(f.Ingredient(IngredientPropertyState.Contains, f.Plant)) with {
+            Replacements = [f.Replacement(f.Ingredient(IngredientPropertyState.DoesNotContain, f.Plant))] });
+        f.Recipes[context.Data.Entries[0].RecipeRevisionId] = f.Recipes[recipe];
+        var store = new RecordingStore(context.Data);
+        var people = new ParticipantLookup(); people.Values.AddRange([Person(context.LeafNodeId), Person(context.LeafNodeId) with { AllergenIds = [f.Allergen] }]);
+        var service = new MealPlanningService(store, new PlanningLookup(context.Camp), TimeProvider.System, people, f);
+        await service.SaveParticipantConfigurationAsync(context.CampId, new(0, MealPlanningDemandMode.UseActualParticipants), ct);
+        await service.CalculateAsync(context.CampId, context.UnitId, context.MealId, ct);
+        var state = Assert.Single((await service.GetOverviewAsync(context.CampId, ct))!.OperationalMeals);
+        Assert.Empty(state.Supply!.Solutions); var offer = context.Data.OfferGroups[0].Id;
+        SupplyScenarioSelection[] selection = [new(offer, CookingTogetherPreference.NeverTogether)];
+        Assert.True((await service.SaveSupplyAsync(context.CampId, context.UnitId, context.MealId, new(state.SupplyVersion, [], selection), ct)).IsSuccess);
+        Assert.Equal(MealPlanningMutationStatus.Conflict, (await service.SaveSupplyAsync(context.CampId, context.UnitId, context.MealId, new(state.SupplyVersion, [], selection), ct)).Status);
+        service = new(store, new PlanningLookup(context.Camp), TimeProvider.System, people, f);
+        await service.CalculateAsync(context.CampId, context.UnitId, context.MealId, ct);
+        state = Assert.Single((await service.GetOverviewAsync(context.CampId, ct))!.OperationalMeals);
+        Assert.Equal(2, state.Supply!.Solutions.Count); Assert.Empty(state.Supply.Problems);
+        Assert.Equal(CookingTogetherPreference.NeverTogether, Assert.Single(state.ManualScenarioSelections!).Preference);
+        Assert.True((await service.SaveSupplyAsync(context.CampId, context.UnitId, context.MealId, new(state.SupplyVersion, [], []), ct)).IsSuccess);
+        await service.CalculateAsync(context.CampId, context.UnitId, context.MealId, ct);
+        state = Assert.Single((await service.GetOverviewAsync(context.CampId, ct))!.OperationalMeals);
+        Assert.Empty(state.Supply!.Solutions); Assert.Empty(state.ManualScenarioSelections!);
+        Assert.Contains(state.Supply.Problems, value => value.Code == MealPlanningProblemCode.CommonSupplyDecisionRequired);
+        Assert.Equal(MealPlanningMutationStatus.Invalid, (await service.SaveSupplyAsync(context.CampId, context.UnitId, context.MealId,
+            new(state.SupplyVersion, [], [new(offer, (CookingTogetherPreference)77)]), ct)).Status);
+        Assert.Equal(MealPlanningMutationStatus.Invalid, (await service.SaveSupplyAsync(context.CampId, context.UnitId, context.MealId,
+            new(state.SupplyVersion, [], [new(Guid.NewGuid(), CookingTogetherPreference.AlwaysTogether)]), ct)).Status);
+    }
     [Theory]
     [InlineData(CookingTogetherPreference.AlwaysTogether, 1, false)]
     [InlineData(CookingTogetherPreference.Ask, 0, true)]
@@ -83,6 +215,7 @@ public sealed partial class MealPlanningTests
     {
         var ct = TestContext.Current.CancellationToken;
         var context = CreateContext(true, true);
+        context.Data.CookingUnits[0].SetTogetherPreference(CookingTogetherPreference.AlwaysTogether);
         var f = new SupplySolutionTests.Fixture();
         var recipe = f.Recipe(f.Position(f.Ingredient(IngredientPropertyState.DoesNotContain, f.Plant, 0)));
         f.Recipes[context.Data.Entries[0].RecipeRevisionId] = f.Recipes[recipe];
@@ -125,8 +258,12 @@ public sealed partial class MealPlanningTests
         Assert.Equal(OperationalMealPlanStatus.Stale, (await service.GetOverviewAsync(context.CampId, ct))!.OperationalMeals.Single(value => value.CampMealId == context.MealId).Status);
     }
 
-    [Fact]
-    public async Task Persisted_manual_supply_and_preference_survive_package_replace_and_reject_old_version()
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task Persisted_manual_supply_and_preference_survive_package_replace_and_reject_old_version(bool withScenario, bool completeOwnSupply)
     {
         var ct = TestContext.Current.CancellationToken;
         await using var fixture = await DatabaseFixture.CreateAsync();
@@ -141,7 +278,8 @@ public sealed partial class MealPlanningTests
         var solution = new SupplySolution(Guid.NewGuid(), Guid.NewGuid(), null, 2,
             new Dictionary<string, ScoutCampPlanner.Catering.Application.Recipes.RecipePositionSelection>(),
             [new(new RequirementSignature(null, [], []).Key, 2)], SupplyDecisionSource.Manual);
-        var json = JsonSerializer.Serialize(new[] { solution }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var json = withScenario || completeOwnSupply ? new ManualSupplyDocument([solution], withScenario ? [new(null, CookingTogetherPreference.NeverTogether)] : [], completeOwnSupply).Serialize()
+            : JsonSerializer.Serialize(new[] { solution }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         var store = new MealPlanningStore(fixture.Database);
         Assert.True((await store.SaveSupplyStateAsync(context.CampId, unit.Id, context.MealId, 0, json, null, null, ct)).IsSuccess);
         Assert.Equal(MealPlanningMutationStatus.Conflict,
@@ -162,6 +300,8 @@ public sealed partial class MealPlanningTests
         fixture.Database.ChangeTracker.Clear();
         var restored = await fixture.Database.CookingUnitMealStates.SingleAsync(ct);
         Assert.Equal(json, restored.ManualSupplySolutionsJson);
+        Assert.Equal(completeOwnSupply, ManualSupplyDocument.Read(restored.ManualSupplySolutionsJson).CompleteOwnSupply);
+        Assert.Equal(withScenario ? 1 : 0, ManualSupplyDocument.Read(restored.ManualSupplySolutionsJson).ScenarioSelections.Count);
         Assert.Equal(2, restored.SupplyVersion);
         Assert.Equal(verificationJson, restored.VerificationSnapshotJson);
         Assert.Equal(new string('A', 64), restored.VerificationFingerprint);
@@ -173,6 +313,7 @@ public sealed partial class MealPlanningTests
     {
         var ct = TestContext.Current.CancellationToken;
         var context = CreateContext(true, true);
+        context.Data.CookingUnits[0].SetTogetherPreference(CookingTogetherPreference.AlwaysTogether);
         var references = new SupplySolutionTests.Fixture();
         var recipe = references.Recipe(references.Position(references.Ingredient(IngredientPropertyState.DoesNotContain, references.Plant)));
         references.Recipes[context.Data.Entries[0].RecipeRevisionId] = references.Recipes[recipe];

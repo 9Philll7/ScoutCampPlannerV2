@@ -36,6 +36,9 @@ export class ParticipantPlanningComponent {
   readonly configuration = signal<Configuration | null>(null); readonly error = signal(''); readonly busy = signal(false);
   private readonly http = inject(HttpClient); private readonly base = inject(API_BASE_URL);
   private generation = 0;
+  private baselineMode: number | null = null;
+  hasPendingChanges() { return !!this.configuration() && this.configuration()!.demandMode !== this.baselineMode; }
+  discardChanges() { if (!this.busy() && this.configuration() && this.baselineMode !== null) this.configuration()!.demandMode = this.baselineMode; }
   constructor() { effect(() => { this.campId(); this.units(); this.load(); }); }
   load() {
     const generation = ++this.generation; const units = this.units(); this.configuration.set(null); this.error.set('');
@@ -43,6 +46,7 @@ export class ParticipantPlanningComponent {
       .subscribe({ next: value => {
         if (generation !== this.generation) return;
         this.configuration.set(value);
+        this.baselineMode = value.demandMode;
       }, error: () => { if (generation === this.generation) this.error.set('Teilnehmerzuordnung nicht verfügbar. Das explizite Teilnehmer-Leserecht ist erforderlich.'); } });
   }
   save() {

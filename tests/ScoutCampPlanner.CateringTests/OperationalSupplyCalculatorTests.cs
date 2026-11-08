@@ -21,10 +21,10 @@ public sealed class OperationalSupplyCalculatorTests
         var requirements = new SupplyRequirement[] { new(new(null, [], []), 2), new(new(null, [f.Allergen], []), 2) };
         var calculator = new OperationalSupplyCalculator(f);
         var result = calculator.Calculate(offers, requirements, [], CookingTogetherPreference.Ask, TestContext.Current.CancellationToken);
-        Assert.Single(result.Solutions); // Only the unrelated, unambiguous offer is active.
+        Assert.Single(result.Solutions);
         foreach (bool together in new[] { togetherFirst, !togetherFirst, togetherFirst })
         {
-            var choice = Assert.Single(result.CommonSupplyChoices!);
+            var choice = Assert.Single(result.CommonSupplyChoices!, value => value.OfferGroupId == offerId);
             var selection = (together ? choice.TogetherOptions.Take(1) : choice.SeparateSolutions)
                 .Select(value => value with { Source = SupplyDecisionSource.Manual }).ToArray();
             var restored = System.Text.Json.JsonSerializer.Deserialize<SupplySolution[]>(System.Text.Json.JsonSerializer.Serialize(selection))!;
@@ -75,12 +75,12 @@ public sealed class OperationalSupplyCalculatorTests
         var groups = new SupplyRequirement[] { new(new(null, [f.Allergen], []), 1), new(new(null, [], [new(f.Substance, 0)]), 1) };
         var result = new OperationalSupplyCalculator(f).Calculate([new(null, recipe, 2, [])], groups, [], preference, TestContext.Current.CancellationToken);
         Assert.Equal(2, result.Solutions.Count);
-        Assert.Empty(result.Problems);
+        Assert.Empty(result.Problems); Assert.Empty(result.CommonSupplyChoices!);
         Assert.All(result.Solutions, solution => Assert.Single(solution.Allocations));
     }
 
     [Fact]
-    public void Ask_does_not_offer_common_vs_separate_when_separate_is_unresolved()
+    public void Ask_offers_both_scenarios_even_when_separate_is_unresolved()
     {
         var f = new SupplySolutionTests.Fixture();
         var original = f.Ingredient(IngredientPropertyState.Contains, f.Plant, 0);
@@ -89,22 +89,25 @@ public sealed class OperationalSupplyCalculatorTests
             f.Replacement(f.Ingredient(IngredientPropertyState.DoesNotContain, f.Plant, 0))] });
         var result = new OperationalSupplyCalculator(f).Calculate([new(null, recipe, 2, [])],
             [new(new(null, [], []), 1), new(new(null, [f.Allergen], []), 1)], [], CookingTogetherPreference.Ask, TestContext.Current.CancellationToken);
-        Assert.DoesNotContain(result.Problems, value => value.Code == MealPlanningProblemCode.CommonSupplyDecisionRequired);
-        Assert.Contains(result.Problems, value => value.Code == MealPlanningProblemCode.MultipleDirectSolutions);
+        Assert.Empty(result.Solutions);
+        var question = Assert.Single(result.CommonSupplyChoices!);
+        Assert.NotEmpty(question.SeparateScenario!.Decisions);
+        Assert.NotEmpty(question.TogetherScenario!.Decisions);
+        Assert.Contains(result.Problems, value => value.Code == MealPlanningProblemCode.CommonSupplyDecisionRequired);
     }
 
     [Theory]
     [InlineData(CookingTogetherPreference.AlwaysTogether)]
     [InlineData(CookingTogetherPreference.Ask)]
     [InlineData(CookingTogetherPreference.NeverTogether)]
-    public void Identical_suitable_decisions_merge_without_operator_question(CookingTogetherPreference preference)
+    public void Identical_suitable_decisions_do_not_require_a_redundant_question(CookingTogetherPreference preference)
     {
         var f = new SupplySolutionTests.Fixture();
         var recipe = f.Recipe(f.Position(f.Ingredient(IngredientPropertyState.DoesNotContain, f.Plant, 0)));
         var result = new OperationalSupplyCalculator(f).Calculate([new(null, recipe, 2, [])],
             [new(new(null, [], []), 1), new(new(null, [f.Allergen], []), 1)], [], preference, TestContext.Current.CancellationToken);
         Assert.Equal(2, Assert.Single(result.Solutions).Allocations.Count);
-        Assert.Empty(result.Problems);
+        Assert.Empty(result.Problems); Assert.Empty(result.CommonSupplyChoices!);
     }
 
     [Theory]
@@ -136,10 +139,10 @@ public sealed class OperationalSupplyCalculatorTests
         var result = new OperationalSupplyCalculator(f).Calculate([new(null, recipe, 2, [])],
             [new(new(null, [f.Allergen], []), 1), new(new(null, [], [new(f.Substance, 0)]), 1)],
             [], preference, TestContext.Current.CancellationToken);
-        var selected = Assert.Single(result.Solutions);
+        var selected = preference == CookingTogetherPreference.Ask ? Assert.Single(Assert.Single(result.CommonSupplyChoices!).TogetherOptions) : Assert.Single(result.Solutions);
         Assert.Equal(commonReplacement.Id, Assert.Single(selected.PositionSelections).Value.ReplacementRuleId);
         Assert.Equal(2, selected.Allocations.Count);
-        Assert.Empty(result.Problems);
+        if (preference == CookingTogetherPreference.Ask) Assert.Empty(result.Solutions); else Assert.Empty(result.Problems);
     }
 
     [Theory]

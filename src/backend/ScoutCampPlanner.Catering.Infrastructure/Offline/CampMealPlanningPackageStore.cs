@@ -54,7 +54,7 @@ public sealed record RecipeChoicePackageRecord(
 
 public sealed class CampMealPlanningPackageStore(CateringDbContext database)
 {
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 8;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public static JsonElement CreateEmptyPackageData(Guid campId) => JsonSerializer.SerializeToElement(
@@ -74,7 +74,7 @@ public sealed class CampMealPlanningPackageStore(CateringDbContext database)
 
     public static IEnumerable<SupplySolution> ReadSupplySolutions(CookingUnitMealStatePackageRecord state)
     {
-        foreach (var solution in JsonSerializer.Deserialize<SupplySolution[]>(state.ManualSupplySolutionsJson, JsonOptions) ?? [])
+        foreach (var solution in ManualSupplyDocument.Read(state.ManualSupplySolutionsJson).Solutions)
         {
             solution.Validate();
             if (solution.Source != SupplyDecisionSource.Manual) throw new InvalidOperationException("Invalid manual supply provenance.");
@@ -111,11 +111,22 @@ public sealed class CampMealPlanningPackageStore(CateringDbContext database)
     {
         if (document is null || document.Solutions is null || document.Candidates is null || document.Problems is null)
             throw new InvalidOperationException("Incomplete supply document.");
-        var choices = document.CommonSupplyChoices ?? [];
+        var choices = (document.CommonSupplyChoices ?? []).Concat(document.PreferenceOptions ?? []).ToArray();
         if (choices.Any(value => value is null || value.RequirementGroupKeys is null || value.TogetherOptions is null || value.SeparateSolutions is null))
             throw new InvalidOperationException("Invalid common supply choices.");
+        var decisions = (document.Decisions ?? []).Concat(choices.SelectMany(value => new[] { value.TogetherScenario, value.SeparateScenario }
+            .Where(scenario => scenario is not null).SelectMany(scenario => {
+                if (scenario!.Solutions is null || scenario.Decisions is null || scenario.Problems is null)
+                    throw new InvalidOperationException("Incomplete supply scenario.");
+                return scenario.Decisions;
+            }))).ToArray();
+        if (decisions.Any(value => value is null || string.IsNullOrWhiteSpace(value.Id) || value.RequirementGroupKeys is null || value.Options is null))
+            throw new InvalidOperationException("Invalid supply decision groups.");
         return document.Solutions.Concat(document.Candidates)
-            .Concat(choices.SelectMany(value => value.TogetherOptions.Concat(value.SeparateSolutions)));
+            .Concat((document.Decisions ?? []).SelectMany(value => value.Options))
+            .Concat(choices.SelectMany(value => value.TogetherOptions.Concat(value.SeparateSolutions)
+                .Concat(value.TogetherScenario?.Solutions ?? []).Concat(value.SeparateScenario?.Solutions ?? [])
+                .Concat((value.TogetherScenario?.Decisions ?? []).Concat(value.SeparateScenario?.Decisions ?? []).SelectMany(decision => decision.Options))));
     }
 
     public static JsonElement CreatePackageData(MealPlanningPackageData data)
@@ -275,13 +286,17 @@ public sealed class CampMealPlanningPackageStore(CateringDbContext database)
             throw new InvalidOperationException("Catering meal-planning package data is missing.");
         MealPlanningPackageData data = json.Deserialize<MealPlanningPackageData>(JsonOptions)
             ?? throw new InvalidOperationException("Catering meal-planning package data is empty.");
-        if (data.SchemaVersion is not (1 or 2 or 3 or CurrentSchemaVersion) || data.CampId != campId)
+        if (data.SchemaVersion is not (1 or 2 or 3 or 4 or 5 or 6 or 7 or CurrentSchemaVersion) || data.CampId != campId)
             throw new InvalidOperationException("Catering meal-planning package identity or schema is invalid.");
         if (data.CookingUnits.Any(value => !Enum.IsDefined(value.TogetherPreference)) ||
             data.MealStates.Any(value => value.SupplyVersion < 0 || string.IsNullOrWhiteSpace(value.ManualSupplySolutionsJson) ||
                 (value.VerificationSnapshotJson is null) != (value.VerificationFingerprint is null)))
             throw new InvalidOperationException("Invalid supply state.");
         foreach (var state in data.MealStates) _ = ReadSupplySolutions(state).ToArray();
+        foreach (var state in data.MealStates)
+            if (ManualSupplyDocument.Read(state.ManualSupplySolutionsJson).ScenarioSelections.Any(selection => selection.OfferGroupId.HasValue &&
+                !data.OfferGroups.Any(group => group.Id == selection.OfferGroupId && group.CampMealId == state.CampMealId)))
+                throw new InvalidOperationException("Supply scenario references a foreign offer.");
         if (data.ParticipantConfiguration is { } configuration &&
             (configuration.Version < 0 || !Enum.IsDefined(configuration.DemandMode) || configuration.Assignments is null) ||
             data.MealStates.Any(value => !Enum.IsDefined(value.DemandBasis)))

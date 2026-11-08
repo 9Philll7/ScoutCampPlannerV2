@@ -1,0 +1,176 @@
+<section class="supply-normal" [class.has-problems]="status().kind === 'warning' || status().kind === 'stale'" aria-label="Versorgungslösungen und Konflikte">
+  @if (error()) { <p class="supply-error" role="alert">{{ error() }}</p> }
+  <header class="section-heading"><span class="section-icon"><scp-action-icon name="cooking"/></span><div><h3>Versorgungslösungen & Konflikte</h3><p>{{ preferenceLabel() }}</p></div><span class="status-chip" [class.success]="status().kind === 'success'" [class.warning]="status().kind === 'warning'">{{ status().label }}</span></header>
+  @if (state().status === 1) { <p class="stale-note">Letzter Berechnungsstand – bitte neu berechnen.</p> }
+  @if (hasUnsavedDecisions()) { <p class="stale-note">Ungespeicherte Versorgungsentscheidungen. Bitte speichern oder verwerfen.</p> }
+  @if (state().subscriptionState !== 2) {
+    <div class="solution-list">
+      @for (solution of visibleSolutions(); track solution.id) {
+        <article class="solution-card" [class.automatic]="!isManual(solution)">
+          <header><span class="solution-icon"><scp-action-icon [name]="isManual(solution) ? 'edit' : 'check'"/></span><div><small>{{ offerLabel(solution.offerGroupId) }}</small><strong>{{ recipeName(solution.recipeRevisionId) }}</strong></div><span class="solution-portions">{{ solution.portions }} Personen</span></header>
+          <div class="solution-tags"><span>{{ isManual(solution) ? 'Manuelle Entscheidung' : 'Automatische Lösung' }}</span>@if (adjustments(solution).length) { <span>{{ adjustments(solution).length }} Zutatenanpassung(en)</span> }</div>
+          @if (adjustments(solution).length || quantities(solution).length) {
+            <details class="solution-details" (toggle)="$any($event.target).open && adjustments(solution).length && loadPositions(solution.recipeRevisionId)"><summary>Zutaten & Mengen ansehen</summary>
+              @for (adjustment of adjustments(solution); track $index) { <p>{{ adjustment }}</p> }
+              @for (quantity of quantities(solution); track $index) { <p>{{ quantity.ingredientName }}: {{ quantity.quantity }} {{ quantity.unit }} · {{ ['Linear', 'Fixe Menge', 'Stufenweise'][quantity.scalingMode] }}@if (quantity.stepwiseScaling; as step) { · {{ step.quantityPerStep }} {{ quantity.unit }} je {{ step.stepSize }} Personen }</p> }
+              <small>Letzter Berechnungsstand</small>
+            </details>
+          }
+        </article>
+      } @empty { @if (!decisions().length && !state().supply?.commonSupplyChoices?.length) { <p class="empty-solutions">Noch keine berechneten Versorgungslösungen vorhanden.</p> } }
+    </div>
+    <ng-container [ngTemplateOutlet]="scenarioChoices" [ngTemplateOutletContext]="{ $implicit: true }"/>
+    @for (choice of decisions(); track choice.id) {
+      <article class="problem-card"><scp-action-icon name="question"/><div><strong>{{ choice.together ? 'Alternative für alle auswählen' : 'Passende Alternative auswählen' }}</strong><p>{{ offerLabel(choice.offerId) }}</p>
+        @if (choice.together) { <p class="replacement-hint">Das Standardrezept deckt nicht alle Anforderungen ab. Eine dieser Alternativen kann die gesamte Komponente übernehmen.</p> }
+        @else if (choice.keys.length > 1) { <p>Eine Entscheidung für die gemeinsamen Anforderungen.</p> }
+        @if (togetherPreference() === 2) { @for (key of choice.keys; track key) { <p>{{ requirementLabel(key) }}</p> } }
+        @else { <details><summary>Betroffene Anforderungen</summary>@for (key of choice.keys; track key) { <p>{{ requirementLabel(key) }}</p> }</details> }
+        <fieldset class="alternative-choice" [disabled]="disabled() || frozen() || isBusy() || state().status === 1"><legend>{{ choice.together ? 'Gemeinsam versorgen mit' : 'Alternative auswählen' }}</legend>
+          @for (candidate of choice.candidates; track candidateKey(candidate)) { <label [class.selected]="alternativeSelected(candidate)"><input type="radio" [name]="'alternative-' + choice.id" [checked]="alternativeSelected(candidate)" (change)="selectDecision(choice, candidate)"><span><strong>{{ recipeName(candidate.recipeRevisionId) }}</strong><small>{{ candidate.portions }} Personen</small>@if (adjustments(candidate).length) { <small>{{ adjustments(candidate).length }} Zutatenanpassung(en)</small> }</span></label>
+            @if (adjustments(candidate).length) { <details (toggle)="$any($event.target).open && loadPositions(candidate.recipeRevisionId)"><summary>Zutatenanpassungen ansehen</summary>@for (adjustment of adjustments(candidate); track $index) { <p>{{ adjustment }}</p> }</details> }
+          }
+          <div class="alternative-actions" [hidden]="!hasUnsavedDecisions()"><button matButton="filled" type="button" [disabled]="!hasUnsavedDecisions() || !hasSelectedAlternative(choice.candidates)" (click)="save(true)">Auswahl bestätigen</button><button matButton type="button" [disabled]="!hasUnsavedDecisions()" (click)="discardChanges()">Änderungen verwerfen</button></div>
+        </fieldset>
+      </div></article>
+    }
+    @if (remainingConflicts().length) {
+      <article class="problem-card conflict-summary" aria-labelledby="conflict-summary-title">
+        <header><scp-action-icon name="warning"/><strong id="conflict-summary-title">{{ conflictSummaryTitle() }}</strong></header>
+        <ul class="conflict-reasons">
+          @for (group of remainingConflicts(); track group.key) {
+            <li>
+              <div class="conflict-reason-heading">@if (conflictPortions(group); as portions) { <strong>{{ portions }}</strong> }<span>{{ group.key ? requirementLabel(group.key) : 'Allgemeiner Versorgungsbedarf' }}</span></div>
+              <p>{{ conflictReasons(group).join(' · ') }}</p>
+              @if (group.coverage.length > 1) { <p class="conflict-offers">Betroffen: @for (coverage of group.coverage; track coverage.offerGroupId; let last = $last) { {{ offerLabel(coverage.offerGroupId) }}@if (!last) {, } }</p> }
+            </li>
+          }
+        </ul>
+        @if (!disabled()) { <footer><button matButton="filled" type="button" [disabled]="frozen() || isBusy() || state().status === 1" (click)="openConflictEditor()">Versorgung klären</button></footer> }
+      </article>
+    }
+
+  } @else { <p>Für diese Mahlzeit ist keine Versorgung erforderlich.</p> }
+</section>
+@if (showVerification()) {
+<section class="verification-strip" aria-label="Verifikation">
+  <scp-action-icon name="check"/><div><h4>Verifikation: {{ verificationLabel() }}</h4>@if (state().verification; as verification) { <p>{{ verification.verifiedAt | date:'dd.MM.yyyy HH:mm' }}</p>@if (verification.reason) { <p>{{ verification.reason }}</p> } }</div><button matButton="outlined" type="button" [disabled]="isBusy() || frozen() || !state().supply" (click)="openVerification()">Verifizieren</button>
+</section>
+}
+<dialog #conflictDialog class="conflict-dialog" aria-labelledby="conflict-dialog-title" (cancel)="$event.preventDefault(); closeEditor()">
+  <header class="conflict-dialog-heading"><span class="dialog-symbol"><scp-action-icon name="recipe"/></span><div><h3 id="conflict-dialog-title">Offene Versorgung lösen</h3><p>@if (contextLabel()) { {{ contextLabel() }} · }{{ activeSuggestionOffer()?.name || 'Rezeptvorschläge' }}</p></div><button matButton type="button" aria-label="Dialog schließen" [disabled]="isBusy()" (click)="closeEditor()">×</button></header>
+  @if (suggestionsLoading()) { <p role="status">Geeignete Rezepte werden geprüft …</p> }
+  @if (error()) { <p role="alert">{{ error() }}</p><button matButton type="button" (click)="loadSuggestions()" [disabled]="isBusy() || suggestionsLoading()">Erneut laden</button> }
+  @if (suggestions()?.unavailableReason) { <p>Bitte den Versorgungsstand zuerst neu berechnen.</p> }
+  @if (suggestions(); as document) {
+    @if (document.offers.length > 1) { <label class="offer-selector">Komponente<select [ngModel]="suggestionOffer()" (ngModelChange)="suggestionOffer.set($event); suggestionSelection.set(''); suggestionPages.set({})" [disabled]="isBusy()">@for (offer of document.offers; track offer.offerGroupId) { <option [ngValue]="offer.offerGroupId">{{ offer.name }}</option> }</select></label> }
+    @if (activeSuggestionOffer(); as offer) {
+      <div class="conflict-overview"><strong>{{ offer.missingPersons }} {{ offer.missingPersons === 1 ? 'Person offen' : 'Personen offen' }}</strong><span>{{ offer.coveredPersons }} Personen bereits versorgt</span><span>Präferenz: {{ ['Gemeinsam versorgen', 'Fragen', 'Getrennt versorgen'][offer.preference] }}</span></div>
+      <div class="suggestion-layout">
+        <section class="suggestion-results"><header><h4>Geeignete Rezeptvorschläge</h4><label>Sortierung<select [ngModel]="suggestionSort" (ngModelChange)="suggestionSort = $event; suggestionPages.set({})"><option value="suitability">Wenige Anpassungen zuerst</option><option value="name">Rezeptname</option></select></label></header>
+          @for (group of suggestionGroups(); track group.scope) {
+            <section class="suggestion-group" [class.together]="group.scope === 'whole'"><header><h4>{{ group.label }}</h4>@if (group.preferred) { <span class="preferred-badge">Bevorzugt</span> }<p>{{ group.scope === 'whole' ? 'Versorgt die gesamte Gruppe und ersetzt die bisherige Lösung dieser Komponente.' : 'Bestehende Lösungen bleiben erhalten.' }}</p></header>
+              @for (option of group.options; track option.id) {
+                <label class="suggestion-card" [class.selected]="suggestionSelection() === option.id"><input type="radio" name="supply-suggestion" [checked]="suggestionSelection() === option.id" (change)="selectSuggestion(option)" [disabled]="isBusy()"><span class="recipe-placeholder"><scp-action-icon name="recipe"/></span><span class="suggestion-description"><strong>{{ option.recipeName }}</strong><small class="suitability-badge">Eignung geprüft</small><small>{{ adjustments(option.solution).length ? 'Mit Zutatenanpassung' : 'Ohne Zutatenanpassung' }}</small></span><span class="suggestion-persons"><strong>{{ option.solution.portions }} {{ option.solution.portions === 1 ? 'Person' : 'Personen' }}</strong><small>{{ option.scope === 'whole' ? 'versorgt die gesamte Gruppe' : 'offenen Bedarf ergänzen' }}</small></span></label>
+              }
+              @if (group.pages > 1) { <nav class="suggestion-pagination" [attr.aria-label]="group.label + ': Seiten'"><span>{{ group.count }} Vorschläge · Seite {{ suggestionPage(group.scope) + 1 }} von {{ group.pages }}</span><button matButton type="button" (click)="changeSuggestionPage(group.scope, suggestionPage(group.scope) - 1)" [disabled]="suggestionPage(group.scope) === 0 || isBusy()" aria-label="Vorherige Vorschlagsseite">‹</button><button matButton type="button" (click)="changeSuggestionPage(group.scope, suggestionPage(group.scope) + 1)" [disabled]="suggestionPage(group.scope) + 1 >= group.pages || isBusy()" aria-label="Nächste Vorschlagsseite">›</button></nav> }
+            </section>
+          } @empty { <p class="no-suggestions">Keine nachweislich geeigneten Rezepte gefunden. Prüfe Rezept- und Zutatendaten oder erstelle eine eigene Lösung unter „Weitere Anpassungen“.</p> }
+        </section>
+        <aside class="suggestion-preview"><h4>Ausgewählte Lösung</h4>@if (selectedSuggestion(); as selected) {
+          <div class="preview-recipe"><span class="recipe-placeholder"><scp-action-icon name="recipe"/></span><strong>{{ selected.recipeName }}</strong></div>
+          <section class="suggestion-impact"><h4>Auswirkung</h4><p>{{ selected.scope === 'whole' ? 'Bestehende Lösung dieser Komponente wird ersetzt.' : 'Bestehende Lösungen bleiben erhalten.' }}</p><p>{{ selected.solution.portions }} {{ selected.solution.portions === 1 ? 'Person wird' : 'Personen werden' }} mit diesem Rezept versorgt.</p><p>Alle Anforderungen der ausgewählten Personen sind abgedeckt.</p></section>
+          <details><summary>Anforderungen und Zutatenanpassungen</summary>@for (allocation of selected.solution.allocations; track allocation.requirementGroupKey) { <p>{{ allocation.portions }} Personen · {{ requirementLabel(allocation.requirementGroupKey) }}</p> }@for (adjustment of adjustments(selected.solution); track adjustment) { <p>{{ adjustment }}</p> }@if (!adjustments(selected.solution).length) { <p>Keine Zutatenanpassung erforderlich.</p> }</details>
+        } @else { <p>Wähle einen Rezeptvorschlag. Hier siehst du vor dem Übernehmen dessen Auswirkungen.</p> }</aside>
+      </div>
+    } @else if (!document.unavailableReason) { <p>Kein offener Bedarf mit ermittelbarer Personenzahl vorhanden. Andere Konflikte bitte in den Daten prüfen.</p> }
+  }
+  <footer><button matButton="outlined" type="button" [disabled]="isBusy()" (click)="closeEditor()">Abbrechen</button><button matButton="filled" type="button" [disabled]="!selectedSuggestion() || isBusy() || disabled() || frozen() || suggestionsLoading()" (click)="applySuggestion()"><scp-action-icon name="check"/>Lösung übernehmen</button></footer>
+</dialog>
+<dialog #solutionDialog class="supply-dialog own-editor" (input)="queueOwnPreview()" (change)="queueOwnPreview()" (click)="queueOwnPreview()" aria-labelledby="supply-dialog-title" (cancel)="$event.preventDefault(); closeEditor()">
+  <header class="own-heading"><span class="own-symbol"><scp-action-icon name="cooking"/></span><div><h3 id="supply-dialog-title">Eigene Versorgungslösung</h3><p>{{ contextLabel() || 'Nur für diese Kocheinheit und Mahlzeit' }}</p></div><small>{{ hasUnsavedDecisions() ? 'Entwurf' : 'Gespeicherter Stand' }}</small><button matButton type="button" aria-label="Editor schließen" (click)="closeEditor()" [disabled]="isBusy()">×</button></header>
+  @if (editingSolution() && editorMode() === 'custom') {
+    <div class="own-layout">
+      <nav class="own-navigation" aria-label="Ansichten der eigenen Versorgung"><button type="button" [class.active]="ownTab() === 'solutions'" [attr.aria-pressed]="ownTab() === 'solutions'" (click)="ownTab.set('solutions')"><scp-action-icon name="cooking"/>Lösungen</button><button type="button" [class.active]="ownTab() === 'impact'" [attr.aria-pressed]="ownTab() === 'impact'" (click)="ownTab.set('impact')"><scp-action-icon name="move"/>Auswirkungen</button><button type="button" [class.active]="ownTab() === 'review'" [attr.aria-pressed]="ownTab() === 'review'" (click)="ownTab.set('review')"><scp-action-icon name="check"/>Prüfung</button></nav>
+      <main class="own-content">
+        @if (ownTab() === 'solutions') {
+          <header class="own-section-heading"><div><h4>Rezeptlösungen</h4><p>Aktuelle Versorgung frei bearbeiten. Konflikte bleiben als Hinweise sichtbar.</p></div><button matButton="outlined" type="button" [disabled]="disabled() || frozen() || isBusy() || state().subscriptionState === 2" (click)="addingOwnRecipe.set(!addingOwnRecipe())"><scp-action-icon name="add"/>Rezept hinzufügen</button></header>
+          @if (addingOwnRecipe()) { <section class="own-recipe-picker" aria-label="Rezept auswählen"><label>Rezepte suchen<input type="search" [(ngModel)]="ownRecipeSearch" placeholder="Rezeptname"></label><div>@for (recipe of ownRecipes(); track recipe.revisionId) { <button matButton type="button" (click)="addOwnRecipe(recipe.revisionId)" [disabled]="disabled() || frozen() || isBusy()">{{ recipe.name }} · Rev. {{ recipe.revisionNumber }}</button> } @empty { <p>Keine passenden Rezepte vorhanden.</p> }</div></section> }
+          <fieldset class="own-fields" [disabled]="disabled() || frozen() || isBusy() || state().subscriptionState === 2">
+          <div class="own-table-scroll"><table class="own-recipe-table"><thead><tr><th>Rezept</th><th>Komponente</th><th>Versorgte Gruppen</th><th>Personen</th><th>Zutaten / Aktionen</th></tr></thead><tbody>
+          @for (solution of ownRows(); track solution.id) {
+            <tr [class.selected]="ownExpanded() === solution.id"><td><span class="own-recipe-name"><span class="own-image" aria-label="Kein Rezeptbild hinterlegt"><scp-action-icon name="recipe"/></span><strong>{{ recipeName(solution.recipeRevisionId) }}</strong></span></td><td><select aria-label="Komponente" [ngModel]="solution.offerGroupId" (ngModelChange)="changeOwnOffer(solution, $event)"><option [ngValue]="null">Eigenes Angebot</option>@for (offer of ownOfferIds(solution); track offer) { <option [ngValue]="offer">{{ offerLabel(offer) }}</option> }</select></td><td><button matButton class="own-groups-button" type="button" (click)="toggleOwnRow(solution)"><scp-action-icon name="people"/>{{ ownGroupLabel(solution) }}</button></td><td><input aria-label="Personen" type="number" min="0" step="1" [ngModel]="solution.portions" (ngModelChange)="changePortions(solution, $event)"></td><td><div class="own-row-actions"><button matButton="outlined" type="button" (click)="toggleOwnRow(solution, true)">{{ adjustments(solution).length ? adjustments(solution).length + ' Anpassungen' : 'Standard' }}</button><details class="own-row-menu"><summary aria-label="Rezeptaktionen">⋮</summary><div><button matButton type="button" (click)="toggleOwnRow(solution)">Rezept / Zuordnung bearbeiten</button><button matButton type="button" (click)="remove(solution.id)">Entfernen</button></div></details></div></td></tr>
+            @if (ownRecipeWarnings(solution.id).length) { <tr><td colspan="5"><div class="own-warning" role="status">@for (warning of ownRecipeWarnings(solution.id); track warning) { <p>{{ warning }}</p> }</div></td></tr> }
+            @if (ownExpanded() === solution.id) { <tr class="own-expanded-row"><td colspan="5"><div class="own-row-editor">
+              <label>Rezeptrevision<select [ngModel]="solution.recipeRevisionId" (ngModelChange)="changeRecipe(solution, $event)">@for (recipe of recipes(); track recipe.revisionId) { <option [ngValue]="recipe.revisionId">{{ recipe.name }} · Rev. {{ recipe.revisionNumber }}</option> }</select></label>
+              <section><header><h4>Versorgte Gruppen</h4><button matButton type="button" (click)="assignAllOwnGroups(solution)">Alle Gruppen zuordnen</button></header>@for (group of ownAvailableGroups(solution); track group.requirements.key) { <div class="own-allocation"><label><input type="checkbox" [checked]="ownGroupSelected(solution, group.requirements.key)" (change)="setOwnGroup(solution, group.requirements.key, $any($event.target).checked)">{{ requirementLabel(group.requirements.key) }}</label>@if (ownGroupSelected(solution, group.requirements.key)) { <input type="number" min="0" step="1" [attr.aria-label]="'Personen: ' + requirementLabel(group.requirements.key)" [ngModel]="ownAllocation(solution, group.requirements.key)" (ngModelChange)="setOwnAllocation(solution, group.requirements.key, $event)"> }</div> } @empty { <p>Keine Anforderungsgruppen ermittelt. Bitte zuerst neu berechnen.</p> }</section>
+              <section><header><h4>Zutatenvarianten und Ersatz</h4><button matButton type="button" (click)="loadPositions(solution.recipeRevisionId)">Auswahl laden</button></header>@for (position of positions()[solution.recipeRevisionId] ?? []; track position.path) { @if (!hiddenPosition(solution, position.path)) { <label>{{ position.name }}<select [ngModel]="selectedPosition(solution, position)" (ngModelChange)="selectPosition(solution, position, $event)">@if (selectedPosition(solution, position) < 0) { <option [ngValue]="-1" disabled>Gespeicherte Auswahl nicht verfügbar</option> }@for (choice of position.choices; track $index; let index = $index) { <option [ngValue]="index">{{ choice.label }}</option> }</select></label> } }</section>
+            </div></td></tr> }
+          } @empty { <tr><td colspan="5" class="own-empty">Noch keine Rezepte. Füge ein Rezept zur Versorgung hinzu.</td></tr> }
+          </tbody></table></div>
+          </fieldset>
+        } @else if (ownTab() === 'impact') {
+          <section class="own-impact"><h4>Auswirkungen der Auswahl</h4><p>Beim Speichern wird die angezeigte Versorgung als eigene Lösung übernommen. Zurück zum Plan stellt die automatische Versorgung wieder her.</p><h4>Eigene Rezeptzuordnungen</h4>@for (solution of ownRows(); track solution.id) { <article><strong>{{ recipeName(solution.recipeRevisionId) }}</strong><span>{{ offerLabel(solution.offerGroupId) }} · {{ solution.portions }} Personen</span><small>{{ ownGroupLabel(solution) }}</small></article> } @empty { <p>Keine eigenen Rezeptzuordnungen.</p> }</section>
+        } @else {
+          <section class="own-review"><h4>Prüfung des Entwurfs</h4><p>Die Zuordnung wird hier direkt geprüft. Ernährungsanforderungen und Zutatenanpassungen werden auch im Entwurf geprüft. Konflikte verhindern das Speichern nicht.</p>@if (ownCoverage().invalid) { <p class="own-warning">Personenzahl und Gruppenzuordnungen stimmen noch nicht überein oder eine Zuordnung fehlt.</p> }@if (ownCoverage().missing) { <p class="own-warning">{{ ownCoverage().missing }} Personen sind im Entwurf noch nicht vollständig zugeordnet.</p> }@if (ownCoverage().excess) { <p class="own-warning">{{ ownCoverage().excess }} Personen sind je Komponente mehrfach oder über dem Bedarf zugeordnet.</p> }@if (!ownCoverage().known) { <p>Ohne ermittelte Anforderungsgruppen kann die Abdeckung nicht bestimmt werden.</p> }@if (state().status === 1) { <p class="own-warning">Der letzte Berechnungsstand ist veraltet.</p> }<details><summary>Konflikte des letzten Berechnungsstands</summary>@for (group of conflicts(); track group.key) { <p>{{ conflictTitle(group) }}: {{ group.key ? requirementLabel(group.key) : 'Allgemeiner Bedarf' }}</p> } @empty { <p>Im letzten Berechnungsstand waren keine Konflikte offen.</p> }</details></section>
+        }
+      </main>
+      <aside class="own-summary"><section aria-live="polite">@if (ownPreviewLoading()) { <p>Konflikte werden geprüft…</p> } @else if (ownPreviewError()) { <p class="own-warning">{{ ownPreviewError() }}</p> } @else if (ownConflictCount()) { <p class="own-warning">{{ ownConflictCount() }} Rezepte mit Konflikten</p> } @else if (ownPreview() !== null) { <p>Keine Rezeptkonflikte im Entwurf ermittelt.</p> }</section><section class="own-coverage" [class.warning]="ownCoverage().missing > 0 || ownCoverage().invalid || ownCoverage().excess > 0"><strong>@if (!ownCoverage().known) { Zuordnung noch nicht ermittelt } @else if (ownCoverage().missing) { {{ ownCoverage().missing }} Personen nicht zugeordnet } @else if (ownCoverage().invalid || ownCoverage().excess) { Zuordnung prüfen } @else { Alle Personen zugeordnet }</strong><p>Konflikte sind Hinweise und verhindern das Speichern nicht.</p></section><section class="own-totals"><h4>Abdeckung dieser Mahlzeit</h4><dl><div><dt>Personenbedarf</dt><dd>{{ ownCoverage().known ? ownCoverage().total : '–' }}</dd></div><div><dt>Eigene Rezepte</dt><dd>{{ ownRows().length }}</dd></div></dl></section></aside>
+    </div>
+  }
+  @if (error()) { <p class="own-warning" role="alert">{{ error() }}</p> }
+  <footer class="own-footer"><button matButton type="button" (click)="reset(true)" [disabled]="disabled() || frozen() || isBusy()"><scp-action-icon name="refresh"/>Zurück zum Plan</button><div><button matButton="outlined" type="button" (click)="closeEditor()" [disabled]="isBusy()">Verwerfen</button><button matButton="filled" type="button" (click)="saveOwnSolution()" [disabled]="disabled() || frozen() || isBusy() || !state().supply || state().subscriptionState === 2 || !hasUnsavedDecisions()"><scp-action-icon name="save"/>Lösung speichern</button></div></footer>
+</dialog>
+<dialog #verificationDialog class="verification-dialog" aria-labelledby="verification-dialog-title" (cancel)="$event.preventDefault(); closeVerification()">
+  <header><h3 id="verification-dialog-title">Verifikation</h3><button matButton type="button" [disabled]="isBusy()" (click)="closeVerification()">Schlie&#223;en</button></header>
+
+      @if (state().verification; as verification) {
+        <p>{{ state().verificationStale ? 'Verifikation veraltet' : verification.kind === 0 ? 'Ohne Abweichung verifiziert' : 'Mit Abweichung verifiziert' }} · {{ verification.verifiedAt }}</p>
+        @if (verification.reason) { <p>{{ verification.reason }}</p> }
+      }
+      @if (state().status === 1) {
+        <p>Der Versorgungsstand ist veraltet. Bitte zuerst neu berechnen.</p>
+      } @else if (verificationNeedsReason()) {
+        <p>Es sind noch Konflikte oder unvollständige Angaben offen. Bestätige die Versorgung mit einer Begründung der Abweichung.</p>
+        <mat-form-field><mat-label>Begründung der Abweichung</mat-label><textarea matInput [(ngModel)]="reason" required maxlength="2000" [disabled]="isBusy() || frozen()"></textarea></mat-form-field>
+        <button matButton="filled" type="button" (click)="verify(1)" [disabled]="isBusy() || frozen() || !reason.trim()">Mit Abweichung bestätigen</button>
+      } @else {
+        <p>Die Versorgung ist vollständig und es sind keine Konflikte offen.</p>
+        <button matButton="filled" type="button" (click)="verify(0)" [disabled]="isBusy() || frozen()">Versorgung bestätigen</button>
+      }
+      @if (error()) { <p role="alert">{{ error() }}</p> }
+<footer><button matButton="outlined" type="button" [disabled]="isBusy()" (click)="closeVerification()">Schlie&#223;en</button></footer>
+</dialog>
+
+<ng-template #scenarioChoices let-onlyPending>
+  @for (choice of (onlyPending ? state().supply?.commonSupplyChoices ?? [] : preferenceOptions()); track $index) {
+    @if (!onlyPending || !persistedScenario(choice)) {
+      <article class="problem-card"><scp-action-icon name="question"/><div><strong>{{ persistedScenario(choice) ? 'Versorgungsart' : 'Gemeinsam oder getrennt versorgen?' }}</strong><p>{{ offerLabel(choice.offerGroupId) }}</p>
+        <details [open]="!persistedScenario(choice) || editingScenarios()"><summary>{{ persistedScenario(choice) ? 'Auswahl ändern' : 'Lösungen vergleichen' }}</summary>
+        <fieldset class="alternative-choice common-choice" [disabled]="disabled() || frozen() || isBusy() || state().status === 1"><legend>Versorgung auswählen</legend>
+          @if (choice.togetherScenario && choice.separateScenario) {
+            @if (editingScenarios()) { <label [class.selected]="scenarioSelected(choice, 1)"><input type="radio" [name]="'common-' + choice.offerGroupId" [checked]="scenarioSelected(choice, 1)" (change)="selectScenario(choice, 1)"><span><strong>Fragen</strong><small>Bei unterschiedlichen Lösungen gemeinsam oder getrennt auswählen.</small></span></label> }
+            @for (mode of [0, 2]; track mode) {
+              @let scenario = mode === 0 ? choice.togetherScenario : choice.separateScenario;
+              <label [class.selected]="scenarioSelected(choice, $any(mode))"><input type="radio" [name]="'common-' + choice.offerGroupId" [checked]="scenarioSelected(choice, $any(mode))" (change)="selectScenario(choice, $any(mode))"><span><strong>{{ mode === 0 ? 'Gemeinsam versorgen' : 'Getrennt versorgen' }}</strong>
+                @for (solution of scenario.solutions; track $index) { <small>{{ recipeName(solution.recipeRevisionId) }} · {{ solution.portions }} Personen@if (adjustments(solution).length) { · {{ adjustments(solution).length }} Zutatenanpassung(en) }</small> }
+                @for (decision of scenario.decisions; track decision.id) { <small>Auswahl: @for (option of decision.options; track $index) { {{ recipeName(option.recipeRevisionId) }}@if (!$last) { / } }</small> }
+                @if (scenarioSummary(scenario)) { <small>{{ scenarioSummary(scenario) }}</small> }
+              </span></label>
+            }
+          } @else {
+          @for (option of choice.togetherOptions; track $index) { <label [class.selected]="commonSelected(choice, [option])"><input type="radio" [name]="'common-' + choice.offerGroupId" [checked]="commonSelected(choice, [option])" (change)="chooseCommon(choice, [option])"><span><strong>Gemeinsam versorgen</strong><small>{{ recipeName(option.recipeRevisionId) }} · {{ option.portions }} Personen</small>@if (adjustments(option).length) { <small>{{ adjustments(option).length }} Zutatenanpassung(en)</small> }</span></label> }
+          @if (choice.separateSolutions.length) { <label [class.selected]="commonSelected(choice, choice.separateSolutions)"><input type="radio" [name]="'common-' + choice.offerGroupId" [checked]="commonSelected(choice, choice.separateSolutions)" (change)="chooseCommon(choice, choice.separateSolutions)"><span><strong>Getrennt versorgen</strong>@for (option of choice.separateSolutions; track $index) { <small>{{ recipeName(option.recipeRevisionId) }} · {{ option.portions }} Personen@if (adjustments(option).length) { · {{ adjustments(option).length }} Zutatenanpassung(en) }</small> }</span></label> }
+          }
+          <div class="alternative-actions" [hidden]="!hasUnsavedDecisions()"><button matButton="filled" type="button" (click)="save(true)" [disabled]="!hasUnsavedDecisions() || !hasCommonSelection(choice)">Auswahl bestätigen</button><button matButton type="button" (click)="discardChanges()" [disabled]="!hasUnsavedDecisions()">Änderungen verwerfen</button></div>
+        </fieldset>
+        </details>
+      </div></article>
+    }
+  }
+</ng-template>
+<dialog #scenarioDialog class="supply-dialog" aria-labelledby="scenario-title" (cancel)="$event.preventDefault(); closeScenarioEditor()">
+  <header><h3 id="scenario-title">Versorgungsart</h3><button matButton type="button" [disabled]="isBusy()" (click)="closeScenarioEditor()">Schlie&#223;en</button></header>
+  @if (error()) { <p role="alert">{{ error() }}</p> }
+  @if (editingScenarios()) { <ng-container [ngTemplateOutlet]="scenarioChoices" [ngTemplateOutletContext]="{ $implicit: false }"/> }
+</dialog>

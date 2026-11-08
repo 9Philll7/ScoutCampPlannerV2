@@ -15,6 +15,15 @@ Bilder sind **visuelle Referenzen**, keine Datenmodell-/API-Spezifikationen. Im 
 | 09_operative_versorgungsplanung.png | **Referenz für Mahlzeitennavigation je Kocheinheit** | Linke Spalte navigiert **Mahlzeiten der aktuellen Kocheinheit**, nicht Kocheinheiten. Rechts konkrete Mahlzeit; Struktur-Editor separat. |
 | 10_operative_mahlzeit_offener_konflikt.png | **Ergänzende Referenz** für offene Konflikte im Grundeditor | Stammdaten-/Kocheinheitenliste links im Bild ist veraltet; nur Konflikt- und Statusdarstellung berücksichtigen. |
 
+| 11_offene_versorgung_loesen.png | **Neue Gestaltungsreferenz** für den Dialog zur Konfliktklärung: Rezeptvorschläge links, ausgewählte Lösung und Auswirkungen rechts | Gemeinsame Lösungen und Ergänzungen klar trennen; Präferenz der Mahlzeit beachten; Personen statt Portionen. Eignung muss vor der Auswahl backendseitig belegt sein. Beispielrezepte, Bilder und Labels sind illustrativ. API-Prüfung: [Analyse](../../offene-versorgung-rezeptvorschlaege-api-analyse.md). |
+
+| 12_weitere_anpassungen.png | Hauptreferenz für Weitere Anpassungen: Kontextleiste und vier aufklappbare Bereiche | Versorgung/Rezeptlösungen, Bedarf, Struktur, Präferenz; kompakte Zusammenfassung im geschlossenen Zustand. Zurück zum Plan behält bestätigte Gemeinsamkeitsentscheidungen. |
+| 13_anpassungen_personenzahl_mengenbedarf.png | Berechneter Bedarf oder manuelle Personenzahl, optionale Komponentenabweichungen | Beispielzahlen nicht übernehmen; aktuell existieren Personen-/Bedarfsüberschreibungen, keine zusätzliche freie Zutatenmengenplanung. |
+| 14_anpassungen_strukturzuordnung.png | Standardzuordnung oder abweichende Gruppen nur für diese Mahlzeit | Aktuelle Zuordnung als kompakte Chips; abweichende Auswahl mit bestehendem Strukturbaum und Teilselektion. |
+| 15_anpassungen_versorgungspraeferenz.png | Standard der Kocheinheit, Gemeinsam, Getrennt oder Nachfragen | Mahlzeitenweite Auswahl gegenüber bestehenden komponentenbezogenen Szenarioentscheidungen fachlich konsistent speichern. Keine stillschweigende Löschung bestätigter Rezeptentscheidungen. |
+
+| 16_eigene_versorgungsloesung.png | Teil-/Gesamtlösung im individuellen Editor: Lösungen, Auswirkungen, Prüfung | Kompakte Rezeptzeilen, separate Bearbeitung von Gruppen und Zutaten; Zuordnungsabdeckung nicht mit Eignungsfreigabe gleichsetzen. Beispielbilder, Ernährungslabels und Summen nicht ungeprüft übernehmen. |
+
 ## Verbindliche, bildübergreifende Korrekturen
 
 - Menüplan enthält aktive Mahlzeiten → additive Komponenten → je Standardrezept und optionale Rezeptalternativen. **Menüpläne enthalten keine Kocheinheiten**.

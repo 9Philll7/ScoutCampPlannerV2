@@ -196,18 +196,19 @@ export class AppComponent {
   }
 
   trackEdit(event: Event) {
-    if (this.state() === 'application' && !(event.target as HTMLElement).closest('.tenant-select, .catalog-search, .structure-workspace, scp-participants, scp-meal-plan-workspace, [readonly]')) {
+    if (this.state() === 'application' && !(event.target as HTMLElement).closest('.tenant-select, .catalog-search, .structure-workspace, scp-participants, scp-meal-plan-workspace, scp-cooking-units-workspace, scp-operative-meal-workspace, [readonly]')) {
       this.potentialEdits = true;
     }
   }
 
   private mayLeave() {
     if (this.restoringNavigation) return true;
-    if (this.submitting() || this.mealPlanningEditor()?.planBusy()) return false;
+    if (this.submitting() || this.mealPlanningEditor()?.planBusy() || this.mealPlanningEditor()?.unitBusy()) return false;
     // Existing editors do not share a dirty-state contract. Protect their forms
     // conservatively, including programmatic additions not emitting input events.
     if (this.hasPotentialEdits() && !window.confirm('Bereich verlassen? Bitte speichere vorher deine Änderungen. Nicht gespeicherte Eingaben werden verworfen.')) return false;
     this.mealPlanningEditor()?.discardPlan();
+    this.mealPlanningEditor()?.discardUnitChanges();
     this.potentialEdits = false;
     return true;
   }
@@ -218,9 +219,9 @@ export class AppComponent {
       (this.creatingStructureParent() !== null && this.newStructureNodeName.trim() !== '') ||
       (this.movingStructureNodeId() !== null && this.structureNodes().some(node => node.id === this.movingStructureNodeId() && (this.moveTargetParentIds[node.id] || null) !== node.parentId)) ||
       (this.estimateNodeId() !== null && JSON.stringify(this.participantEstimates()) !== JSON.stringify(this.persistedParticipantEstimates)));
-    return this.state() === 'application' && (structureDraft || this.mealPlanningEditor()?.hasPendingPlanChanges() || this.participantsEditor()?.hasPendingChanges() || this.participantFilters()?.hasPendingChanges() || this.potentialEdits || Array.from(document.querySelectorAll(
+    return this.state() === 'application' && (structureDraft || this.mealPlanningEditor()?.hasPendingPlanChanges() || this.mealPlanningEditor()?.hasPendingUnitChanges() || this.participantsEditor()?.hasPendingChanges() || this.participantFilters()?.hasPendingChanges() || this.potentialEdits || Array.from(document.querySelectorAll(
       'main input:not([disabled]):not([readonly]), main textarea:not([disabled]):not([readonly]), main mat-select:not(.mat-mdc-select-disabled)'
-    )).some(control => !control.closest('.tenant-select, .catalog-search, .structure-workspace, scp-participants, scp-participant-filter-settings, scp-meal-plan-workspace, .catering-meal-settings:not([open])')));
+    )).some(control => !control.closest('.tenant-select, .catalog-search, .structure-workspace, scp-participants, scp-participant-filter-settings, scp-meal-plan-workspace, scp-cooking-units-workspace, scp-operative-meal-workspace, .catering-meal-settings:not([open])')));
   }
 
   @HostListener('window:beforeunload', ['$event'])

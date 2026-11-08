@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { API_BASE_URL } from '../../core/api-base-url';
-import { MealPlanDocument, MealPlanningApiService } from './meal-planning-api.service';
+import { CookingUnitMeal, MealPlanDocument, MealPlanningApiService } from './meal-planning-api.service';
 
 describe('MealPlanningApiService', () => {
   let service: MealPlanningApiService;
@@ -45,6 +45,16 @@ describe('MealPlanningApiService', () => {
     request.flush({ id: 'plan-1', version: 5 });
   });
 
+  it('preserves supply mode for old callers and explicitly sends partial, complete and reset intent', () => {
+    const state = { cookingUnitId: 'unit', campMealId: 'meal', supplyVersion: 7 } as CookingUnitMeal;
+    for (const complete of [undefined, false, true]) {
+      service.saveSupply('camp', state, [], [], complete).subscribe();
+      const request = http.expectOne('http://localhost:5180/api/camps/camp/cooking-units/unit/meals/meal/supply');
+      expect(request.request.body.expectedVersion).toBe(7);
+      expect(request.request.body.completeOwnSupply).toBe(complete);
+      expect(request.request.withCredentials).toBe(true); request.flush({});
+    }
+  });
   it('uses the dedicated endpoint when resetting a structure override', () => {
     service.resetStructure('camp-1', 'unit-1', 'meal-1').subscribe();
 

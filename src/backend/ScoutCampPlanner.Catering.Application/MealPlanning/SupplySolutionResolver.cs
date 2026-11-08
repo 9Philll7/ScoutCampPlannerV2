@@ -5,7 +5,8 @@ namespace ScoutCampPlanner.Catering.Application.MealPlanning;
 
 public enum SupplyResolutionStage { Direct, OfferAlternative, Manual }
 public sealed record SupplyResolution(SupplyResolutionStage Stage, SupplySolution? Selected,
-    IReadOnlyList<SupplySolution> Candidates, IReadOnlyList<MealPlanningProblem> Problems);
+    IReadOnlyList<SupplySolution> Candidates, IReadOnlyList<MealPlanningProblem> Problems,
+    IReadOnlyList<SupplySolution>? SuitableCandidates = null);
 
 /// <summary>Only explicit recipe decisions and the supplied concrete offer group are searched.</summary>
 public sealed class SupplySolutionResolver(ISupplySuitabilityReferences references)
@@ -37,8 +38,6 @@ public sealed class SupplySolutionResolver(ISupplySuitabilityReferences referenc
             var assessment = Assess(candidate);
             if (assessment.IsSuitable) matching.Add(candidate);
             else if (original.Problems.Any(problem => !assessment.Problems.Contains(problem))) partial.Add(candidate);
-            // Two are enough to prove ambiguity; never pick based on ordering.
-            if (matching.Count == 2) break;
         }
         if (matching.Count == 1) return new(SupplyResolutionStage.Direct, matching[0], [], []);
 
@@ -48,7 +47,7 @@ public sealed class SupplySolutionResolver(ISupplySuitabilityReferences referenc
                 cancellationToken.ThrowIfCancellationRequested();
                 return Assess(value).IsSuitable;
             }).ToArray();
-        if (alternatives.Length == 1) return new(SupplyResolutionStage.OfferAlternative, alternatives[0], [], []);
+        if (matching.Count == 0 && alternatives.Length == 1) return new(SupplyResolutionStage.OfferAlternative, alternatives[0], [], []);
 
         var problems = original.Problems.ToList();
         foreach (var group in requirements)
@@ -61,10 +60,28 @@ public sealed class SupplySolutionResolver(ISupplySuitabilityReferences referenc
             ? MealPlanningProblemCode.MultipleMatchingOfferAlternatives : MealPlanningProblemCode.NoMatchingOfferAlternative,
             group.Key));
         }
-        return new(SupplyResolutionStage.Manual, null, matching.Concat(alternatives).Concat(partial).ToArray(), problems);
+        return new(SupplyResolutionStage.Manual, null, matching.Concat(alternatives).Concat(partial).ToArray(), problems,
+            matching.Count > 0 ? matching : alternatives);
 
         SupplySuitabilityResult Assess(SupplySolution solution) => new([], requirements
             .SelectMany(group => evaluator.Evaluate(solution, group).Problems).Distinct().ToArray());
+    }
+
+    /// <summary>Enumerates suitable explicit choices for one recipe, without plan-alternative shortcuts.</summary>
+    public IReadOnlyList<SupplySolution> FindSuitable(SupplySolution recipe, IReadOnlyList<RequirementSignature> requirements, CancellationToken ct = default)
+    {
+        bool Fits(SupplySolution value) => requirements.All(group => evaluator.Evaluate(value, group).IsSuitable);
+        ct.ThrowIfCancellationRequested();
+        if (Fits(recipe)) return [recipe]; // Prefer the unchanged recipe over needless adjustments.
+        var result = new List<SupplySolution>();
+        foreach (var selection in Decisions(recipe.RecipeRevisionId, recipe.RecipeRevisionId.ToString("N"), requirements, [], ct))
+        {
+            ct.ThrowIfCancellationRequested();
+            if (selection.Count == 0) continue;
+            var candidate = recipe with { PositionSelections = selection };
+            if (Fits(candidate)) result.Add(candidate);
+        }
+        return result.DistinctBy(value => value.MergeKey).ToArray();
     }
 
     private IEnumerable<Dictionary<string, RecipePositionSelection>> Decisions(Guid revisionId, string path,

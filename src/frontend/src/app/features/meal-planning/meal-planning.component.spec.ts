@@ -67,6 +67,14 @@ describe('MealPlanningComponent', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
   });
   afterEach(() => vi.restoreAllMocks());
+  it('separates unit management from existing targeted operative planning', () => {
+    fixture.componentRef.setInput('section', 'units'); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('scp-cooking-units-workspace')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.slot-card')).toBeNull();
+    fixture.componentRef.setInput('target', { section: 'units', unitId: 'unit-1', mealId: 'meal-1' }); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('scp-cooking-units-workspace')).toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('scp-operative-meal-workspace')).toHaveLength(1);
+  });
 
   it('edits a detached copy and discards it on cancel', () => {
     component.openPlan('plan-1');
@@ -76,9 +84,18 @@ describe('MealPlanningComponent', () => {
     component.cancelPlan();
     expect(component.editingPlan()).toBeNull();
   });
+  it('includes operative drafts in the application navigation guard', () => {
+    fixture.componentRef.setInput('section', 'units');
+    fixture.componentRef.setInput('target', { section: 'units', unitId: 'unit-1', mealId: 'meal-1' }); fixture.detectChanges();
+    component.operativeWorkspace()!.draft.demandOverride = 25;
+    fixture.nativeElement.querySelector('dialog').close = vi.fn();
+    expect(component.hasPendingUnitChanges()).toBe(true);
+    component.discardUnitChanges(); expect(component.hasPendingUnitChanges()).toBe(false);
+  });
 
   it('blocks recalculation when a visible supply editor has unsaved decisions', () => {
     fixture.componentRef.setInput('section', 'units');
+    fixture.componentRef.setInput('target', { section: 'units', unitId: 'unit-1', mealId: 'meal-1' });
     component.overview.update(value => value ? { ...value, operationalMeals: value.operationalMeals.map(state => ({ ...state, supply: { solutions: [], candidates: [], problems: [] } })) } : value);
     fixture.detectChanges();
     const editor = fixture.debugElement.query(By.directive(SupplySolutionsComponent));
@@ -88,7 +105,7 @@ describe('MealPlanningComponent', () => {
     api['calculate'] = vi.fn();
     component.calculate('unit-1', 'meal-1');
     expect(api['calculate']).not.toHaveBeenCalled();
-    expect(alert).toHaveBeenCalledOnce();
+    expect(component.operativeWorkspace()!.error()).toContain('Es wurde nichts verworfen.');
     alert.mockRestore();
   });
 

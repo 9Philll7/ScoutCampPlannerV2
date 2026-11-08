@@ -29,4 +29,10 @@ describe('ParticipantPlanningComponent', () => {
     request.flush({}, { status: 409, statusText: 'Conflict' });
     expect(component.configuration()!.demandMode).toBe(1); expect(component.error()).toContain('Eingaben bleiben erhalten'); http.verify();
   });
+  it('reports an unsaved planning mode and can restore it without an API write', () => {
+    const { component, http } = setup(); expect(component.hasPendingChanges()).toBe(false);
+    component.configuration()!.demandMode = 1; expect(component.hasPendingChanges()).toBe(true);
+    component.discardChanges(); expect(component.configuration()!.demandMode).toBe(0);
+    expect(component.hasPendingChanges()).toBe(false); http.verify();
+  });
 });

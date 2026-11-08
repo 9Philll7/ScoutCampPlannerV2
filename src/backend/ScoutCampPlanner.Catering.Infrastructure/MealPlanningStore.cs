@@ -437,8 +437,11 @@ public sealed class MealPlanningStore(CateringDbContext database) : IMealPlannin
                 cancellationToken)) return NotFound();
         if (request.DemandOverride is < 0 || (request.OfferTargets ?? []).Any(value => value.TargetOverride is < 0))
             return Invalid("demand_invalid", "Bedarfswerte dürfen nicht negativ sein.");
+        await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
         CookingUnitMealState? state = await database.CookingUnitMealStates.SingleOrDefaultAsync(value =>
             value.CookingUnitId == cookingUnitId && value.CampMealId == mealId, cancellationToken);
+        if (request.SupplyAdjustments is { } expected && expected.ExpectedVersion != (state?.SupplyVersion ?? 0))
+            return new(MealPlanningMutationStatus.Conflict, "supply_version_conflict");
         if (state is null)
         {
             state = new CookingUnitMealState(Guid.NewGuid(), campId, cookingUnitId, mealId);
@@ -463,6 +466,21 @@ public sealed class MealPlanningStore(CateringDbContext database) : IMealPlannin
                 .Select(value => (value.RecipeRevisionId, value.OfferGroupId, value.MealPlanEntryId, value.SortOrder))
                 .SequenceEqual((request.RecipeChoices ?? []).OrderBy(value => value.SortOrder)
                     .Select(value => (value.RecipeRevisionId, value.OfferGroupId, value.MealPlanEntryId, value.SortOrder)));
+        if (request.SupplyAdjustments is { } adjustments)
+        {
+            var manual = ManualSupplyDocument.Read(state.ManualSupplySolutionsJson);
+            var solutions = adjustments.ResetRecipes ? manual.Solutions.Where(value => (adjustments.RetainRecipeSolutionIds ?? []).Contains(value.Id)).ToArray() : manual.Solutions;
+            var selections = manual.ScenarioSelections;
+            if (adjustments.UpdatePreference)
+            {
+                var unit = await database.CookingUnits.AsNoTracking().SingleAsync(value => value.Id == cookingUnitId && value.CampId == campId, cancellationToken);
+                var groupIds = await database.MealPlanOfferGroups.AsNoTracking().Where(value => value.MealPlanId == unit.StandardMealPlanId && value.CampMealId == mealId)
+                    .Select(value => value.Id).ToArrayAsync(cancellationToken);
+                selections = adjustments.PreferenceOverride.HasValue
+                    ? (groupIds.Length > 0 ? groupIds.Select(id => new SupplyScenarioSelection(id, adjustments.PreferenceOverride.Value)).ToArray() : [new(null, adjustments.PreferenceOverride.Value)]) : [];
+            }
+            state.SaveManualSupply(new ManualSupplyDocument(solutions, selections, adjustments.ResetRecipes ? false : manual.CompleteOwnSupply, adjustments.UpdateParticipantFilter ? adjustments.ParticipantFilterOverride : manual.ParticipantFilterOverride).Serialize());
+        }
         state.Configure(request.SubscriptionState, request.DemandOverride);
         if (relevantCollectionsChanged) state.MarkStale();
         if (request.StructureOverrideNodeIds is not null)
@@ -483,7 +501,9 @@ public sealed class MealPlanningStore(CateringDbContext database) : IMealPlannin
         database.CookingUnitMealRecipeChoices.AddRange((request.RecipeChoices ?? []).Select(value =>
             new CookingUnitMealRecipeChoice(value.Id == Guid.Empty ? Guid.NewGuid() : value.Id,
                 state.Id, value.RecipeRevisionId, value.OfferGroupId, value.MealPlanEntryId, value.SortOrder)));
-        await database.SaveChangesAsync(cancellationToken);
+        try { await database.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return new(MealPlanningMutationStatus.Conflict, "supply_version_conflict"); }
+        await transaction.CommitAsync(cancellationToken);
         return Success(state.Id);
     }
 

@@ -1,0 +1,99 @@
+@if (error()) { <div class="notifications"><scp-notification-banner [message]="error()" kind="error" (dismissed)="error.set('')"/></div> }
+@if (unit(); as selectedUnit) {
+  <header class="workspace-heading"><div><button matButton type="button" (click)="selectMeal()" [disabled]="isBusy()"><scp-action-icon name="back"/>Kocheinheiten</button><h2>{{ selectedUnit.name }}</h2></div><div class="workspace-actions"><span>Operative Versorgungsplanung</span><button matButton="outlined" type="button" title="Veraltete und noch nicht berechnete Mahlzeiten dieser Kocheinheit aktualisieren" [disabled]="disabled() || frozen() || isBusy()" (click)="calculateAllOutdated()"><scp-action-icon name="refresh"/>Alles neu berechnen</button>@if (batchProgress(); as progress) { <span role="status">{{ progress.done }} / {{ progress.total }} bearbeitet</span> }</div></header>
+  <div class="operative-layout">
+    <aside class="meal-navigation"><header><h3>Mahlzeiten</h3><small>{{ meals().length }} Mahlzeiten</small></header>
+      <nav aria-label="Mahlzeiten dieser Kocheinheit">@for (day of days(); track day.date) {
+        <h4>{{ day.date | date:'EEE, dd.MM.yyyy' }}</h4>
+        @for (item of day.meals; track item.id) { <button type="button" [class.selected]="item.id === mealId()" [attr.aria-current]="item.id === mealId() ? 'page' : null" [disabled]="isBusy()" (click)="selectMeal(item.id)"><span>{{ item.mealTypeName }}</span><small [class]="status(stateFor(item.id)).kind"><i></i>{{ status(stateFor(item.id)).label }}</small></button> }
+      } @empty { <p>Keine aktiven Mahlzeiten vorhanden.</p> }</nav>
+    </aside>
+    @if (meal(); as selectedMeal) {
+      <section class="meal-detail" aria-label="Versorgung der ausgewählten Mahlzeit">
+        <header class="meal-heading">
+          <div><p>{{ selectedMeal.date | date:'EEEE, dd.MM.yyyy' }}</p><h2>{{ selectedMeal.mealTypeName }}</h2><small>{{ planName() }} · {{ mode() }}</small></div>
+        </header>
+        <section class="meal-status-overview" aria-label="Status der Mahlzeit">
+          <header class="panel-heading"><div><scp-action-icon name="people"/><h3>Status der Mahlzeit</h3></div><div class="status-actions"><button matButton="filled" type="button" (click)="calculate()" [disabled]="disabled() || frozen() || isBusy()"><scp-action-icon name="refresh"/>Neu berechnen</button><button matButton="outlined" type="button" [disabled]="isBusy() || frozen() || !state()?.supply" (click)="supply()?.openVerification()"><scp-action-icon name="check"/>Verifizieren</button><button matButton="outlined" type="button" [disabled]="isBusy()" (click)="openSettings()"><scp-action-icon name="edit"/>Weitere Anpassungen</button></div></header>
+          <div class="meal-status-row">
+            <div class="meal-status planning-status"><span class="status-symbol"><scp-action-icon name="recipe"/></span><div><small>Planung</small><strong>{{ mode() }}</strong></div></div>
+            <div class="meal-status" [class.success]="status(state()).kind === 'success'" [class.warning]="status(state()).kind === 'warning' || status(state()).kind === 'stale'"><span class="status-symbol"><scp-action-icon [name]="status(state()).kind === 'success' ? 'check' : status(state()).kind === 'warning' || status(state()).kind === 'stale' ? 'warning' : 'question'"/></span><div><small>Versorgung</small><strong>{{ status(state()).label }}</strong></div></div>
+            <div class="meal-status calculation-status" [class.success]="!!state()?.calculatedAtUtc && state()?.status === 0" [class.warning]="state()?.status === 1 || state()?.status === 2"><span class="status-symbol"><scp-action-icon [name]="!state()?.calculatedAtUtc ? 'question' : state()?.status === 0 ? 'check' : 'warning'"/></span><div><small>Berechnung</small><strong>{{ calculationLabel() }}</strong>@if (state()?.calculatedAtUtc; as calculated) { <small class="status-date">{{ calculated | date:'dd.MM. HH:mm' }}</small> }</div></div>
+            <div class="meal-status verification-status" [class.success]="verificationTone() === 'success'" [class.warning]="verificationTone() === 'warning'"><span class="status-symbol"><scp-action-icon [name]="verificationTone() === 'success' ? 'check' : verificationTone() === 'warning' ? 'warning' : 'question'"/></span><div><small>Verifikation</small><strong>{{ verificationLabel(state()) }}</strong>@if (state()?.verification; as verification) { <small class="status-date">{{ verification.verifiedAt | date:'dd.MM. HH:mm' }}</small> }</div></div>
+          </div>
+        </section>
+        <section class="planned-offers"><header class="panel-heading"><div><scp-action-icon name="recipe"/><h3>Geplantes Angebot</h3></div></header>
+          @if (state()?.subscriptionState === 2) { <p>Diese Mahlzeit wird für die Kocheinheit nicht verpflegt.</p> }
+          @else if (state()?.completeOwnSupply) { <p>Eigene Versorgungslösung – das Angebot wird unabhängig vom Menüplan festgelegt.</p> }
+          @else if (state()?.subscriptionState === 1) {
+            <div class="recipe-grid">@for (choice of state()?.recipeChoices ?? []; track choice.id) { <article class="recipe-card"><div class="recipe-image" aria-label="Kein Rezeptbild hinterlegt"><scp-action-icon name="recipe"/></div><div><small>Individuelles Rezept</small><strong>{{ recipeName(choice.recipeRevisionId) }}</strong></div></article> } @empty { <p>Keine individuelle Rezeptwahl gespeichert.</p> }</div>
+          } @else {
+            <div class="planned-components">
+              @for (group of plannedGroups(); track group.id) {
+                <section class="component-offer" [attr.aria-label]="group.name || 'Komponente'">
+                  <h4>{{ group.name || 'Komponente' }}</h4>
+                  @for (entry of group.standards; track entry.id) {
+                    <article class="recipe-card standard-recipe"><div class="recipe-image" aria-label="Kein Rezeptbild hinterlegt"><scp-action-icon name="recipe"/></div><div class="recipe-description"><strong>{{ recipeName(entry.recipeRevisionId) }}</strong><span class="recipe-badge">Standardrezept</span>@if (entry.note) { <p>{{ entry.note }}</p> }</div></article>
+                  } @empty { <p class="missing-standard">Kein Standardrezept hinterlegt.</p> }
+                  @if (group.alternatives.length) {
+                    <details class="offer-alternatives" [attr.aria-label]="'Alternativen für ' + (group.name || 'Komponente')">
+                      <summary><span>{{ group.alternatives.length }} {{ group.alternatives.length === 1 ? 'Alternative' : 'Alternativen' }}</span><scp-action-icon name="down"/></summary>
+                      <div class="alternative-recipes">@for (entry of group.alternatives; track entry.id) {
+                        <article class="recipe-card alternative"><div class="recipe-image" aria-label="Kein Rezeptbild hinterlegt"><scp-action-icon name="recipe"/></div><div class="recipe-description"><strong>{{ recipeName(entry.recipeRevisionId) }}</strong><span class="recipe-badge">Alternative</span>@if (entry.note) { <p>{{ entry.note }}</p> }</div></article>
+                      }</div>
+                    </details>
+                  }
+                </section>
+              } @empty { <p>Im Standardplan ist für diese Mahlzeit noch kein Angebot hinterlegt.</p> }
+            </div>
+          }
+        </section>
+        @for (warning of state()?.warnings ?? []; track $index) { <p class="data-warning">{{ warning }}</p> }
+        @for (problem of state()?.participantProblems ?? []; track $index) { <p class="data-warning">{{ problem.reasonCode === 'OverlappingCookingUnits' ? 'Überlappende Kocheinheiten: Teilnehmerzuordnung prüfen.' : problem.reasonCode === 'ParticipantStructureMigrationRequired' ? 'Alte Teilnehmerzuordnungen müssen migriert werden.' : 'Anwesende Teilnehmer sind keiner Kocheinheit zugeordnet.' }}</p> }
+        @if (state(); as current) {
+          @if (current.supply) { <scp-supply-solutions [contextLabel]="selectedMeal.mealTypeName + ' · ' + selectedUnit.name" [campId]="data().campId" [state]="current" [showVerification]="false" [recipes]="data().recipeOptions" [offers]="offers()" [togetherPreference]="unit()?.togetherPreference ?? 0" [catalog]="catalog()" [externalBusy]="busy()" [disabled]="disabled()" [frozen]="frozen()" (saved)="supplySaved($event)" (verified)="refresh('Verifikation gespeichert.')"/> }
+          @else { <section class="not-calculated"><h3>Versorgung noch nicht berechnet</h3><p>Die Berechnung ermittelt Versorgungslösungen und offene Konflikte für diese Mahlzeit.</p></section> }
+        } @else { <section class="not-calculated"><h3>Versorgung noch nicht berechnet</h3><p>Mit „Neu berechnen“ den Bedarf und passende Versorgungslösungen ermitteln.</p></section> }
+      </section>
+    } @else { <p class="not-calculated">Diese Mahlzeit ist nicht mehr aktiv. Bitte eine andere Mahlzeit auswählen.</p> }
+  </div>
+} @else { <p>Die Kocheinheit ist nicht mehr vorhanden.</p> }
+<dialog #settingsDialog class="adjustments-dialog" aria-labelledby="settings-title" (cancel)="$event.preventDefault(); closeSettings()">
+  <header class="adjustments-heading"><span class="adjustment-symbol"><scp-action-icon name="planning"/></span><div><h3 id="settings-title">Weitere Anpassungen</h3><p>Nur für diese Kocheinheit und Mahlzeit.</p></div><button matButton type="button" aria-label="Anpassungen schließen" (click)="closeSettings()" [disabled]="isBusy()">×</button></header>
+  <div class="adjustments-context"><span><scp-action-icon name="cooking"/>{{ meal()?.mealTypeName }}</span><span><scp-action-icon name="people"/>{{ unit()?.name }}</span><span><scp-action-icon name="planning"/>{{ meal()?.date | date:'dd.MM.yyyy' }}</span></div>
+  @if (error()) { <p class="adjustment-error" role="alert">{{ error() }}</p> }
+  <fieldset class="adjustments-fields" [disabled]="disabled() || frozen() || isBusy()">
+    <details class="adjustment-section" name="meal-adjustments" open>
+      <summary><span class="adjustment-symbol"><scp-action-icon name="cooking"/></span><span class="adjustment-title"><strong>Versorgung und Rezeptlösungen</strong><small>Versorgung festlegen und eigene Rezeptlösungen bearbeiten.</small></span><span class="adjustment-badge" [class.overridden]="draft.subscriptionState === 2">{{ draft.subscriptionState === 2 ? 'Keine Versorgung' : 'Versorgung aktiv' }}</span><scp-action-icon name="down"/></summary>
+      <div class="adjustment-content">
+        <div class="adjustment-surface"><div class="adjustment-row"><div><h4>Versorgung</h4><p>Diese Mahlzeit wird für die Kocheinheit versorgt.</p></div><label class="supply-switch"><input type="checkbox" role="switch" aria-label="Versorgung aktiv" [ngModel]="draft.subscriptionState !== 2" (ngModelChange)="draft.subscriptionState = $event ? 0 : 2"><span></span>{{ draft.subscriptionState === 2 ? 'Versorgung entfällt' : 'Versorgung aktiv' }}</label></div>
+          <div class="adjustment-row"><div><h4>Eigene Rezeptlösungen</h4><p>Die aktuelle Versorgung vollständig bearbeiten und Rezepte frei wählen.</p></div><div class="adjustment-actions"><button matButton="outlined" type="button" (click)="editSupply()" [disabled]="!state()?.supply || draft.subscriptionState === 2"><scp-action-icon name="edit"/>Lösungen bearbeiten</button><button matButton="outlined" type="button" (click)="stageRecipeReset()" [disabled]="!state()?.supply || draft.resetOwnRecipes"><scp-action-icon name="refresh"/>Zurück zum Plan</button></div></div>
+        </div>
+        <p class="adjustment-info"><scp-action-icon name="info"/>„Zurück zum Plan“ setzt eigene Rezeptlösungen zurück. Bestätigte Gemeinsamkeitsentscheidungen bleiben erhalten.</p>
+        @if (draft.resetOwnRecipes) { <p class="pending-reset">Rezeptlösungen werden beim Speichern zurückgesetzt.</p> }
+        @if (draft.subscriptionState === 1) { <p>Individuelle Rezeptwahl aus bestehender Planung. Sie bleibt bis zur Änderung erhalten.</p> }
+      </div>
+    </details>
+    <details class="adjustment-section" name="meal-adjustments">
+      <summary><span class="adjustment-symbol"><scp-action-icon name="people"/></span><span class="adjustment-title"><strong>Personenzahl und Mengenbedarf</strong><small>Vom berechneten Bedarf abweichen, insgesamt oder für einzelne Komponenten.</small></span><span class="adjustment-badge" [class.overridden]="draft.demandOverride !== null || hasTargetOverrides()">{{ draft.demandOverride !== null || hasTargetOverrides() ? 'Manuell angepasst' : 'Standard (berechnet)' }}</span><scp-action-icon name="down"/></summary>
+      <div class="adjustment-content">
+        <div class="adjustment-options"><label [class.selected]="!draft.manualDemand"><input type="radio" name="demand-mode" [checked]="!draft.manualDemand" (change)="setManualDemand(false)"><span><strong>Berechneten Bedarf verwenden</strong><small>Automatisch aus der Teilnehmerstruktur ermittelt.</small></span></label><label [class.selected]="draft.manualDemand"><input type="radio" name="demand-mode" [checked]="draft.manualDemand" (change)="setManualDemand(true)"><span><strong>Bedarf manuell festlegen</strong><small>Eigene Personenzahl angeben.</small></span></label></div>
+        <div class="adjustment-surface demand-settings"><div><h4>Berechneter Bedarf</h4><strong class="calculated-persons"><scp-action-icon name="people"/>{{ state()?.calculatedDemand ?? '–' }} Personen</strong>@if (draft.manualDemand) { <label class="compact-field">Manuelle Personenzahl<input type="number" min="0" step="1" [(ngModel)]="draft.demandOverride" [disabled]="draft.subscriptionState === 2"></label> }</div><div class="component-targets"><h4>Zielbedarf je Komponente <small>(optional)</small></h4>@for (group of groups(); track group.id) { <label class="compact-field"><span>{{ group.name || 'Komponente' }}</span><input type="number" min="0" step="1" [ngModel]="target(group.id)" (ngModelChange)="setTarget(group.id, $event)" [disabled]="draft.subscriptionState === 2 || !draft.manualDemand" [placeholder]="'Automatisch (' + (draft.demandOverride ?? state()?.calculatedDemand ?? '–') + ')'"></label> } @empty { <p>Keine Komponenten im Standardplan.</p> }</div></div>
+      </div>
+    </details>
+    <details class="adjustment-section" name="meal-adjustments">
+      <summary><span class="adjustment-symbol"><scp-action-icon name="structure"/></span><span class="adjustment-title"><strong>Strukturzuordnung</strong><small>Festlegen, welche Gruppen bei dieser Mahlzeit versorgt werden.</small></span><span class="adjustment-badge" [class.overridden]="draft.useStructureOverride">{{ draft.useStructureOverride || draft.participantFilter !== 'standard' ? 'Abweichende Zuordnung / Filter' : 'Standard der Kocheinheit' }}</span><scp-action-icon name="down"/></summary>
+      <div class="adjustment-content"><div class="adjustment-options"><label [class.selected]="!draft.useStructureOverride"><input type="radio" name="structure-mode" [checked]="!draft.useStructureOverride" (change)="resetStructure()"><span><strong>Standard der Kocheinheit verwenden</strong><small>Die reguläre Gruppenzuordnung bleibt bestehen.</small></span></label><label [class.selected]="draft.useStructureOverride"><input type="radio" name="structure-mode" [checked]="draft.useStructureOverride" (change)="useCustomStructure()"><span><strong>Abweichende Gruppen auswählen</strong><small>Eigene Zusammenstellung nur für diese Mahlzeit.</small></span></label></div>
+        <label class="compact-field">Verpflegungsfilter<select [(ngModel)]="draft.participantFilter"><option value="standard">Standard der Kocheinheit</option><option value="0">Alle Teilnehmer</option><option value="1">Nur Sonderverpflegung</option><option value="2">Ohne Sonderverpflegung</option></select></label>
+        <div class="adjustment-surface"><h4>Aktuelle Zuordnung {{ draft.useStructureOverride ? '(abweichend)' : '(Standard)' }}</h4><div class="structure-chips">@for (name of structureNames(); track $index) { <span><scp-action-icon name="people"/>{{ name }}</span> } @empty { <span>Keine Gruppen zugeordnet</span> }</div>
+          @if (draft.useStructureOverride) { <div class="structure-list">@for (node of structure().rows('', collapsed); track node.id) { <label class="check" [style.padding-left.px]="node.depth * 18"><input type="checkbox" [checked]="structure().state(node.id, draft.structureOverrideNodeIds) === 'full'" [indeterminate]="structure().state(node.id, draft.structureOverrideNodeIds) === 'partial'" (change)="toggleNode(node.id, $any($event.target).checked)">{{ node.name }}</label> }</div> }
+        </div>
+      </div>
+    </details>
+    <details class="adjustment-section" name="meal-adjustments">
+      <summary><span class="adjustment-symbol"><scp-action-icon name="move"/></span><span class="adjustment-title"><strong>Versorgungspräferenz</strong><small>Steuert, wie geeignete Versorgungslösungen zusammengestellt werden.</small></span><span class="adjustment-badge" [class.overridden]="draft.preference !== 'standard'">{{ preferenceLabel() }}{{ draft.preference !== 'standard' && draft.preference !== 'mixed' ? ' (überschrieben)' : '' }}</span><scp-action-icon name="down"/></summary>
+      <div class="adjustment-content"><div class="adjustment-options"><label [class.selected]="draft.preference === 'standard'"><input type="radio" name="preference-mode" [checked]="draft.preference === 'standard'" (change)="setPreferenceOverride(false)"><span><strong>Standard der Kocheinheit verwenden</strong><small>Aktuelle Einstellung: {{ standardPreferenceLabel() }}</small></span></label><label [class.selected]="draft.preference !== 'standard'"><input type="radio" name="preference-mode" [checked]="draft.preference !== 'standard'" (change)="setPreferenceOverride(true)"><span><strong>Für diese Mahlzeit abweichen</strong><small>Eigene Versorgungspräferenz festlegen.</small></span></label></div>@if (draft.preference !== 'standard') { <div class="preference-settings"><label [class.selected]="draft.preference === '0'"><input type="radio" name="preference" value="0" [(ngModel)]="draft.preference"><span><strong>Gemeinsam bevorzugen</strong><small>Möglichst alle Personen mit einer gemeinsamen Lösung versorgen.</small></span></label><label [class.selected]="draft.preference === '2'"><input type="radio" name="preference" value="2" [(ngModel)]="draft.preference"><span><strong>Getrennt bevorzugen</strong><small>Bestehende Lösungen behalten und offene Anforderungen möglichst gebündelt ergänzen.</small></span></label><label [class.selected]="draft.preference === '1'"><input type="radio" name="preference" value="1" [(ngModel)]="draft.preference"><span><strong>Nachfragen</strong><small>Bei unklaren Fällen zuerst eine Entscheidung zum Vorgehen anzeigen.</small></span></label>@if (draft.preference === 'mixed') { <p>Die Komponenten haben unterschiedliche gespeicherte Einstellungen. Ohne neue Auswahl bleiben diese erhalten.</p> }</div> }</div>
+    </details>
+  </fieldset>
+  <footer class="adjustments-footer"><button matButton type="button" [disabled]="disabled() || frozen() || isBusy()" (click)="resetAllAdjustments()"><scp-action-icon name="refresh"/>Alle Anpassungen zurücksetzen</button><div><button matButton="outlined" type="button" (click)="closeSettings()" [disabled]="isBusy()">Abbrechen</button><button matButton="filled" type="button" (click)="saveSettings()" [disabled]="disabled() || frozen() || isBusy() || !hasSettingsChanges()"><scp-action-icon name="check"/>Anpassungen speichern</button></div></footer>
+</dialog>

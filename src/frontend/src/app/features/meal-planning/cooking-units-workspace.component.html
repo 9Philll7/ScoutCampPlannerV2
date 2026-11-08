@@ -1,0 +1,94 @@
+<header class="workspace-heading">
+  <div><nav aria-label="Bereich">Verpflegung <span aria-hidden="true">›</span> Kocheinheiten</nav><h2>Kocheinheiten</h2></div>
+  <div class="heading-actions">
+    <button matIconButton type="button" aria-label="Kocheinheiten neu laden" matTooltip="Neu laden" [disabled]="busy()" (click)="refresh()"><scp-action-icon name="refresh"/></button>
+    <button matButton="outlined" type="button" [disabled]="busy() || hasPendingChanges()" (click)="openSettings(settingsDialog)"><scp-action-icon name="organization"/>Verwaltung</button>
+    @if (!disabled()) { <button matButton="filled" type="button" [disabled]="busy()" (click)="create()"><scp-action-icon name="add"/>Kocheinheit erstellen</button> }
+  </div>
+</header>
+@if (error()) { <div class="unit-notifications"><scp-notification-banner [message]="error()" kind="error" (dismissed)="error.set('')"/></div> }
+<div class="units-layout">
+  <aside class="units-list" aria-label="Kocheinheiten auswählen">
+    <label class="search-field"><scp-action-icon name="people"/><span class="sr-only">Kocheinheiten suchen</span><input type="search" placeholder="Kocheinheiten suchen …" [(ngModel)]="search" name="unitSearch"/></label>
+    <div class="list-options"><label>Gruppe<select [(ngModel)]="groupFilter" name="unitGroupFilter"><option [ngValue]="''">Alle Gruppen</option><option [ngValue]="null">Ohne Gruppe</option>@for (group of data().cookingUnitGroups; track group.id) { <option [ngValue]="group.id">{{ group.name }}</option> }</select></label></div>
+    <div class="list-options"><label>Sortierung<select [(ngModel)]="sort" name="unitSort"><option value="name">Name (A–Z)</option><option value="order">Gespeicherte Reihenfolge</option></select></label><span>{{ listedUnits().length }}</span></div>
+    <div class="units-scroll">
+      @for (unit of listedUnits(); track unit.id) {
+        <button class="unit-row" type="button" [class.selected]="!isNew() && draft()?.id === unit.id" [attr.aria-current]="!isNew() && draft()?.id === unit.id ? 'true' : null" [disabled]="busy()" (click)="select(unit)">
+          <span class="unit-symbol"><scp-action-icon name="people"/></span>
+          <span class="unit-row-copy"><strong>{{ unit.name }}</strong><small>{{ groupLabel(unit.groupId) }} · {{ unit.defaultStructureNodeIds.length }} Strukturbereiche</small><span class="unit-tags"><span>{{ planLabel(unit.standardMealPlanId) }}</span><span>{{ filterLabel(unit.participantFilter) }}</span><span>{{ preferenceLabel(unit.togetherPreference) }}</span></span></span>
+          <scp-action-icon class="row-chevron" name="expand"/>
+        </button>
+      } @empty { <div class="list-empty"><scp-action-icon name="people"/><p>{{ search || groupFilter !== '' ? 'Keine passende Kocheinheit.' : 'Noch keine Kocheinheit angelegt.' }}</p></div> }
+    </div>
+  </aside>
+  @if (draft(); as unit) {
+    <section class="unit-details" aria-label="Kocheinheit bearbeiten">
+      <header class="detail-heading"><span class="detail-symbol"><scp-action-icon name="people"/></span><div><h3>{{ unit.name || 'Neue Kocheinheit' }}</h3><p>{{ selectedNodes().length }} Strukturbereiche zugeordnet @if (hasPendingChanges()) { <span class="draft-badge">Ungespeichert</span> }</p></div>
+        @if (!disabled() && !isNew()) { <button matButton="outlined" class="delete-unit" type="button" [disabled]="busy()" (click)="remove()"><scp-action-icon name="remove"/>Löschen</button> }
+      </header>
+      <div class="unit-tabs" role="tablist" aria-label="Kocheinheitseinstellungen">
+        <button #generalTab id="unit-general-tab" type="button" role="tab" [attr.aria-selected]="tab() === 'general'" [attr.tabindex]="tab() === 'general' ? 0 : -1" aria-controls="unit-general-panel" (click)="tab.set('general')" (keydown.arrowright)="tab.set('structure'); structureTab.focus(); $event.preventDefault()" (keydown.arrowleft)="tab.set('catering'); cateringTab.focus(); $event.preventDefault()">Allgemein</button>
+        <button #structureTab id="unit-structure-tab" type="button" role="tab" [attr.aria-selected]="tab() === 'structure'" [attr.tabindex]="tab() === 'structure' ? 0 : -1" aria-controls="unit-structure-panel" (click)="tab.set('structure')" (keydown.arrowright)="tab.set('catering'); cateringTab.focus(); $event.preventDefault()" (keydown.arrowleft)="tab.set('general'); generalTab.focus(); $event.preventDefault()">Struktur & Teilnehmer</button>
+        <button #cateringTab id="unit-catering-tab" type="button" role="tab" [attr.aria-selected]="tab() === 'catering'" [attr.tabindex]="tab() === 'catering' ? 0 : -1" aria-controls="unit-catering-panel" (click)="tab.set('catering')" (keydown.arrowright)="tab.set('general'); generalTab.focus(); $event.preventDefault()" (keydown.arrowleft)="tab.set('structure'); structureTab.focus(); $event.preventDefault()">Verpflegung</button>
+        <button class="supply-link" type="button" [disabled]="isNew() || busy() || !firstMeal()" (click)="openSupply()">Versorgung öffnen<scp-action-icon name="expand"/></button>
+      </div>
+      <div class="detail-scroll">
+        @if (tab() === 'general') {
+          <div id="unit-general-panel" role="tabpanel" aria-labelledby="unit-general-tab" class="detail-columns">
+            <section class="settings-panel"><h4>Grundinformationen</h4>
+              <fieldset [disabled]="locked()">
+                <label>Name der Kocheinheit<input [(ngModel)]="unit.name" name="cookingUnitName" maxlength="200" required/></label>
+                <label>Organisatorische Gruppe<select [(ngModel)]="unit.groupId" name="cookingUnitGroup"><option [ngValue]="null">Keine Gruppe</option>@for (group of data().cookingUnitGroups; track group.id) { <option [ngValue]="group.id">{{ group.name }}</option> }</select></label>
+                <label>Standard-Menüplan<select [(ngModel)]="unit.standardMealPlanId" name="cookingUnitPlan"><option [ngValue]="null">Kein Standard-Menüplan</option>@for (plan of data().mealPlans; track plan.id) { <option [ngValue]="plan.id">{{ plan.name }}</option> }</select></label>
+                <p class="field-note">Der Menüplan wird abonniert. Gespeicherte Änderungen seines Angebots werden übernommen.</p>
+              </fieldset>
+            </section>
+            <div class="settings-stack"><section class="settings-panel"><h4>Gemeinsamkeitspräferenz</h4><fieldset class="preference-options" [disabled]="locked()"><legend class="sr-only">Gemeinsamkeitspräferenz wählen</legend>
+              @for (option of preferences; track option.value) { <label class="radio-option"><input type="radio" name="cookingUnitTogether" [value]="option.value" [(ngModel)]="unit.togetherPreference"/><span><strong>{{ option.name }}</strong><small>{{ option.summary }}</small></span></label> }
+            </fieldset></section>
+            <section class="settings-panel unit-summary"><h4>Zusammenfassung</h4><dl><div><dt><scp-action-icon name="structure"/>Strukturbereiche</dt><dd>{{ selectedNodes().length }}</dd></div><div><dt><scp-action-icon name="planning"/>Standard-Menüplan</dt><dd>{{ planLabel(unit.standardMealPlanId) }}</dd></div><div><dt><scp-action-icon name="cooking"/>Gemeinsame Versorgung</dt><dd>{{ preferenceLabel(unit.togetherPreference) }}</dd></div></dl></section></div>
+          </div>
+        } @else if (tab() === 'structure') {
+          <div id="unit-structure-panel" role="tabpanel" aria-labelledby="unit-structure-tab" class="detail-columns structure-columns">
+            <section class="settings-panel structure-panel"><h4>Strukturknoten auswählen</h4>
+              <label class="search-field"><scp-action-icon name="structure"/><span class="sr-only">Struktur durchsuchen</span><input type="search" placeholder="Struktur durchsuchen …" [(ngModel)]="structureSearch" name="unitStructureSearch"/></label>
+              @if (!tree().valid) { <p role="alert">Die Lagerstruktur ist unvollständig oder widersprüchlich. Bitte vor dem Speichern korrigieren.</p> }
+              <ul class="structure-tree" aria-label="Strukturbereiche">
+                @for (node of rows(); track node.id) {
+                  <li [style.padding-left.px]="node.depth * 20">
+                    @if (node.hasChildren) { <button class="tree-expand" type="button" [attr.aria-expanded]="!!structureSearch.trim() || !collapsed().has(node.id)" [attr.aria-label]="node.name + (collapsed().has(node.id) ? ' aufklappen' : ' zuklappen')" (click)="toggleExpanded(node.id)"><scp-action-icon [name]="!structureSearch.trim() && collapsed().has(node.id) ? 'expand' : 'down'"/></button> } @else { <span class="tree-spacer" aria-hidden="true"></span> }
+                    <label><input type="checkbox" [checked]="nodeState(node.id) === 'full'" [indeterminate]="nodeState(node.id) === 'partial'" [disabled]="locked()" (change)="toggleNode(node.id, $any($event.target).checked)" [attr.aria-label]="node.name"/><scp-action-icon [name]="node.hasChildren ? 'structure' : 'camp'"/><span>{{ node.name }}</span></label>
+                  </li>
+                } @empty { <li class="tree-empty">{{ structureSearch ? 'Keine passenden Strukturbereiche.' : 'Noch keine Lagerstruktur vorhanden.' }}</li> }
+              </ul>
+              @if (missingNodes().length) { <div class="missing-references"><p role="alert">Nicht mehr verfügbare Zuordnungen bitte ausdrücklich entfernen.</p>@for (node of missingNodes(); track node.id) { <button matButton type="button" [disabled]="locked()" (click)="removeNode(node.id)"><scp-action-icon name="remove"/>Ungültige Zuordnung entfernen</button> }</div> }
+            </section>
+            <div class="settings-stack"><section class="settings-panel"><fieldset [disabled]="locked()"><ng-container [ngTemplateOutlet]="filterSelection"/></fieldset></section>
+              <section class="settings-panel"><scp-cooking-unit-participant-summary [campId]="data().campId" [nodes]="data().structureNodes" [selectedIds]="unit.defaultStructureNodeIds" [filter]="unit.participantFilter ?? 0"/></section>
+            </div>
+          </div>
+        } @else {
+          <div id="unit-catering-panel" role="tabpanel" aria-labelledby="unit-catering-tab" class="settings-panel">
+            <scp-cooking-unit-requirements [campId]="data().campId" [nodes]="data().structureNodes" [selectedIds]="unit.defaultStructureNodeIds" [filter]="unit.participantFilter ?? 0"/>
+          </div>
+        }
+      </div>
+      <footer class="detail-footer"><span>{{ disabled() ? 'Leseansicht' : 'Änderungen werden für diese Kocheinheit gespeichert.' }}</span>@if (!disabled()) { <button matButton="outlined" type="button" [disabled]="busy() || (!hasPendingChanges() && !isNew())" (click)="discard()">Verwerfen</button><button matButton="filled" type="button" [disabled]="locked() || !valid() || (!hasPendingChanges() && !isNew())" (click)="save()"><scp-action-icon name="save"/>{{ busy() ? 'Wird gespeichert …' : 'Speichern' }}</button> }</footer>
+    </section>
+  } @else { <section class="unit-details empty-detail"><scp-action-icon name="people"/><h3>Kocheinheiten planen</h3><p>Eine Kocheinheit legt Strukturzuordnung, Filter und Standard-Menüplan fest.</p>@if (!disabled()) { <button matButton="filled" type="button" (click)="create()"><scp-action-icon name="add"/>Erste Kocheinheit erstellen</button> }</section> }
+</div>
+<ng-template #filterSelection>
+  @if (draft(); as unit) { <label>Verpflegungsfilter<select [(ngModel)]="unit.participantFilter" name="cookingUnitFilter">@for (filter of filters; track filter.value) { <option [ngValue]="filter.value">{{ filter.name }}</option> }</select></label><p class="filter-summary"><scp-action-icon name="info"/>{{ filterSummary() }}</p> }
+</ng-template>
+<dialog #settingsDialog class="unit-management-dialog" aria-labelledby="unit-management-title" (cancel)="$event.preventDefault(); closeSettings(settingsDialog)">
+  <header><h3 id="unit-management-title">Kocheinheiten verwalten</h3><button matIconButton type="button" aria-label="Verwaltung schließen" [disabled]="busy() || managementBusy()" (click)="closeSettings(settingsDialog)">×</button></header>
+  <section><h4>Organisatorische Gruppen</h4><p>Gruppen ordnen Kocheinheiten. Sie haben keine eigene Bedarfsberechnung.</p>
+    <ul class="management-groups">@for (group of data().cookingUnitGroups; track group.id) { <li><span>{{ group.name }}</span>@if (!disabled()) { <button matIconButton type="button" [disabled]="locked() || basisDirty()" [attr.aria-label]="'Gruppe entfernen: ' + group.name" (click)="removeGroup(group.id)"><scp-action-icon name="remove"/></button> }</li> } @empty { <li>Noch keine Gruppen vorhanden.</li> }</ul>
+    @if (!disabled()) { <form (ngSubmit)="createGroup()" class="group-create"><label>Neue Gruppe<input name="cookingUnitNewGroup" maxlength="200" [(ngModel)]="groupName" [disabled]="locked() || basisDirty()"/></label><button matButton="filled" type="submit" [disabled]="locked() || basisDirty() || !groupName.trim()"><scp-action-icon name="add"/>Anlegen</button></form> }
+    @if (basisDirty()) { <p>Bitte die geänderte Bedarfsbasis zuerst speichern oder verwerfen.</p> }
+  </section>
+  @if (settingsOpen()) { <scp-participant-planning [campId]="data().campId" [units]="data().cookingUnits" [meals]="data().meals" [disabled]="locked() || !!groupName.trim()" (changed)="refresh()"/> }
+  @if (error()) { <p role="alert">{{ error() }}</p> }
+  <footer><button matButton="outlined" type="button" [disabled]="busy() || managementBusy()" (click)="closeSettings(settingsDialog)">Schließen</button></footer>
+</dialog>

@@ -34,6 +34,7 @@ public sealed partial class MealPlanningTests
     {
         var ct = TestContext.Current.CancellationToken;
         var context = CreateContext(true, true);
+        context.Data.CookingUnits[0].SetTogetherPreference(CookingTogetherPreference.AlwaysTogether);
         var f = new SupplySolutionTests.Fixture();
         var ingredient = f.Ingredient(IngredientPropertyState.DoesNotContain, f.Plant, 0);
         var replacement = f.Replacement(ingredient);

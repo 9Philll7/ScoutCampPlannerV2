@@ -82,18 +82,22 @@ public sealed partial class MealPlanningService
             ? value.Deserialize<T>(JsonOptions) : default;
     }
 
-    public static IReadOnlyList<SupplySolution> ReadManualSupply(CookingUnitMealState? state) => state is null ? [] :
-        JsonSerializer.Deserialize<SupplySolution[]>(state.ManualSupplySolutionsJson, JsonOptions) ?? [];
+    public static IReadOnlyList<SupplySolution> ReadManualSupply(CookingUnitMealState? state) => state is null ? [] : ManualSupplyDocument.Read(state.ManualSupplySolutionsJson).Solutions;
+    public static IReadOnlyList<SupplyScenarioSelection> ReadScenarioSelections(CookingUnitMealState? state) => state is null ? [] : ManualSupplyDocument.Read(state.ManualSupplySolutionsJson).ScenarioSelections;
+
+    public static bool HasCompleteOwnSupply(CookingUnitMealState? state) =>
+        state is not null && ManualSupplyDocument.Read(state.ManualSupplySolutionsJson).CompleteOwnSupply;
 
     private object BuildSupplyFingerprint(CookingUnit unit, CampMeal meal, MealPlanSubscriptionState subscription,
         MealPlan? plan, MealPlanningData data, OperationalParticipantDemand demand)
     {
         var state = data.MealStates.SingleOrDefault(value => value.CookingUnitId == unit.Id && value.CampMealId == meal.Id);
-        var groups = data.OfferGroups.Where(value => value.MealPlanId == plan?.Id && value.CampMealId == meal.Id)
+        var own = HasCompleteOwnSupply(state);
+        var groups = data.OfferGroups.Where(value => !own && value.MealPlanId == plan?.Id && value.CampMealId == meal.Id)
             .Select(value => value.Id).Order().ToArray();
         var entries = data.Entries.Where(value => groups.Contains(value.OfferGroupId))
             .OrderBy(value => value.Id).Select(value => new { value.OfferGroupId, value.RecipeRevisionId, value.IsStandard }).ToArray();
-        var choices = data.RecipeChoices.Where(value => value.CookingUnitMealStateId == state?.Id && subscription == MealPlanSubscriptionState.Custom)
+        var choices = data.RecipeChoices.Where(value => value.CookingUnitMealStateId == state?.Id && !own && subscription == MealPlanSubscriptionState.Custom)
             .OrderBy(value => value.Id).Select(value => new { value.RecipeRevisionId, value.OfferGroupId }).ToArray();
         var manual = ReadManualSupply(state);
         var origins = new HashSet<Guid>();
@@ -102,6 +106,9 @@ public sealed partial class MealPlanningService
             foreach (Guid id in entries.Select(value => value.RecipeRevisionId).Concat(choices.Select(value => value.RecipeRevisionId))
                 .Concat(manual.Select(value => value.RecipeRevisionId)).Distinct()) Visit(id);
         return new {
+            preferencePlannerVersion = 6, participantFilter = EffectiveParticipantFilter(unit, meal.Id, data),
+            completeOwnSupply = own,
+            scenarioSelections = ReadScenarioSelections(state).OrderBy(value => value.OfferGroupId).ToArray(),
             unit.TogetherPreference, state?.DemandOverride, entries, choices,
             manual = manual.OrderBy(value => value.Id).Select(value => new {
                 value.Id, value.RecipeRevisionId, value.OfferGroupId, value.Portions, value.Source,
@@ -168,10 +175,16 @@ public sealed partial class MealPlanningService
         catch (ArgumentException) { return Invalid("invalid_supply", "Ungültige Portions- oder Positionsentscheidung."); }
         catch (InvalidOperationException) { return Invalid("invalid_supply_reference", "Rezeptposition oder Variante ist nicht verfügbar."); }
         var data = await store.LoadAsync(campId, ct);
+        var state = data.MealStates.SingleOrDefault(value => value.CookingUnitId == cookingUnitId && value.CampMealId == mealId);
+        var selections = request.ScenarioSelections ?? ReadScenarioSelections(state);
+        if (selections.Any(value => value is null || !Enum.IsDefined(value.Preference) || value.OfferGroupId == Guid.Empty) ||
+            selections.Select(value => value.OfferGroupId).Distinct().Count() != selections.Count ||
+            selections.Any(value => value.OfferGroupId.HasValue && !data.OfferGroups.Any(group => group.Id == value.OfferGroupId && group.CampMealId == mealId)))
+            return Invalid("invalid_supply_scenario", "Ungültige Auswahl der Versorgungsart.");
         if (request.Solutions.Any(value => value.OfferGroupId.HasValue && !data.OfferGroups.Any(group =>
                 group.Id == value.OfferGroupId && group.CampMealId == mealId)))
             return Invalid("invalid_supply_offer", "Angebotsgruppe gehört nicht zu dieser Mahlzeit.");
         return await store.SaveSupplyStateAsync(campId, cookingUnitId, mealId, request.ExpectedVersion,
-            JsonSerializer.Serialize(request.Solutions, JsonOptions), null, null, ct);
+            new ManualSupplyDocument(SupplySolutionCoverage.MergeIdentical(request.Solutions), selections, request.CompleteOwnSupply ?? HasCompleteOwnSupply(state), ReadParticipantFilterOverride(state)).Serialize(), null, null, ct);
     }
 }

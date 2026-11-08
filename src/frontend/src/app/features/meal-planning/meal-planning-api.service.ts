@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { API_BASE_URL } from '../../core/api-base-url';
+import { map } from 'rxjs';
 
 export type MealSubscriptionState = 0 | 1 | 2;
 export type OperationalStatus = 0 | 1 | 2;
@@ -26,12 +27,24 @@ export interface CookingUnitGroup { id: string; campId: string; name: string; so
 export interface CookingUnit { id: string; campId: string; name: string; sortOrder: number; groupId: string | null; standardMealPlanId: string | null; defaultStructureNodeIds: string[]; participantFilter?: number; togetherPreference?: number; }
 export interface OfferTarget { id: string; offerGroupId: string; targetOverride: number | null; }
 export interface RecipeChoice { id: string; recipeRevisionId: string; offerGroupId: string | null; mealPlanEntryId: string | null; sortOrder: number; }
+export interface RequirementSignature {
+  key: string; dietTypeId?: string | null; allergenIds?: string[];
+  intolerances?: { substanceId: string; thresholdGramsPerPortion: number | null }[];
+}
+export interface RequirementLabelCatalog {
+  dietTypes: { id: string; name: string }[];
+  allergens: { id: string; name: string; code?: string }[];
+  substances: { id: string; name: string; code?: string }[];
+}
 export interface CookingUnitMeal {
   supply?: { solutions: SupplySolution[]; candidates: SupplySolution[]; problems: SupplyProblem[];
     commonSupplyChoices?: CommonSupplyChoice[];
-    requirements?: { requirements: { key: string }; portions: number }[];
+    decisions?: SupplyDecisionGroup[];
+    preferenceOptions?: CommonSupplyChoice[];
+    requirements?: { requirements: RequirementSignature; portions: number }[];
     quantities?: { solutionId: string; positionPath: string; ingredientName: string; quantity: number; unit: string; scalingMode: number; stepwiseScaling: { stepSize: number; quantityPerStep: number } | null }[] } | null;
   manualSupplySolutions?: SupplySolution[];
+  manualScenarioSelections?: SupplyScenarioSelection[]; completeOwnSupply?: boolean; participantFilterOverride?: number | null;
   supplyVersion?: number;
   verification?: { kind: number; reason: string | null; verifiedBy: string; verifiedAt: string } | null;
   verificationStale?: boolean;
@@ -41,10 +54,13 @@ export interface CookingUnitMeal {
   calculatedAtUtc: string | null; structureOverrideNodeIds: string[]; offerTargets: OfferTarget[];
   recipeChoices: RecipeChoice[]; warnings: string[];
   demandBasis?: number;
-  requirementGroups?: { requirements: { key: string }; portions: number }[];
+  requirementGroups?: { requirements: RequirementSignature; portions: number }[];
   unassignedParticipantIds?: string[];
   participantProblems?: { reasonCode: string; participantReferences: string[] }[];
 }
+export interface SupplySuggestion { id: string; scope: string; label: string; recipeName: string; preferred: boolean; solution: SupplySolution; }
+export interface SupplySuggestionOffer { offerGroupId: string | null; name: string; preference: number; missingPersons: number; coveredPersons: number; options: SupplySuggestion[]; }
+export interface SupplySuggestionDocument { expectedVersion: number; offers: SupplySuggestionOffer[]; unavailableReason: string | null; }
 export interface SupplySolution {
   id: string; recipeRevisionId: string; offerGroupId: string | null; portions: number; source: number;
   positionSelections: Record<string, { replacementRuleId: string | null; variantKey: string | null }>;
@@ -53,7 +69,11 @@ export interface SupplySolution {
 export interface CommonSupplyChoice {
   offerGroupId: string | null; requirementGroupKeys: string[];
   togetherOptions: SupplySolution[]; separateSolutions: SupplySolution[];
+  togetherScenario?: SupplyScenario | null; separateScenario?: SupplyScenario | null;
 }
+export interface SupplyScenarioSelection { offerGroupId: string | null; preference: 0 | 1 | 2; }
+export interface SupplyDecisionGroup { id: string; offerGroupId: string | null; requirementGroupKeys: string[]; options: SupplySolution[]; together: boolean; }
+export interface SupplyScenario { solutions: SupplySolution[]; decisions: SupplyDecisionGroup[]; problems: SupplyProblem[]; }
 export interface SupplyProblem { category: number; code: number; requirementGroupKey: string | null; referenceId: string | null; positionPath: string | null; }
 export interface SupplyPositionOption { path: string; name: string; choices: { label: string; selection: { replacementRuleId: string | null; variantKey: string | null } | null }[]; }
 export interface MealPlanningOverview {
@@ -71,6 +91,9 @@ export class MealPlanningApiService {
   private options = { withCredentials: true } as const;
 
   overview(campId: string) { return this.http.get<MealPlanningOverview>(`${this.baseUrl}/api/camps/${campId}/meal-planning`, this.options); }
+  requirementCatalog(campId: string) {
+    return this.http.get<{ catalog: RequirementLabelCatalog }>(`${this.baseUrl}/api/camps/${campId}/participant-filters`, this.options).pipe(map(value => value.catalog));
+  }
   recipeHints(campId: string, revisionId: string) { return this.http.get<RecipePlanningHints>(`${this.baseUrl}/api/camps/${campId}/meal-planning/recipes/${revisionId}/hints`, this.options); }
   addAdditionalMeal(campId: string, date: string, name: string, expectedScheduleVersion: number) {
     return this.http.post<{ scheduleVersion: number }>(`${this.baseUrl}/api/camps/${campId}/meals/additional`, { date, name, expectedScheduleVersion }, this.options);
@@ -100,12 +123,23 @@ export class MealPlanningApiService {
   configureMeal(campId: string, unitId: string, mealId: string, value: {
     subscriptionState: MealSubscriptionState; demandOverride: number | null; structureOverrideNodeIds: string[] | null;
     offerTargets: OfferTarget[]; recipeChoices: RecipeChoice[];
+    supplyAdjustments?: { expectedVersion: number; updatePreference: boolean; preferenceOverride: number | null; resetRecipes: boolean; retainRecipeSolutionIds: string[]; updateParticipantFilter?: boolean; participantFilterOverride?: number | null };
   }) { return this.http.put<MutationResult>(`${this.baseUrl}/api/camps/${campId}/cooking-units/${unitId}/meals/${mealId}`, value, this.options); }
   resetStructure(campId: string, unitId: string, mealId: string) { return this.http.delete<MutationResult>(`${this.baseUrl}/api/camps/${campId}/cooking-units/${unitId}/meals/${mealId}/structure-override`, this.options); }
   calculate(campId: string, unitId: string, mealId: string) { return this.http.post<MutationResult>(`${this.baseUrl}/api/camps/${campId}/cooking-units/${unitId}/meals/${mealId}/calculate`, {}, this.options); }
-  saveSupply(campId: string, state: CookingUnitMeal, solutions: SupplySolution[]) {
+  saveSupply(campId: string, state: CookingUnitMeal, solutions: SupplySolution[], scenarioSelections = state.manualScenarioSelections ?? [], completeOwnSupply?: boolean) {
     return this.http.put<MutationResult>(`${this.baseUrl}/api/camps/${campId}/cooking-units/${state.cookingUnitId}/meals/${state.campMealId}/supply`,
+      { expectedVersion: state.supplyVersion ?? 0, solutions, scenarioSelections, ...(completeOwnSupply === undefined ? {} : { completeOwnSupply }) }, this.options);
+  }
+  previewSupply(campId: string, state: CookingUnitMeal, solutions: SupplySolution[]) {
+    return this.http.post<{ solutionId: string; problems: SupplyProblem[]; error: string | null }[]>(`${this.baseUrl}/api/camps/${campId}/cooking-units/${state.cookingUnitId}/meals/${state.campMealId}/supply-preview`,
       { expectedVersion: state.supplyVersion ?? 0, solutions }, this.options);
+  }
+  supplySuggestions(campId: string, state: CookingUnitMeal) {
+    return this.http.get<SupplySuggestionDocument>(`${this.baseUrl}/api/camps/${campId}/cooking-units/${state.cookingUnitId}/meals/${state.campMealId}/supply-suggestions`, this.options);
+  }
+  applySupplySuggestion(campId: string, state: CookingUnitMeal, expectedVersion: number, suggestionId: string) {
+    return this.http.post<MutationResult>(`${this.baseUrl}/api/camps/${campId}/cooking-units/${state.cookingUnitId}/meals/${state.campMealId}/supply-suggestions/apply`, { expectedVersion, suggestionId }, this.options);
   }
   supplyPositions(campId: string, revisionId: string) {
     return this.http.get<SupplyPositionOption[]>(`${this.baseUrl}/api/camps/${campId}/meal-planning/supply-positions/${revisionId}`, this.options);

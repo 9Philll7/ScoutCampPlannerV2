@@ -862,6 +862,8 @@ app.MapPut("/api/camps/{campId:guid}/cooking-units/{cookingUnitId:guid}/meals/{m
     Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
     IResult? denied = await RequireMealPlanningEditAsync(campId, userId, camps, cancellationToken);
     if (denied is not null) return denied;
+    if (request.SupplyAdjustments is not null && await planning.UsesActualParticipantsAsync(campId, cancellationToken) &&
+        !await camps.HasCampPermissionAsync(userId, campId, Permissions.Health.ReadParticipantRequirements, cancellationToken)) return Results.NotFound();
     return ToMealPlanningResult(await planning.ConfigureCookingUnitMealAsync(
         campId, cookingUnitId, mealId, userId, request, cancellationToken));
 }).RequireAuthorization();

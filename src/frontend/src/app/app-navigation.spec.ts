@@ -63,6 +63,35 @@ describe('Application navigation', () => {
     app.navigateCamp('overview');
     expect(app.campSection()).toBe('catering-plans'); expect(discard).not.toHaveBeenCalled();
   });
+  it('protects cooking unit drafts and only discards them after navigation is accepted', () => {
+    const { app, fixture } = setup(); app.openCamp(camp); app.navigateCamp('catering-units'); fixture.detectChanges();
+    const editor = app.mealPlanningEditor()!;
+    vi.spyOn(editor, 'hasPendingUnitChanges').mockReturnValue(true);
+    const discard = vi.spyOn(editor, 'discardUnitChanges');
+    vi.mocked(window.confirm).mockReturnValue(false); app.navigateCamp('overview');
+    expect(app.campSection()).toBe('catering-units'); expect(discard).not.toHaveBeenCalled();
+    vi.mocked(window.confirm).mockReturnValue(true); app.navigateCamp('overview');
+    expect(app.campSection()).toBe('overview'); expect(discard).toHaveBeenCalledOnce();
+  });
+  it('blocks leaving cooking unit management during an active mutation', () => {
+    const { app, fixture } = setup(); app.openCamp(camp); app.navigateCamp('catering-units'); fixture.detectChanges();
+    vi.spyOn(app.mealPlanningEditor()!, 'unitBusy').mockReturnValue(true);
+    vi.mocked(window.confirm).mockClear(); app.navigateCamp('overview');
+    expect(app.campSection()).toBe('catering-units'); expect(window.confirm).not.toHaveBeenCalled();
+  });
+  it('does not treat unit search as an edit but protects actual unit changes on unload', () => {
+    const { app, fixture, element } = setup(); app.openCamp(camp); app.navigateCamp('catering-units'); fixture.detectChanges();
+    const editor = app.mealPlanningEditor()!;
+    editor.overview.set({ campId: camp.id, meals: [], mealPlans: [], mealPlanDocuments: [], cookingUnits: [],
+      cookingUnitGroups: [], structureNodes: [], operationalMeals: [], recipeOptions: [], coverageWarnings: [] }); fixture.detectChanges();
+    const input = element.querySelector('[name=unitSearch]') as HTMLInputElement;
+    input.value = 'Search'; input.dispatchEvent(new Event('input', { bubbles: true })); fixture.detectChanges();
+    const clean = new Event('beforeunload', { cancelable: true }); app.beforeUnload(clean as BeforeUnloadEvent);
+    expect(clean.defaultPrevented).toBe(false);
+    editor.unitWorkspace()!.create(); editor.unitWorkspace()!.draft()!.name = 'New unit';
+    const dirty = new Event('beforeunload', { cancelable: true }); app.beforeUnload(dirty as BeforeUnloadEvent);
+    expect(dirty.defaultPrevented).toBe(true);
+  });
   it('marks exactly one active navigation item semantically and opens a named camp action', () => {
     const { app, fixture, element } = setup();
     expect(element.querySelector('[aria-current="page"]')?.textContent).toBe('Start');

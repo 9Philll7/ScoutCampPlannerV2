@@ -299,7 +299,8 @@ public sealed partial class MealPlanningTests
         public Guid? LastCalculationPlanId { get; private set; }
         public int? LastCalculationPlanVersion { get; private set; }
         public Task<MealPlanningData> LoadAsync(Guid campId, CancellationToken cancellationToken = default) => Task.FromResult(data);
-        public Task<IReadOnlyList<MealPlanningRecipeOption>> ListAccessibleRecipesAsync(Guid campId, Guid tenantId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<MealPlanningRecipeOption>>([]);
+        public IReadOnlyList<MealPlanningRecipeOption> AccessibleRecipes { get; set; } = [];
+        public Task<IReadOnlyList<MealPlanningRecipeOption>> ListAccessibleRecipesAsync(Guid campId, Guid tenantId, CancellationToken cancellationToken = default) => Task.FromResult(AccessibleRecipes);
         public Task<bool> AreRecipeRevisionsAccessibleAsync(Guid campId, Guid tenantId, IReadOnlyCollection<Guid> revisionIds, CancellationToken cancellationToken = default) => Task.FromResult(true);
         public Task EnsureCampRecipeLibraryAsync(Guid campId, Guid actorUserId, IReadOnlyCollection<Guid> revisionIds, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task<MealPlanningMutationResult> CreateMealPlanAsync(MealPlan mealPlan, CancellationToken cancellationToken = default) => Success(mealPlan.Id);

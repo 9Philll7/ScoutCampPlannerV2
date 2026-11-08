@@ -97,7 +97,7 @@ public sealed partial class MealPlanningService
                 HasLegacyAssignments(data) ? "estimated-migration-required" : "estimated",
                 HasLegacyAssignments(data) ? [new ParticipantPlanningProblem("ParticipantStructureMigrationRequired", [])] : []);
         var selections = data.CookingUnits.Select(value => new StructureParticipantSelection(value.Id,
-            EffectiveStructureNodes(value.Id, meal.Id, data), value.ParticipantFilter)).ToArray();
+            EffectiveStructureNodes(value.Id, meal.Id, data), EffectiveParticipantFilter(value, meal.Id, data))).ToArray();
         var projection = StructureParticipantProjection.Derive(camp.Nodes, people, selections);
         var selected = projection.ParticipantsByUnit.GetValueOrDefault(unit.Id) ?? [];
         var groups = selected.Select(value => new RequirementSignature(value.DietTypeId, value.AllergenIds,
@@ -114,7 +114,7 @@ public sealed partial class MealPlanningService
             selected.Count, projection.Unassigned.Count + projection.Overlapping.Count, estimate);
         bool migration = HasLegacyAssignments(data);
         return new(basis.Basis, basis.Demand, basis.Complete && !migration, groups, projection.Unassigned,
-            JsonSerializer.Serialize(new { basis.Basis, migration, unit.ParticipantFilter,
+            JsonSerializer.Serialize(new { basis.Basis, migration, participantFilter = EffectiveParticipantFilter(unit, meal.Id, data),
                 selected = selected.OrderBy(value => value.ParticipantReference).Select(value => new {
                     value.ParticipantReference, Signature = new RequirementSignature(value.DietTypeId, value.AllergenIds,
                         value.Intolerances.Select(item => new IntoleranceRequirement(item.SubstanceId, item.ThresholdGramsPerPortion))).Key }),
