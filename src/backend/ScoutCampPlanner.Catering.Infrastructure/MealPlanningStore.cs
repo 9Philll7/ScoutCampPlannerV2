@@ -11,6 +11,51 @@ public sealed class MealPlanningStore(CateringDbContext database) : IMealPlannin
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    public async Task<MealPlanningMutationResult> ApplyStructureResolutionAsync(Guid campId, string expectedVersion,
+        IReadOnlyList<StructureAssignmentChange> changes, CancellationToken ct = default)
+    {
+        await using var transaction = await database.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+        try
+        {
+            var current = await LoadAsync(campId, ct);
+            if (MealPlanningService.StructureDataVersion(current) != expectedVersion)
+                return new(MealPlanningMutationStatus.Conflict, "structure_conflict_changed");
+            foreach (var change in changes)
+            {
+                await database.CookingUnitStructureAssignments.Where(value => value.CampId == campId &&
+                    value.CookingUnitId == change.CookingUnitId && value.CampMealId == change.MealId).ExecuteDeleteAsync(ct);
+                database.CookingUnitStructureAssignments.AddRange(change.NodeIds.Select(node =>
+                    new CookingUnitStructureAssignment(Guid.NewGuid(), campId, change.CookingUnitId, change.MealId, node)));
+                var states = await database.CookingUnitMealStates.Where(value => value.CampId == campId && value.CookingUnitId == change.CookingUnitId &&
+                    (!change.MealId.HasValue || value.CampMealId == change.MealId)).ToArrayAsync(ct);
+                if ((change.NoSupply || change.ResumeSupply) && change.MealId.HasValue)
+                {
+                    var state = states.SingleOrDefault();
+                    if (state is null)
+                    {
+                        state = new(Guid.NewGuid(), campId, change.CookingUnitId, change.MealId.Value);
+                        database.CookingUnitMealStates.Add(state);
+                    }
+                    state.Configure(change.NoSupply ? MealPlanSubscriptionState.NoSupplyRequired : MealPlanSubscriptionState.FollowStandard, state.DemandOverride);
+                }
+                foreach (var state in states) state.MarkStale();
+            }
+            await database.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return new(MealPlanningMutationStatus.Success);
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(ct); database.ChangeTracker.Clear();
+            return new(MealPlanningMutationStatus.Conflict, "structure_conflict_changed");
+        }
+        catch (System.Data.Common.DbException)
+        {
+            await transaction.RollbackAsync(ct); database.ChangeTracker.Clear();
+            return new(MealPlanningMutationStatus.Conflict, "structure_conflict_changed");
+        }
+    }
+
     public async Task<MealPlanningMutationResult> SaveSupplyStateAsync(Guid campId, Guid cookingUnitId, Guid mealId,
         long expectedVersion, string? manualJson, string? verificationJson, string? verificationFingerprint,
         CancellationToken cancellationToken = default)

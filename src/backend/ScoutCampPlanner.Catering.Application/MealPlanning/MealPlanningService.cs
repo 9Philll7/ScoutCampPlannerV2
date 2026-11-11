@@ -65,7 +65,7 @@ public sealed record MealPlanningOverview(
     IReadOnlyList<CookingUnitDocument> CookingUnits,
     IReadOnlyList<CookingUnitMealDocument> OperationalMeals,
     IReadOnlyList<MealPlanningRecipeOption> RecipeOptions,
-    IReadOnlyList<string> CoverageWarnings, long ScheduleVersion = 0);
+    IReadOnlyList<string> CoverageWarnings, long ScheduleVersion = 0, StructureConflictDocument? StructureConflicts = null);
 
 public sealed record SaveMealPlanRequest(
     int ExpectedVersion, string Name, int SortOrder, IReadOnlyList<MealPlanOfferGroupDocument>? OfferGroups);
@@ -125,6 +125,10 @@ public sealed record MealPlanningData(
 
 public interface IMealPlanningStore
 {
+    Task<MealPlanningMutationResult> ApplyStructureResolutionAsync(Guid campId, string expectedVersion,
+        IReadOnlyList<StructureAssignmentChange> changes, CancellationToken ct = default) =>
+        Task.FromResult(new MealPlanningMutationResult(MealPlanningMutationStatus.Invalid, "structure_resolution_unavailable"));
+
     Task<MealPlanningMutationResult> SaveSupplyStateAsync(Guid campId, Guid cookingUnitId, Guid mealId,
         long expectedVersion, string? manualJson, string? verificationJson, string? verificationFingerprint,
         CancellationToken cancellationToken = default);
@@ -221,8 +225,9 @@ public sealed partial class MealPlanningService(
         StructureNodeOption[] nodes = camp.Nodes.Select(value =>
             new StructureNodeOption(value.Id, value.ParentId, value.Name)).ToArray();
         MealPlanDocument[] documents = data.MealPlans.Select(value => ToDocument(value, data)).ToArray();
+        var structureConflicts = StructureConflicts(data, camp, people);
         return new MealPlanningOverview(campId, meals, nodes, plans, documents, groups, units, operational, recipes,
-            BuildCoverageWarnings(data, camp), data.ScheduleVersion);
+            BuildCoverageWarnings(structureConflicts, data), data.ScheduleVersion, structureConflicts);
     }
 
     public async Task<MealPlanDocument?> GetMealPlanAsync(
@@ -474,10 +479,9 @@ public sealed partial class MealPlanningService(
                     data.Entries.Count(entry => entry.OfferGroupId == value.Id && entry.IsStandard) == 1)) &&
             (ownSupply || subscription != MealPlanSubscriptionState.Custom || state is not null &&
                 data.RecipeChoices.Any(value => value.CookingUnitMealStateId == state.Id));
-        List<string> warnings = BuildSlotWarnings(unit, meal, assignedNodes, data, camp);
+        List<string> warnings = BuildSlotWarnings(unit, meal, data, camp, people);
         if (participantDemand.Problems?.Any(value => value.ReasonCode is "OverlappingCookingUnits" or "ParticipantStructureMigrationRequired") == true)
             complete = false;
-        if (participantDemand.UnassignedParticipantIds.Count > 0) warnings.Add("UnassignedParticipant: Anwesende Teilnehmer sind keiner Kocheinheit zugeordnet.");
         if (!participantDemand.Complete && participantDemand.Basis == EffectiveDemandBasis.ActualParticipants)
             warnings.Add("ParticipantDataIncomplete: Die reale Teilnehmerbasis ist unvollständig.");
         MealPlanOfferGroup[] effectiveGroups = plan is null ? [] : data.OfferGroups
@@ -617,8 +621,10 @@ public sealed partial class MealPlanningService(
     private static CookingUnitParticipantFilter EffectiveParticipantFilter(CookingUnit unit, Guid mealId, MealPlanningData data) =>
         ReadParticipantFilterOverride(data.MealStates.SingleOrDefault(value => value.CookingUnitId == unit.Id && value.CampMealId == mealId)) ?? unit.ParticipantFilter;
 
-    private static Guid[] EffectiveStructureNodes(Guid unitId, Guid mealId, MealPlanningData data)
+    private static Guid[] EffectiveStructureNodes(Guid unitId, Guid mealId, MealPlanningData data, bool includeInactive = false)
     {
+        if (!includeInactive && data.MealStates.Any(value => value.CookingUnitId == unitId && value.CampMealId == mealId && value.SubscriptionState == MealPlanSubscriptionState.NoSupplyRequired)) return [];
+
         Guid[] overridden = data.StructureAssignments
             .Where(value => value.CookingUnitId == unitId && value.CampMealId == mealId)
             .Select(value => value.StructureNodeId).ToArray();
@@ -672,6 +678,13 @@ public sealed partial class MealPlanningService(
         string[] warnings = string.IsNullOrWhiteSpace(state.WarningsJson)
             ? []
             : JsonSerializer.Deserialize<string[]>(state.WarningsJson, JsonOptions) ?? [];
+        // Older calculations stored camp-wide assignment warnings on every unit.
+        // Their current diagnosis lives in the central structure-conflict list.
+        warnings = warnings.Where(warning => !warning.StartsWith("UnassignedParticipant:", StringComparison.Ordinal) &&
+            !(warning.StartsWith("ParticipantDataIncomplete:", StringComparison.Ordinal) && demand.Complete) &&
+            !(warning == "Die Strukturzuordnung überschneidet sich mit einer anderen Kocheinheit." &&
+              demand.Basis == EffectiveDemandBasis.ActualParticipants && !demand.Problems!.Any(problem => problem.ReasonCode == "OverlappingCookingUnits")))
+            .ToArray();
         return new CookingUnitMealDocument(
             state.Id, state.CookingUnitId, state.CampMealId, state.SubscriptionState,
             state.DemandOverride, state.CalculatedDemand, state.EffectiveDemand, status,
@@ -718,38 +731,20 @@ public sealed partial class MealPlanningService(
     private static string Fingerprint(string value) => Convert.ToHexString(
         SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 
-    private static IReadOnlyList<string> BuildCoverageWarnings(MealPlanningData data, CampPlanningData camp)
-    {
-        var warnings = new List<string>();
-        Guid[] estimatedNodes = camp.Estimates.Where(value => value.ChildYouthCount + value.LeaderCount > 0)
-            .Select(value => value.StructureNodeId).Distinct().ToArray();
-        foreach (CampMeal meal in data.Meals.Where(value => value.IsActive && IsInsideCamp(value.Date, camp)))
-        {
-            foreach (Guid nodeId in estimatedNodes)
-            {
-                string[] units = data.CookingUnits.Where(unit =>
-                        IsCovered(nodeId, EffectiveStructureNodes(unit.Id, meal.Id, data), camp.Nodes))
-                    .Select(value => value.Name).ToArray();
-                if (units.Length == 0) warnings.Add($"{meal.Date}: Strukturknoten ist keiner Kocheinheit zugeordnet.");
-                else if (units.Length > 1) warnings.Add($"{meal.Date}: Strukturknoten ist mehrfach zugeordnet ({string.Join(", ", units)})." );
-            }
-        }
-        return warnings.Distinct(StringComparer.Ordinal).ToArray();
-    }
+    private static IReadOnlyList<string> BuildCoverageWarnings(StructureConflictDocument document, MealPlanningData data) =>
+        document.Conflicts.Select(conflict => conflict.Kind == "overlap"
+            ? $"Mehrfachzuordnung: {conflict.NodeName} ({string.Join(", ", conflict.CookingUnitIds.Select(id => data.CookingUnits.Single(unit => unit.Id == id).Name))}) betrifft {conflict.MealIds.Count} Mahlzeiten."
+            : $"Fehlende Zuordnung: {conflict.NodeName} betrifft {conflict.MealIds.Count} Mahlzeiten.").ToArray();
 
     private static List<string> BuildSlotWarnings(
-        CookingUnit unit, CampMeal meal, Guid[] nodes, MealPlanningData data, CampPlanningData camp)
+        CookingUnit unit, CampMeal meal, MealPlanningData data, CampPlanningData camp, IReadOnlyList<CateringParticipantData> people)
     {
         var warnings = new List<string>();
         if (!meal.IsActive) warnings.Add("Die Mahlzeit ist derzeit deaktiviert und wird operativ ignoriert.");
         if (!IsInsideCamp(meal.Date, camp)) warnings.Add("Die Mahlzeit liegt außerhalb des aktuellen Lagerzeitraums.");
-        foreach (Guid node in camp.Estimates.Select(value => value.StructureNodeId).Distinct())
-        {
-            if (!IsCovered(node, nodes, camp.Nodes)) continue;
-            int count = data.CookingUnits.Count(candidate =>
-                IsCovered(node, EffectiveStructureNodes(candidate.Id, meal.Id, data), camp.Nodes));
-            if (count > 1) warnings.Add("Die Strukturzuordnung überschneidet sich mit einer anderen Kocheinheit.");
-        }
+        if (StructureConflicts(data with { Meals = [meal] }, camp, new() { [meal.Id] = people }).Conflicts.Any(conflict =>
+            conflict.Kind == "overlap" && conflict.CookingUnitIds.Contains(unit.Id)))
+            warnings.Add("Die Strukturzuordnung überschneidet sich mit einer anderen Kocheinheit.");
         return warnings.Distinct().ToList();
     }
 

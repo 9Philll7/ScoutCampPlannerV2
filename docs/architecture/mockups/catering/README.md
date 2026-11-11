@@ -33,3 +33,10 @@ Bilder sind **visuelle Referenzen**, keine Datenmodell-/API-Spezifikationen. Im 
 - Interne Gruppennummern („Gruppe 3“) niemals als UI-Beschreibung von **Anforderungsgruppen** verwenden; fachliche Anforderungsbeschreibung anzeigen.
 - Berechnungsaktualität, fachliche Konfliktfreiheit und Verifikation **getrennt** anzeigen.
 - Angaben wie Teilnehmerzahlen, ausgewiesene Ernährungs-Labels, Rezeptbilder, neue Tabs oder nicht belegte Funktionen sind illustrativ.
+
+## Konfliktseite
+
+| Bild | Verwendung | Zu beachten |
+|---|---|---|
+| 17_konfliktuebersicht.png | Konflikte und Entscheidungen mit Filtern, Kategorien und gebündelten Strukturkonflikten | Ernährungskonflikte führen direkt zur Mahlzeit. Zahlen aus vorhandenen Daten ableiten. |
+| 18_strukturkonfliktloeser.png | Geführter Prozess für Mehrfachzuordnung | Ursache, Anpassung, Vorschau und explizite Übernahme. Gemeinsame Ursache oder ausgewählte Mahlzeiten. |

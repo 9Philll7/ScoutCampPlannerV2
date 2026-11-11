@@ -9,6 +9,31 @@ public static class MealSupplyEndpoints
 {
     public static void MapMealSupplyEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapGet("/api/camps/{campId:guid}/structure-conflicts", async (Guid campId, ClaimsPrincipal principal,
+            CampManagementService camps, MealPlanningService planning, HttpResponse response, CancellationToken ct) =>
+        {
+            response.Headers.CacheControl = "no-store";
+            Guid userId = Guid.Parse(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            if (await camps.GetCampMealContextAsync(userId, campId, ct) is null) return Results.NotFound();
+            if (await planning.UsesActualParticipantsAsync(campId, ct) && !await camps.HasCampPermissionAsync(userId, campId, Permissions.Health.ReadParticipantRequirements, ct)) return Results.NotFound();
+            var result = await planning.GetStructureConflictsAsync(campId, ct);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        }).RequireAuthorization();
+        app.MapPost("/api/camps/{campId:guid}/structure-conflicts/preview", async (Guid campId, ResolveStructureConflictRequest request,
+            ClaimsPrincipal principal, CampManagementService camps, MealPlanningService planning, HttpResponse response, CancellationToken ct) =>
+        {
+            response.Headers.CacheControl = "no-store";
+            var denied = await RequireSupplySuggestionsAsync(campId, principal, camps, planning, ct);
+            if (denied is not null) return denied;
+            var result = await planning.PreviewStructureResolutionAsync(campId, request, ct);
+            return result is null ? Results.Conflict(new { code = "structure_conflict_changed" }) : Results.Ok(result);
+        }).RequireAuthorization();
+        app.MapPost("/api/camps/{campId:guid}/structure-conflicts/apply", async (Guid campId, ResolveStructureConflictRequest request,
+            ClaimsPrincipal principal, CampManagementService camps, MealPlanningService planning, CancellationToken ct) =>
+        {
+            var denied = await RequireSupplySuggestionsAsync(campId, principal, camps, planning, ct);
+            return denied ?? ToMealPlanningResult(await planning.ApplyStructureResolutionAsync(campId, request, ct));
+        }).RequireAuthorization();
         app.MapPost("/api/camps/{campId:guid}/cooking-units/{cookingUnitId:guid}/meals/{mealId:guid}/supply-preview", async (
             Guid campId, Guid cookingUnitId, Guid mealId, SaveSupplyRequest request, ClaimsPrincipal principal,
             CampManagementService camps, MealPlanningService planning, HttpResponse response, CancellationToken ct) =>

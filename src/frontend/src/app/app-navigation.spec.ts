@@ -92,6 +92,23 @@ describe('Application navigation', () => {
     const dirty = new Event('beforeunload', { cancelable: true }); app.beforeUnload(dirty as BeforeUnloadEvent);
     expect(dirty.defaultPrevented).toBe(true);
   });
+  it('leaves conflict search without a save warning and opens the catering overview from its main item', () => {
+    const { app, fixture, element } = setup(); app.openCamp(camp); app.navigateCamp('catering-issues'); fixture.detectChanges();
+    app.mealPlanningEditor()!.overview.set({ campId: camp.id, meals: [], mealPlans: [], mealPlanDocuments: [], cookingUnits: [],
+      cookingUnitGroups: [], structureNodes: [], operationalMeals: [], recipeOptions: [], coverageWarnings: [] }); fixture.detectChanges();
+    const input = element.querySelector('scp-catering-issues input') as HTMLInputElement;
+    expect(input).not.toBeNull();
+    input.value = 'Test'; input.dispatchEvent(new Event('input', { bubbles: true })); fixture.detectChanges();
+    const unload = new Event('beforeunload', { cancelable: true }); app.beforeUnload(unload as BeforeUnloadEvent);
+    expect(unload.defaultPrevented).toBe(false);
+    vi.mocked(window.confirm).mockClear();
+    const mainItem = [...element.querySelectorAll<HTMLButtonElement>('.navigation-group-title')].find(button => button.textContent?.includes('Verpflegung'))!;
+    mainItem.click(); fixture.detectChanges();
+    expect(app.campSection()).toBe('catering');
+    expect(window.confirm).not.toHaveBeenCalled();
+    expect(mainItem.getAttribute('aria-current')).toBe('page');
+    expect(element.querySelector('[role="group"][aria-label="Verpflegung"]')?.textContent).not.toContain('Übersicht');
+  });
   it('marks exactly one active navigation item semantically and opens a named camp action', () => {
     const { app, fixture, element } = setup();
     expect(element.querySelector('[aria-current="page"]')?.textContent).toBe('Start');

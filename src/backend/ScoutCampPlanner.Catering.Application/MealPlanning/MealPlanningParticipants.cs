@@ -89,6 +89,22 @@ public sealed partial class MealPlanningService
         participants is not null ? await participants.GetMealParticipantsAsync(campId, meal.Date, meal.Id, ct) :
         throw new InvalidOperationException("The minimized Camp catering projection is required.");
 
+    private static IReadOnlyList<CateringParticipantData> PeopleRequiringSupply(MealPlanningData data, CampPlanningData camp,
+        Guid mealId, IReadOnlyList<CateringParticipantData> people, MealPlanningData? exclusionBasis = null)
+    {
+        var basis = exclusionBasis ?? data;
+        bool IsExcluded(MealPlanningData source, Guid unitId) => source.MealStates.Any(state => state.CookingUnitId == unitId &&
+            state.CampMealId == mealId && state.SubscriptionState == MealPlanSubscriptionState.NoSupplyRequired);
+        var excludedUnits = data.CookingUnits.Where(unit => IsExcluded(data, unit.Id) && IsExcluded(basis, unit.Id)).ToArray();
+        if (excludedUnits.Length == 0) return people;
+        var activeUnits = data.CookingUnits.Where(unit => !IsExcluded(data, unit.Id)).ToArray();
+        bool Matches(CookingUnit unit, CateringParticipantData person, MealPlanningData source) => person.StructureNodeId is Guid node &&
+            IsCovered(node, EffectiveStructureNodes(unit.Id, mealId, source, includeInactive: true), camp.Nodes) &&
+            StructureParticipantProjection.Matches(EffectiveParticipantFilter(unit, mealId, source), person.RequiresSpecialCatering);
+        return people.Where(person => !person.IsPresent || !excludedUnits.Any(unit => Matches(unit, person, basis)) ||
+            activeUnits.Any(unit => Matches(unit, person, data))).ToArray();
+    }
+
     private static OperationalParticipantDemand ParticipantDemand(MealPlanningData data, CampPlanningData camp, CookingUnit unit, CampMeal meal,
         IReadOnlyList<CateringParticipantData> people, decimal? estimate)
     {
@@ -96,6 +112,7 @@ public sealed partial class MealPlanningService
             return new(EffectiveDemandBasis.Estimated, estimate, estimate.HasValue && !HasLegacyAssignments(data), [], [],
                 HasLegacyAssignments(data) ? "estimated-migration-required" : "estimated",
                 HasLegacyAssignments(data) ? [new ParticipantPlanningProblem("ParticipantStructureMigrationRequired", [])] : []);
+        people = PeopleRequiringSupply(data, camp, meal.Id, people);
         var selections = data.CookingUnits.Select(value => new StructureParticipantSelection(value.Id,
             EffectiveStructureNodes(value.Id, meal.Id, data), EffectiveParticipantFilter(value, meal.Id, data))).ToArray();
         var projection = StructureParticipantProjection.Derive(camp.Nodes, people, selections);
@@ -108,19 +125,22 @@ public sealed partial class MealPlanningService
         var allPresent = StructureParticipantProjection.Derive(camp.Nodes,
             people.Select(value => value with { IsPresent = true }).ToArray(),
             [new(unit.Id, EffectiveStructureNodes(unit.Id, meal.Id, data), CookingUnitParticipantFilter.All)]);
-        int contextCount = (allPresent.ParticipantsByUnit.GetValueOrDefault(unit.Id)?.Count ?? 0) +
-            projection.Unassigned.Count + projection.Overlapping.Count;
+        var localMembers = StructureParticipantProjection.Derive(camp.Nodes, people,
+            [new(unit.Id, EffectiveStructureNodes(unit.Id, meal.Id, data), EffectiveParticipantFilter(unit, meal.Id, data))])
+            .ParticipantsByUnit.GetValueOrDefault(unit.Id) ?? [];
+        var localIds = localMembers.Select(value => value.ParticipantReference).ToHashSet();
+        var overlapping = projection.Overlapping.Where(localIds.Contains).ToArray();
+        int contextCount = allPresent.ParticipantsByUnit.GetValueOrDefault(unit.Id)?.Count ?? 0;
         var basis = MealDemandBasisPolicy.Resolve(MealPlanningDemandMode.UseActualParticipants, contextCount,
-            selected.Count, projection.Unassigned.Count + projection.Overlapping.Count, estimate);
+            selected.Count, overlapping.Length, estimate);
         bool migration = HasLegacyAssignments(data);
-        return new(basis.Basis, basis.Demand, basis.Complete && !migration, groups, projection.Unassigned,
+        return new(basis.Basis, basis.Demand, basis.Complete && !migration, groups, [],
             JsonSerializer.Serialize(new { basis.Basis, migration, participantFilter = EffectiveParticipantFilter(unit, meal.Id, data),
                 selected = selected.OrderBy(value => value.ParticipantReference).Select(value => new {
                     value.ParticipantReference, Signature = new RequirementSignature(value.DietTypeId, value.AllergenIds,
                         value.Intolerances.Select(item => new IntoleranceRequirement(item.SubstanceId, item.ThresholdGramsPerPortion))).Key }),
-                projection.Unassigned, projection.Overlapping }, JsonOptions),
-            (projection.Overlapping.Count > 0 ? new[] { new ParticipantPlanningProblem("OverlappingCookingUnits", projection.Overlapping) } : [])
-                .Concat(projection.Unassigned.Count > 0 ? [new ParticipantPlanningProblem("UnassignedParticipant", projection.Unassigned)] : [])
+                Unassigned = Array.Empty<Guid>(), Overlapping = overlapping }, JsonOptions),
+            (overlapping.Length > 0 ? new[] { new ParticipantPlanningProblem("OverlappingCookingUnits", overlapping) } : [])
                 .Concat(migration ? [new ParticipantPlanningProblem("ParticipantStructureMigrationRequired", [])] : []).ToArray());
     }
 }

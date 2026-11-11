@@ -7,6 +7,7 @@ import { MealPlanWorkspaceComponent, MealScheduleAction } from './meal-plan-work
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActionIconComponent } from '../../shared/action-icon.component';
+import { CateringIssuesComponent } from './catering-issues.component';
 import { CookingUnitsWorkspaceComponent } from './cooking-units-workspace.component';
 import { OperativeMealWorkspaceComponent } from './operative-meal-workspace.component';
 import {
@@ -28,10 +29,10 @@ interface MealDraft {
   selector: 'scp-meal-planning',
   standalone: true,
   imports: [MatButtonModule, MatTooltipModule, ActionIconComponent, CateringOverviewComponent,
-    MealPlanWorkspaceComponent, NotificationBannerComponent, CookingUnitsWorkspaceComponent, OperativeMealWorkspaceComponent],
+    MealPlanWorkspaceComponent, NotificationBannerComponent, CookingUnitsWorkspaceComponent, OperativeMealWorkspaceComponent, CateringIssuesComponent],
   template: `
     <section class="meal-planning">
-      <div class="section-heading" [hidden]="section() === 'plans' || section() === 'units'">
+      <div class="section-heading" [hidden]="section() === 'plans' || section() === 'units' || section() === 'issues'">
         <div><p class="eyebrow">Verpflegung</p><h2>{{ sectionTitle() }}</h2></div>
         <button matIconButton type="button" matTooltip="Neu laden" aria-label="Neu laden" (click)="reload()">
           <scp-action-icon name="refresh"/>
@@ -42,8 +43,11 @@ interface MealDraft {
         @if (notice()) { <scp-notification-banner [message]="notice()" (dismissed)="notice.set('')"/> }
       </div> }
       @if (overview(); as data) {
-        @if (section() === 'overview' || section() === 'issues') {
+        @if (section() === 'overview') {
           <scp-catering-overview [data]="data" [issuesOnly]="section() === 'issues'" (navigate)="navigate.emit($event)"/>
+        }
+        @if (section() === 'issues') {
+          <scp-catering-issues [data]="data" [disabled]="disabled()" [frozen]="frozen()" (changed)="unitWorkspaceChanged($event)" (navigate)="navigate.emit($event)"/>
         }
         @if (section() === 'units' && !target()?.mealId) {
           <scp-cooking-units-workspace [data]="data" [disabled]="disabled()" [targetUnitId]="target()?.unitId"
@@ -169,11 +173,12 @@ export class MealPlanningComponent {
     this.planBusy.set(true);
     this.api.deletePlan(this.campId(), id).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({ next: () => { this.planBusy.set(false); this.changed('Menüplan gelöscht.'); }, error: error => { this.planBusy.set(false); this.failed(error, 'Der Menüplan konnte nicht gelöscht werden.'); } });
   }
+  readonly issuesWorkspace = viewChild(CateringIssuesComponent);
   readonly unitWorkspace = viewChild(CookingUnitsWorkspaceComponent);
   readonly operativeWorkspace = viewChild(OperativeMealWorkspaceComponent);
-  hasPendingUnitChanges() { return !!this.unitWorkspace()?.hasPendingEdits() || !!this.operativeWorkspace()?.hasPendingEdits(); }
-  unitBusy() { return !!this.unitWorkspace()?.busy() || !!this.unitWorkspace()?.managementBusy() || !!this.operativeWorkspace()?.isBusy(); }
-  discardUnitChanges() { this.unitWorkspace()?.discardChanges(); this.operativeWorkspace()?.discardChanges(); }
+  hasPendingUnitChanges() { return !!this.issuesWorkspace()?.hasPendingEdits() || !!this.unitWorkspace()?.hasPendingEdits() || !!this.operativeWorkspace()?.hasPendingEdits(); }
+  unitBusy() { return !!this.issuesWorkspace()?.busy() || !!this.unitWorkspace()?.busy() || !!this.unitWorkspace()?.managementBusy() || !!this.operativeWorkspace()?.isBusy(); }
+  discardUnitChanges() { this.issuesWorkspace()?.discardChanges(); this.unitWorkspace()?.discardChanges(); this.operativeWorkspace()?.discardChanges(); }
   unitWorkspaceChanged(event: { data: MealPlanningOverview; message: string }) {
     this.overview.set(event.data); this.buildMealDrafts(event.data); this.error.set('');
     if (event.message) this.notice.set(event.message);

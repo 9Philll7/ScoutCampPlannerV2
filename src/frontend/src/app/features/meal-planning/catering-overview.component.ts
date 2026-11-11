@@ -20,8 +20,8 @@ export function cateringSummary(data: MealPlanningOverview) {
   const states = data.operationalMeals.filter(state => meals.some(meal => meal.id === state.campMealId) &&
     data.cookingUnits.some(unit => unit.id === state.cookingUnitId) && state.subscriptionState !== 2);
   const actions: CateringAction[] = [];
-  const conflicts = (state: CookingUnitMeal) => (state.supply?.problems ?? []).filter(problem => problem.code !== 19);
-  const decisions = (state: CookingUnitMeal) => Math.max(state.supply?.commonSupplyChoices?.length ?? 0,
+  const conflicts = (state: CookingUnitMeal) => (state.supply?.problems ?? []).filter(problem => ![18,19].includes(problem.code));
+  const decisions = (state: CookingUnitMeal) => Math.max(state.supply?.commonSupplyChoices?.length ?? 0, state.supply?.decisions?.length ?? 0,
     state.supply?.problems.filter(problem => problem.code === 19).length ?? 0);
   for (const state of states) {
     const meal = meals.find(value => value.id === state.campMealId)!;
@@ -50,8 +50,14 @@ export function cateringSummary(data: MealPlanningOverview) {
     actions.push({ id: `plan-${plan.id}`, kind: 'planning', title: 'Standardangebot fehlt', context: plan.name,
       description: `${plan.missingActiveMealCount} aktive Mahlzeit(en) ohne Standardangebot.`, target: { section: 'plans', planId: plan.id } });
   }
-  for (const warning of new Set(data.coverageWarnings)) actions.push({ id: `coverage-${warning}`, kind: 'conflict',
-    title: 'Strukturabdeckung prüfen', description: warning, context: 'Kocheinheiten', target: { section: 'units' } });
+  if (data.structureConflicts) {
+    for (const conflict of data.structureConflicts.conflicts) actions.push({ id: `coverage-${conflict.id}`, kind: 'conflict',
+      title: conflict.kind === 'overlap' ? 'Mehrfachzuordnung' : 'Fehlende Strukturzuordnung', context: conflict.nodeName,
+      description: `${conflict.mealIds.length} betroffene Mahlzeiten.`, target: { section: 'issues' } });
+  } else {
+    for (const warning of new Set(data.coverageWarnings)) actions.push({ id: `coverage-${warning}`, kind: 'conflict',
+      title: 'Strukturabdeckung prüfen', description: warning, context: 'Kocheinheiten', target: { section: 'issues' } });
+  }
   // Missing states are unknown, never implicitly current or verified.
   for (const unit of data.cookingUnits) {
     const missing = meals.filter(meal => !data.operationalMeals.some(state => state.cookingUnitId === unit.id && state.campMealId === meal.id));

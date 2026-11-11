@@ -80,7 +80,17 @@ export interface MealPlanningOverview {
   campId: string; scheduleVersion?: number; meals: MealSlot[]; structureNodes: StructureNodeOption[]; mealPlans: MealPlanSummary[];
   mealPlanDocuments: MealPlanDocument[];
   cookingUnitGroups: CookingUnitGroup[]; cookingUnits: CookingUnit[]; operationalMeals: CookingUnitMeal[];
-  recipeOptions: RecipeOption[]; coverageWarnings: string[];
+  recipeOptions: RecipeOption[]; coverageWarnings: string[]; structureConflicts?: StructureConflictDocument;
+}
+export interface StructureConflict {
+  id: string; nodeId: string; nodeName: string; kind: 'missing' | 'overlap'; cookingUnitIds: string[]; mealIds: string[]; persons: number | null;
+}
+export interface StructureConflictDocument { version: string; conflicts: StructureConflict[]; actualParticipants: boolean; }
+export interface StructureResolutionRequest { expectedVersion: string; conflictId: string; keepCookingUnitId: string; cookingUnitIds?: string[]; useDefaults: boolean; mealIds: string[]; }
+export interface StructureResolutionPreview {
+  version: string; resolved: number; remaining: number; newConflicts: number; overlappingMeals?: number; overlappingFilters?: boolean;
+  changes: { cookingUnitId: string; mealId: string | null; nodeIds: string[]; noSupply: boolean; resumeSupply?: boolean }[];
+  conflicts: StructureConflict[];
 }
 export interface MutationResult { id: string | null; version: number | null; }
 
@@ -91,6 +101,9 @@ export class MealPlanningApiService {
   private options = { withCredentials: true } as const;
 
   overview(campId: string) { return this.http.get<MealPlanningOverview>(`${this.baseUrl}/api/camps/${campId}/meal-planning`, this.options); }
+  structureConflicts(campId: string) { return this.http.get<StructureConflictDocument>(`${this.baseUrl}/api/camps/${campId}/structure-conflicts`, this.options); }
+  previewStructureResolution(campId: string, request: StructureResolutionRequest) { return this.http.post<StructureResolutionPreview>(`${this.baseUrl}/api/camps/${campId}/structure-conflicts/preview`, request, this.options); }
+  applyStructureResolution(campId: string, request: StructureResolutionRequest) { return this.http.post<MutationResult>(`${this.baseUrl}/api/camps/${campId}/structure-conflicts/apply`, request, this.options); }
   requirementCatalog(campId: string) {
     return this.http.get<{ catalog: RequirementLabelCatalog }>(`${this.baseUrl}/api/camps/${campId}/participant-filters`, this.options).pipe(map(value => value.catalog));
   }

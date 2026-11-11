@@ -52,10 +52,9 @@
               </div>
             </div>
             <div class="camp-navigation-group">
-              <button matButton type="button" class="navigation-group-title" [attr.aria-expanded]="isCateringSection()" (click)="openCateringTarget({section: 'overview'})"><scp-action-icon name="cooking"/>Verpflegung<scp-action-icon [name]="isCateringSection() ? 'up' : 'down'"/></button>
+              <button matButton type="button" class="navigation-group-title" [scpCurrent]="campSection() === 'catering'" [attr.aria-expanded]="isCateringSection()" (click)="openCateringTarget({section: 'overview'})"><scp-action-icon name="cooking"/>Verpflegung<scp-action-icon [name]="isCateringSection() ? 'up' : 'down'"/></button>
               @if (isCateringSection()) {
                 <div class="camp-navigation-subitems" role="group" aria-label="Verpflegung">
-                  <button matButton [scpCurrent]="campSection() === 'catering'" (click)="openCateringTarget({section: 'overview'})"><scp-action-icon name="planning"/>Übersicht</button>
                   <button matButton [scpCurrent]="campSection() === 'catering-plans'" (click)="openCateringTarget({section: 'plans'})"><scp-action-icon name="recipe"/>Menüpläne</button>
                   <button matButton [scpCurrent]="campSection() === 'catering-units'" (click)="openCateringTarget({section: 'units'})"><scp-action-icon name="cooking"/>Kocheinheiten</button>
                   <button matButton [scpCurrent]="campSection() === 'catering-issues'" (click)="openCateringTarget({section: 'issues'})"><scp-action-icon name="warning"/>Konflikte & Entscheidungen</button>

@@ -46,7 +46,7 @@ public sealed partial class MealPlanningTests
     }
 
     [Fact]
-    public async Task Actual_basis_groups_attendance_and_unassigned_are_operational()
+    public async Task Actual_basis_is_local_and_unassigned_people_are_reported_in_the_conflict_list()
     {
         var ct = TestContext.Current.CancellationToken;
         var context = CreateContext(true, true); var store = new RecordingStore(context.Data);
@@ -64,8 +64,64 @@ public sealed partial class MealPlanningTests
         Assert.Equal(EffectiveDemandBasis.ActualParticipants, Assert.Single((await service.GetOverviewAsync(context.CampId, ct))!.OperationalMeals).DemandBasis);
         lookup.Values.Add(Person(null));
         await service.CalculateAsync(context.CampId, context.UnitId, context.MealId, ct);
+        Assert.True(store.LastCalculationComplete);
+        var overview = (await service.GetOverviewAsync(context.CampId, ct))!;
+        Assert.Empty(Assert.Single(overview.OperationalMeals).UnassignedParticipantIds!);
+        Assert.Empty(Assert.Single(overview.OperationalMeals).ParticipantProblems!);
+        Assert.Contains(overview.StructureConflicts!.Conflicts, conflict => conflict.Kind == "missing");
+    }
+
+    [Fact]
+    public async Task Unassigned_people_only_affect_the_central_list_and_legacy_unit_warnings_are_removed()
+    {
+        var ct = TestContext.Current.CancellationToken; var context = CreateContext(true, true);
+        var foreign = new CampPlanningNode(Guid.NewGuid(), context.RootNodeId, "Ohne Küche");
+        var camp = context.Camp with { Nodes = context.Camp.Nodes.Append(foreign).ToArray() };
+        var data = context.Data with { StructureAssignments = [new CookingUnitStructureAssignment(Guid.NewGuid(), context.CampId, context.UnitId, null, context.LeafNodeId)] };
+        var store = new RecordingStore(data); var people = new ParticipantLookup();
+        people.Values.AddRange([Person(context.LeafNodeId), Person(foreign.Id)]);
+        var service = new MealPlanningService(store, new PlanningLookup(camp), TimeProvider.System, people);
+        await service.SaveParticipantConfigurationAsync(context.CampId, new(0, MealPlanningDemandMode.UseActualParticipants), ct);
+        await service.CalculateAsync(context.CampId, context.UnitId, context.MealId, ct);
+        Assert.True(store.LastCalculationComplete); Assert.Equal(1, store.LastCalculatedDemand);
+        var overview = (await service.GetOverviewAsync(context.CampId, ct))!;
+        var current = Assert.Single(overview.OperationalMeals);
+        Assert.Equal(OperationalMealPlanStatus.Current, current.Status); Assert.Empty(current.Warnings);
+        Assert.Empty(current.ParticipantProblems!); Assert.Empty(current.UnassignedParticipantIds!);
+        Assert.Equal(foreign.Id, Assert.Single(overview.StructureConflicts!.Conflicts).NodeId);
+        people.Values.Add(Person(null));
+        Assert.Equal(OperationalMealPlanStatus.Current, Assert.Single((await service.GetOverviewAsync(context.CampId, ct))!.OperationalMeals).Status);
+        var stored = Assert.Single((await store.LoadAsync(context.CampId, ct)).MealStates);
+        stored.ApplyCalculation(stored.CalculatedDemand, stored.MealPlanId, stored.MealPlanVersion, stored.MealPlanSnapshotId,
+            stored.CalculationSnapshotJson!, stored.SourceFingerprint!,
+            "[\"UnassignedParticipant: Anwesende Teilnehmer sind keiner Kocheinheit zugeordnet.\",\"ParticipantDataIncomplete: Die reale Teilnehmerbasis ist unvollständig.\"]",
+            stored.CalculatedAtUtc!.Value, false, stored.DemandBasis);
+        Assert.Empty(Assert.Single((await service.GetOverviewAsync(context.CampId, ct))!.OperationalMeals).Warnings);
+    }
+
+    [Fact]
+    public async Task Overlapping_people_only_block_the_cooking_units_whose_filters_match_them()
+    {
+        var ct = TestContext.Current.CancellationToken; var context = CreateContext(true, true);
+        var otherNode = new CampPlanningNode(Guid.NewGuid(), context.RootNodeId, "Andere Gruppe");
+        var camp = context.Camp with { Nodes = context.Camp.Nodes.Append(otherNode).ToArray() };
+        var duplicate = new CookingUnit(Guid.NewGuid(), context.CampId, "Doppelt", 1, standardMealPlanId: context.PlanId);
+        var other = new CookingUnit(Guid.NewGuid(), context.CampId, "Unabhängig", 2, standardMealPlanId: context.PlanId);
+        var data = context.Data with { CookingUnits = context.Data.CookingUnits.Concat([duplicate, other]).ToArray(), StructureAssignments = [
+            new(Guid.NewGuid(), context.CampId, context.UnitId, null, context.LeafNodeId),
+            new(Guid.NewGuid(), context.CampId, duplicate.Id, null, context.LeafNodeId),
+            new(Guid.NewGuid(), context.CampId, other.Id, null, otherNode.Id)] };
+        var store = new RecordingStore(data); var people = new ParticipantLookup(); people.Values.AddRange([Person(context.LeafNodeId), Person(otherNode.Id)]);
+        var service = new MealPlanningService(store, new PlanningLookup(camp), TimeProvider.System, people);
+        await service.SaveParticipantConfigurationAsync(context.CampId, new(0, MealPlanningDemandMode.UseActualParticipants), ct);
+        await service.CalculateAsync(context.CampId, other.Id, context.MealId, ct);
+        Assert.True(store.LastCalculationComplete);
+        var independent = (await service.GetOverviewAsync(context.CampId, ct))!.OperationalMeals.Single(value => value.CookingUnitId == other.Id);
+        Assert.Empty(independent.ParticipantProblems!); Assert.Empty(independent.Warnings);
+        await service.CalculateAsync(context.CampId, context.UnitId, context.MealId, ct);
         Assert.False(store.LastCalculationComplete);
-        Assert.Single(Assert.Single((await service.GetOverviewAsync(context.CampId, ct))!.OperationalMeals).UnassignedParticipantIds!);
+        var affected = (await service.GetOverviewAsync(context.CampId, ct))!.OperationalMeals.Single(value => value.CookingUnitId == context.UnitId);
+        Assert.Contains(affected.ParticipantProblems!, value => value.ReasonCode == "OverlappingCookingUnits");
     }
 
     [Fact]
