@@ -1,4 +1,5 @@
-import { DatePipe } from '@angular/common';
+import { IngredientCatalogEntry } from '../camp/camp-api.service';
+import { NgTemplateOutlet, DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, ElementRef, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -6,11 +7,12 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatMenuModule } from '@angular/material/menu';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { forkJoin } from 'rxjs';
-import { ActionIconComponent } from '../../shared/action-icon.component';
+import { ActionIconComponent, ActionIconName } from '../../shared/action-icon.component';
 import {
   IngredientEditorReferenceData,
   IngredientAllergenReference,
@@ -19,6 +21,7 @@ import {
   IngredientConversionPrecision,
   IngredientDataSuggestion,
   IngredientNutritionProfileItem,
+  IngredientSuggestionNutrition,
   IngredientNutritionReviewState,
   IngredientNutritionSourceType,
   IngredientSubstanceContentItem,
@@ -35,893 +38,118 @@ import {
   IngredientRevisionState,
   IngredientRevisionSummary
 } from './ingredient-revision-api.service';
+import { ListPaginationComponent } from '../../shared/list-pagination.component';
+import { IngredientCatalogComponent } from './ingredient-catalog.component';
 import { IngredientNutritionEditorComponent } from './ingredient-nutrition-editor.component';
 
 @Component({
   selector: 'scp-ingredient-revision-editor',
   standalone: true,
-  imports: [DatePipe, FormsModule, MatButtonModule, MatCardModule, MatCheckboxModule, MatFormFieldModule,
-    MatInputModule, MatProgressSpinnerModule, MatSelectModule, ActionIconComponent,
-    IngredientNutritionEditorComponent],
-  template: `
-    <div class="revision-editor-heading">
-      <div><h4>{{ managementTitle() }}</h4><p>Entwürfe explizit speichern und nach der Prüfung veröffentlichen.</p></div>
-      @if (!disabled() && !createOpen()) {
-        <button matButton type="button" (click)="openCreate()"><scp-action-icon name="add"/>{{ createButtonLabel() }}</button>
-      }
-    </div>
-    @if (error()) { <p class="revision-message revision-error" role="alert">{{ error() }}</p> }
-    @if (notice()) { <p class="revision-message revision-notice" role="status">{{ notice() }}</p> }
-    @if (scope() === 'central' && contributions().length) {
-      <section class="contribution-review">
-        <div><h4>Offene Einreichungen</h4><p>Die Annahme erzeugt einen ungeprüften zentralen Entwurf.</p></div>
-        @for (contribution of contributions(); track contribution.id) {
-          <article class="contribution-card">
-            <div>
-              <strong>{{ contribution.name }}</strong>
-              <small>{{ contribution.sourceScopeType === 1 ? 'Organisation' : 'Lager' }} ·
-                eingereicht {{ contribution.submittedAtUtc | date:'dd.MM.yyyy HH:mm' }}</small>
-            </div>
-            <mat-form-field appearance="outline" subscriptSizing="dynamic">
-              <mat-label>Zentrales Ziel</mat-label>
-              <mat-select [value]="contributionTarget(contribution)"
-                (selectionChange)="setContributionTarget(contribution.id, $event.value)">
-                <mat-option [value]="''">Neue zentrale Zutat</mat-option>
-                @for (target of publishedCentralRevisions(); track target.ingredientId) {
-                  <mat-option [value]="target.ingredientId">{{ target.name }}</mat-option>
-                }
-              </mat-select>
-            </mat-form-field>
-            <div class="contribution-actions">
-              <button matButton type="button" (click)="rejectContribution(contribution.id)"
-                [disabled]="submitting()">Ablehnen</button>
-              <button matButton="filled" type="button" (click)="acceptContribution(contribution)"
-                [disabled]="submitting()">Als Entwurf übernehmen</button>
-            </div>
-          </article>
-        }
-      </section>
-    }
-    @if (loading()) {
-      <div class="revision-loading"><mat-spinner diameter="28"/><span>Zutatenentwürfe werden geladen …</span></div>
-    } @else {
-      @if (createOpen()) {
-        <form class="revision-form" (ngSubmit)="create()">
-          <h4>{{ createButtonLabel() }}</h4>
-          <mat-form-field appearance="outline"><mat-label>Name</mat-label>
-            <input matInput name="createIngredientName" [(ngModel)]="createName" maxlength="200" required>
-          </mat-form-field>
-          <mat-form-field appearance="outline"><mat-label>Kategorie</mat-label>
-            <mat-select name="createIngredientCategory" [(ngModel)]="createCategoryId" required>
-              @for (category of referenceData()?.categories ?? []; track category.id) {
-                <mat-option [value]="category.id">{{ category.name }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
-          <mat-form-field appearance="outline"><mat-label>Basiseinheit</mat-label>
-            <mat-select name="createIngredientUnit" [(ngModel)]="createBaseUnitId" required>
-              <mat-optgroup label="Gewicht">
-                @for (unit of baseUnitsByDimension(0); track unit.id) {
-                  <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
-                }
-              </mat-optgroup>
-              <mat-optgroup label="Volumen">
-                @for (unit of baseUnitsByDimension(1); track unit.id) {
-                  <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
-                }
-              </mat-optgroup>
-              <mat-optgroup label="Anzahl">
-                @for (unit of baseUnitsByDimension(2); track unit.id) {
-                  <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
-                }
-              </mat-optgroup>
-            </mat-select>
-          </mat-form-field>
-          <div class="revision-actions">
-            <button matButton type="button" (click)="createOpen.set(false)">Abbrechen</button>
-            <button matButton="filled" type="submit" [disabled]="submitting() || !canCreate()">
-              <scp-action-icon name="save"/>Entwurf anlegen</button>
-          </div>
-        </form>
-      }
-
-      <div class="revision-list">
-        @for (revision of revisions(); track revision.revisionId) {
-          <button type="button" class="revision-list-item" [class.active]="selected()?.id === revision.revisionId"
-            (click)="open(revision.revisionId)">
-            <span><strong>{{ revision.name }}</strong><small>{{ stateLabel(revision.state) }}</small></span>
-            <scp-action-icon name="edit"/>
-          </button>
-        } @empty { <p class="revision-empty">{{ emptyListLabel() }}</p> }
-      </div>
-
-      @if (selected(); as revision) {
-        <form class="revision-form revision-details" (ngSubmit)="save()">
-          <div class="revision-editor-heading"><div><h4>{{ revision.name }}</h4>
-            <p>{{ pendingForkSourceRevisionId() ? 'Zentrale Vorlage · Lagerkopie entsteht erst beim Speichern' : 'Version ' + revision.rowVersion }}</p></div>
-            <span class="revision-state" [class.published]="revision.state === publishedState">
-              {{ pendingForkSourceRevisionId() ? 'Neue Lageranpassung' : stateLabel(revision.state) }}</span>
-          </div>
-          <mat-form-field appearance="outline"><mat-label>Name</mat-label>
-            <input matInput name="revisionName" [(ngModel)]="revision.name" maxlength="200" required
-              [disabled]="revision.state === publishedState || disabled()">
-          </mat-form-field>
-          <mat-form-field appearance="outline"><mat-label>Kategorie</mat-label>
-            <mat-select name="revisionCategory" [(ngModel)]="revision.categoryId"
-              [disabled]="revision.state === publishedState || disabled()">
-              @for (category of referenceData()?.categories ?? []; track category.id) {
-                <mat-option [value]="category.id">{{ category.name }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
-          <mat-form-field appearance="outline"><mat-label>Basiseinheit</mat-label>
-            <mat-select name="revisionUnit" [ngModel]="revision.baseUnitId"
-              (ngModelChange)="setBaseUnit(revision, $event)"
-              [disabled]="revision.state === publishedState || disabled()">
-              <mat-optgroup label="Gewicht">
-                @for (unit of baseUnitsByDimension(0); track unit.id) {
-                  <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
-                }
-              </mat-optgroup>
-              <mat-optgroup label="Volumen">
-                @for (unit of baseUnitsByDimension(1); track unit.id) {
-                  <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
-                }
-              </mat-optgroup>
-              <mat-optgroup label="Anzahl">
-                @for (unit of baseUnitsByDimension(2); track unit.id) {
-                  <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
-                }
-              </mat-optgroup>
-            </mat-select>
-          </mat-form-field>
-          <section class="ingredient-source-summary">
-            <div>
-              <h4>Quellen und Schätzgrundlage</h4>
-              <p>Eine gemeinsame Angabe für die gesamte Zutat. Referenzwerte bleiben Schätzungen, auch nachdem sie geprüft wurden.</p>
-            </div>
-            <div class="source-entry-list">
-              @for (source of sourceEntries(); track $index; let index = $index) {
-                <div class="source-entry-row">
-                  <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                    <mat-label>Quelle {{ index + 1 }}</mat-label>
-                    <input matInput [ngModel]="source"
-                      (ngModelChange)="setSourceEntry(revision, index, $event)"
-                      [name]="'revisionSource' + index" maxlength="500"
-                      [disabled]="revision.state === publishedState || disabled()">
-                  </mat-form-field>
-                  @if (revision.state === draftState && !disabled()) {
-                    <button matIconButton type="button" aria-label="Quelle entfernen"
-                      (click)="removeSourceEntry(revision, index)">
-                      <scp-action-icon name="remove"/>
-                    </button>
-                  }
-                </div>
-              } @empty {
-                <p class="source-entry-empty">Noch keine Quelle erfasst.</p>
-              }
-              @if (revision.state === draftState && !disabled()) {
-                <div class="source-entry-add">
-                  <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                    <mat-label>Weitere Quelle</mat-label>
-                    <input matInput [ngModel]="newSourceEntry()"
-                      (ngModelChange)="newSourceEntry.set($event)" name="newRevisionSource"
-                      maxlength="500" placeholder="z. B. Herstelleretikett vom …"
-                      (keydown.enter)="$event.preventDefault(); addSourceEntry(revision)">
-                  </mat-form-field>
-                  <button matButton type="button" (click)="addSourceEntry(revision)"
-                    [disabled]="!newSourceEntry().trim()">
-                    <scp-action-icon name="add"/>Quelle ergänzen
-                  </button>
-                </div>
-              }
-              <small>Mindestens eine Quelle ist erforderlich, sobald Nährwerte oder Stoffgehalte hinterlegt sind.</small>
-            </div>
-          </section>
-          @if (revision.state === draftState && !disabled()) {
-            <section class="ingredient-suggestions">
-              <div class="suggestion-heading">
-                <div>
-                  <h4>Referenzwerte vorschlagen</h4>
-                  <p>Suche bewusst im BLS 4.0. Treffer sind Schätzgrundlagen und werden erst nach deiner Auswahl in diesen Entwurf übernommen.</p>
-                </div>
-                <span class="suggestion-badge">BLS 4.0</span>
-              </div>
-              <div class="suggestion-search">
-                <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                  <mat-label>Lebensmittel suchen</mat-label>
-                  <input matInput [ngModel]="suggestionQuery()"
-                    (ngModelChange)="suggestionQuery.set($event)" name="ingredientSuggestionQuery"
-                    maxlength="100" autocomplete="off"
-                    (keydown.enter)="$event.preventDefault(); searchSuggestions()"
-                    placeholder="z. B. Vollmilch oder Reis">
-                </mat-form-field>
-                <button matButton="filled" type="button" (click)="searchSuggestions()"
-                  [disabled]="suggestionLoading() || suggestionQuery().trim().length < 2">
-                  Suchen
-                </button>
-              </div>
-              @if (!canApplyBlsSuggestion(revision)) {
-                <p class="suggestion-warning">BLS-Werte beziehen sich auf 100 g. Eine Übernahme ist daher nur bei einer Basiseinheit aus der Gewichtsklasse möglich.</p>
-              }
-              @if (suggestionLoading()) {
-                <div class="suggestion-loading"><mat-spinner diameter="22"/><span>Referenzwerte werden gesucht …</span></div>
-              }
-              @if (suggestionError()) {
-                <p class="suggestion-warning" role="alert">{{ suggestionError() }}</p>
-              }
-              @for (suggestion of suggestionResults(); track suggestion.sourceKey) {
-                <article class="suggestion-result">
-                  <div class="suggestion-result-heading">
-                    <div><strong>{{ suggestion.name }}</strong><small>BLS-Code {{ suggestion.sourceKey }} · Werte pro 100 g</small></div>
-                    <div class="suggestion-actions">
-                      <button matButton type="button" (click)="applySuggestionNutrition(revision, suggestion)"
-                        [disabled]="!canApplyBlsSuggestion(revision) || !hasSuggestedNutrition(suggestion)">
-                        Nährwerte übernehmen
-                      </button>
-                      <button matButton type="button" (click)="applySuggestionSubstances(revision, suggestion)"
-                        [disabled]="!canApplyBlsSuggestion(revision) || !suggestion.substanceContents.length">
-                        Stoffgehalte übernehmen
-                      </button>
-                    </div>
-                  </div>
-                  <p class="suggestion-values">{{ suggestionNutritionSummary(suggestion) }}</p>
-                  @if (suggestion.substanceContents.length) {
-                    <p class="suggestion-values">Inhaltsstoffe: {{ suggestionSubstanceSummary(suggestion) }}</p>
-                  }
-                </article>
-              } @empty {
-                @if (suggestionSearched() && !suggestionLoading() && !suggestionError()) {
-                  <p class="suggestion-empty">Keine passenden BLS-Einträge gefunden.</p>
-                }
-              }
-              <p class="suggestion-disclaimer">Die übernommenen Daten bleiben ungeprüfte Schätzwerte. Bezeichnung und Verarbeitung können vom konkreten Produkt abweichen.</p>
-            </section>
-          }
-          <section class="unit-conversions">
-            <div class="unit-conversion-heading">
-              <div>
-                <h4>Weitere Einheiten</h4>
-                <p>Lege Umrechnungen zu Einheiten anderer Klassen oder zu Küchenmaßen fest. Umrechnungen innerhalb der Basiseinheitenklasse erfolgen automatisch.</p>
-              </div>
-              @if (revision.state === draftState && !disabled()) {
-                <button matButton type="button" (click)="addUnitConversion(revision)"
-                  [disabled]="!availableConversionUnits(revision).length">
-                  <scp-action-icon name="add"/>Einheit ergänzen
-                </button>
-              }
-            </div>
-            @for (conversion of revision.unitConversions; track conversion.sourceUnitId; let index = $index) {
-              <div class="unit-conversion-row">
-                <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Einheit</mat-label>
-                  <mat-select [(ngModel)]="conversion.sourceUnitId" [name]="'conversionUnit' + index"
-                    [disabled]="revision.state === publishedState || disabled()">
-                    @for (unit of availableConversionUnits(revision, conversion.sourceUnitId); track unit.id) {
-                      <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
-                    }
-                  </mat-select>
-                </mat-form-field>
-                <span class="conversion-formula">1 {{ unitSymbol(conversion.sourceUnitId) }} =</span>
-                <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Menge</mat-label>
-                  <input matInput type="text" inputmode="decimal"
-                    [ngModel]="conversion.factorInput"
-                    (ngModelChange)="setConversionFactor(conversion, $event)"
-                    (blur)="normalizeConversionFactorInput(conversion)" [name]="'conversionFactor' + index"
-                    [disabled]="revision.state === publishedState || disabled()" required>
-                </mat-form-field>
-                <span class="conversion-formula">{{ unitSymbol(revision.baseUnitId) }}</span>
-                <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Genauigkeit</mat-label>
-                  <mat-select [(ngModel)]="conversion.precision" [name]="'conversionPrecision' + index"
-                    [disabled]="revision.state === publishedState || disabled()">
-                    @for (precision of conversionPrecisions; track precision.value) {
-                      <mat-option [value]="precision.value">{{ precision.label }}</mat-option>
-                    }
-                  </mat-select>
-                </mat-form-field>
-                @if (revision.state === draftState && !disabled()) {
-                  <button matIconButton type="button" aria-label="Einheit entfernen"
-                    (click)="removeUnitConversion(revision, index)"><scp-action-icon name="remove"/></button>
-                }
-              </div>
-            } @empty {
-              <p class="unit-conversion-empty">Neben der Basiseinheit sind noch keine weiteren Einheiten hinterlegt.</p>
-            }
-          </section>
-          <section class="nutrition-profile">
-            <div class="unit-conversion-heading">
-              <div>
-                <h4>Nährwerte</h4>
-                <p>Optionale Schätzwerte für spätere Rezeptberechnungen. Fehlende Angaben werden nicht als 0 behandelt.</p>
-              </div>
-              <mat-checkbox [checked]="revision.nutritionProfile !== null"
-                (change)="setNutritionEnabled(revision, $event.checked)"
-                [disabled]="revision.state === publishedState || disabled()">
-                Nährwerte hinterlegen
-              </mat-checkbox>
-            </div>
-            @if (revision.nutritionProfile; as nutrition) {
-              <scp-ingredient-nutrition-editor [profile]="nutrition"
-                [units]="referenceData()?.units ?? []"
-                [disabled]="revision.state === publishedState || disabled()"/>
-            } @else {
-              <p class="unit-conversion-empty">Für diese Zutat sind keine Nährwerte hinterlegt.</p>
-            }
-          </section>
-          <section class="ingredient-variants">
-            <div class="unit-conversion-heading">
-              <div>
-                <h4>Varianten</h4>
-                <p>Varianten sind Ausprägungen derselben Zutat, zum Beispiel „laktosefrei“ oder „geräuchert“.</p>
-              </div>
-              @if (revision.state === draftState && !disabled()) {
-                <button matButton type="button" (click)="addVariant(revision)">
-                  <scp-action-icon name="add"/>Variante hinzufügen
-                </button>
-              }
-            </div>
-            @for (variant of revision.variants; track variant.id; let index = $index) {
-              <article class="variant-row" [class.inactive]="!variant.isActive">
-                <div class="variant-header">
-                  <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Bezeichnung</mat-label>
-                    <input matInput [ngModel]="variant.name" (ngModelChange)="setVariantName(revision, variant, $event)"
-                      [name]="'variantName' + index" maxlength="200" required
-                      [disabled]="revision.state === publishedState || disabled()">
-                  </mat-form-field>
-                  <mat-checkbox [(ngModel)]="variant.isActive" [name]="'variantActive' + index"
-                    [disabled]="revision.state === publishedState || disabled()">Aktiv</mat-checkbox>
-                  @if (revision.state === draftState && !disabled()) {
-                    <div class="variant-actions">
-                      <button matIconButton type="button"
-                        [attr.aria-label]="variant.isNew ? 'Neue Variante verwerfen' : 'Variante aus dem Entwurf entfernen'"
-                        [title]="variant.isNew ? 'Neue Variante verwerfen' : 'Variante aus dem Entwurf entfernen'"
-                        (click)="removeVariant(revision, index)"><scp-action-icon name="remove"/></button>
-                    </div>
-                  }
-                </div>
-                <details class="variant-overrides">
-                  <summary>Abweichungen zur Basiszutat <small>{{ variantOverrideCount(variant) }} festgelegt</small></summary>
-                  <p class="property-info">Ohne abweichende Auswahl gilt automatisch der Wert der Basiszutat.</p>
-                  <div class="variant-override-groups">
-                    <section>
-                      <h5>Allergene</h5>
-                      <div class="variant-override-grid">
-                        @for (property of variantVisibleAllergens(revision, variant); track property.id) {
-                          <div class="property-row">
-                            <span [class.variant-child-property]="!!property.parentAllergenId">{{ property.isEuMajorAllergen ? allergenLetter(property.code) + ' · ' : '' }}{{ property.name }}</span>
-                            <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Abweichung</mat-label>
-                              <mat-select [value]="propertyState(variant.allergenOverrides, property.id)"
-                                (selectionChange)="setVariantPropertyState(revision, variant, 'allergens', property.id, $event.value)"
-                                [disabled]="revision.state === publishedState || disabled()">
-                                <mat-option [value]="null">Wie Basis ({{ propertyStateLabel(propertyState(revision.allergens, property.id)) }})</mat-option>
-                                @for (state of propertyStates; track state.value) {
-                                  <mat-option [value]="state.value">{{ state.label }}</mat-option>
-                                }
-                              </mat-select>
-                            </mat-form-field>
-                          </div>
-                        }
-                      </div>
-                    </section>
-                    <section>
-                      <h5>Unverträglichkeiten</h5>
-                      <div class="variant-override-grid">
-                        @for (property of visibleIntolerances(); track property.id) {
-                          <div class="property-row">
-                            <span>{{ property.name }}</span>
-                            <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Abweichung</mat-label>
-                              <mat-select [value]="propertyState(variant.intoleranceOverrides, property.id)"
-                                (selectionChange)="setVariantPropertyState(revision, variant, 'intolerances', property.id, $event.value)"
-                                [disabled]="revision.state === publishedState || disabled()">
-                                <mat-option [value]="null">Wie Basis ({{ propertyStateLabel(propertyState(revision.intolerances, property.id)) }})</mat-option>
-                                @for (state of propertyStates; track state.value) {
-                                  <mat-option [value]="state.value">{{ state.label }}</mat-option>
-                                }
-                              </mat-select>
-                            </mat-form-field>
-                          </div>
-                        }
-                      </div>
-                    </section>
-                    <section>
-                      <h5>Stoffgehalte</h5>
-                      @for (property of quantitativeSubstances(); track property.id) {
-                        <article class="property-card">
-                          <strong>{{ property.name }}</strong>
-                          <mat-form-field appearance="outline"><mat-label>Abweichung</mat-label>
-                            <mat-select [value]="variantSubstanceMode(variant, property.id)"
-                              (selectionChange)="setVariantSubstanceMode(revision, variant, property.id, $event.value)"
-                              [disabled]="revision.state === publishedState || disabled()">
-                              <mat-option value="inherit">Wie Basis</mat-option>
-                              <mat-option value="unknown">Unbekannt</mat-option>
-                              <mat-option value="quantitative">Quantitativ – Gehalt</mat-option>
-                              <mat-option value="contains">Qualitativ – enthalten</mat-option>
-                              <mat-option value="absent">Qualitativ – nicht enthalten</mat-option>
-                            </mat-select>
-                          </mat-form-field>
-                          @if (variantSubstanceContent(variant, property.id); as content) {
-                            <div class="form-grid">
-                              <mat-form-field appearance="outline"><mat-label>Menge</mat-label>
-                                <input matInput type="number" min="0" step="0.001" [(ngModel)]="content.amount"
-                                  [name]="'variantSubstanceAmount' + variant.id + property.id" [disabled]="revision.state === publishedState || disabled()">
-                              </mat-form-field>
-                              <mat-form-field appearance="outline"><mat-label>Einheit</mat-label>
-                                <mat-select [(ngModel)]="content.amountUnitId" [name]="'variantSubstanceUnit' + variant.id + property.id"
-                                  [disabled]="revision.state === publishedState || disabled()">
-                                  @for (unit of substanceAmountUnits(); track unit.id) { <mat-option [value]="unit.id">{{ unit.symbol }}</mat-option> }
-                                </mat-select>
-                              </mat-form-field>
-                              <mat-form-field appearance="outline"><mat-label>Bezugsmenge</mat-label>
-                                <input matInput type="number" min="0.001" step="0.001" [(ngModel)]="content.referenceQuantity"
-                                  [name]="'variantSubstanceReference' + variant.id + property.id" [disabled]="revision.state === publishedState || disabled()">
-                              </mat-form-field>
-                              <mat-form-field appearance="outline"><mat-label>Bezugseinheit</mat-label>
-                                <mat-select [(ngModel)]="content.referenceUnitId" [name]="'variantSubstanceReferenceUnit' + variant.id + property.id"
-                                  [disabled]="revision.state === publishedState || disabled()">
-                                  @for (unit of substanceReferenceUnits(revision); track unit.id) { <mat-option [value]="unit.id">{{ unit.symbol }}</mat-option> }
-                                </mat-select>
-                              </mat-form-field>
-                            </div>
-                            <mat-checkbox [checked]="content.reviewState === 1" (change)="content.reviewState = $event.checked ? 1 : 0"
-                              [disabled]="revision.state === publishedState || disabled()">Stoffgehalt geprüft</mat-checkbox>
-                          }
-                        </article>
-                      }
-                    </section>
-                    <section>
-                      <h5>Herkunft</h5>
-                      <div class="variant-primary-origin">
-                        <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Hauptherkunft</mat-label>
-                          <mat-select [value]="variantPrimaryOriginOverrideId(variant)"
-                            (selectionChange)="setVariantPrimaryOrigin(revision, variant, $event.value)"
-                            [disabled]="revision.state === publishedState || disabled()">
-                            <mat-option [value]="null">Wie Basis ({{ primaryOriginLabel(revision) }})</mat-option>
-                            @for (property of primaryOrigins(); track property.id) {
-                              <mat-option [value]="property.id">{{ property.name }}</mat-option>
-                            }
-                          </mat-select>
-                        </mat-form-field>
-                      </div>
-                      <div class="variant-override-grid">
-                        @for (property of additionalOrigins(); track property.id) {
-                          <div class="property-row">
-                            <span>{{ property.name }}</span>
-                            <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Abweichung</mat-label>
-                              <mat-select [value]="propertyState(variant.originOverrides, property.id)"
-                                (selectionChange)="setVariantPropertyState(revision, variant, 'origins', property.id, $event.value)"
-                                [disabled]="revision.state === publishedState || disabled()">
-                                <mat-option [value]="null">Wie Basis ({{ propertyStateLabel(propertyState(revision.origins, property.id)) }})</mat-option>
-                                @for (state of propertyStates; track state.value) {
-                                  <mat-option [value]="state.value">{{ state.label }}</mat-option>
-                                }
-                              </mat-select>
-                            </mat-form-field>
-                          </div>
-                        }
-                      </div>
-                    </section>
-                    <section>
-                      <h5>Weitere Einheiten</h5>
-                      <div class="variant-conversion-list">
-                        @for (baseConversion of revision.unitConversions; track baseConversion.sourceUnitId) {
-                          <div class="variant-conversion-row">
-                            <mat-checkbox [checked]="hasVariantConversionOverride(variant, baseConversion.sourceUnitId)"
-                              (change)="setVariantConversionOverride(variant, baseConversion, $event.checked)"
-                              [disabled]="revision.state === publishedState || disabled()">
-                              1 {{ unitSymbol(baseConversion.sourceUnitId) }} abweichend berechnen
-                            </mat-checkbox>
-                            @if (variantConversionOverride(variant, baseConversion.sourceUnitId); as conversion) {
-                              <span class="conversion-formula">=</span>
-                              <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Menge</mat-label>
-                                <input matInput type="text" inputmode="decimal" [ngModel]="conversion.factorInput"
-                                  (ngModelChange)="setConversionFactor(conversion, $event)"
-                                  (blur)="normalizeConversionFactorInput(conversion)"
-                                  [name]="'variantConversionFactor' + index + baseConversion.sourceUnitId"
-                                  [disabled]="revision.state === publishedState || disabled()" required>
-                              </mat-form-field>
-                              <span class="conversion-formula">{{ unitSymbol(revision.baseUnitId) }}</span>
-                              <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Genauigkeit</mat-label>
-                                <mat-select [(ngModel)]="conversion.precision"
-                                  [name]="'variantConversionPrecision' + index + baseConversion.sourceUnitId"
-                                  [disabled]="revision.state === publishedState || disabled()">
-                                  @for (precision of conversionPrecisions; track precision.value) {
-                                    <mat-option [value]="precision.value">{{ precision.label }}</mat-option>
-                                  }
-                                </mat-select>
-                              </mat-form-field>
-                            } @else {
-                              <span class="variant-inherited-value">Wie Basis: {{ baseConversion.factorInput }} {{ unitSymbol(revision.baseUnitId) }}</span>
-                            }
-                          </div>
-                        }
-                        @if (!revision.unitConversions.length) {
-                          <p class="unit-conversion-empty">Lege weitere Einheiten zuerst bei der Basiszutat an. Die Variante kann anschließend deren Faktor oder Genauigkeit überschreiben.</p>
-                        }
-                      </div>
-                    </section>
-                    <section>
-                      <h5>Nährwerte</h5>
-                      <div class="variant-nutrition">
-                        <mat-checkbox [checked]="variant.nutritionProfile !== null"
-                          (change)="setVariantNutritionEnabled(revision, variant, $event.checked)"
-                          [disabled]="revision.state === publishedState || disabled()">
-                          Abweichendes vollständiges Nährwertprofil
-                        </mat-checkbox>
-                        @if (variant.nutritionProfile; as nutrition) {
-                          <scp-ingredient-nutrition-editor [profile]="nutrition"
-                            [units]="referenceData()?.units ?? []"
-                            [disabled]="revision.state === publishedState || disabled()"/>
-                        } @else {
-                          <p class="variant-inherited-value">Wie Basiszutat: Das vollständige Nährwertprofil wird geerbt.</p>
-                        }
-                      </div>
-                    </section>
-                  </div>
-                </details>
-              </article>
-            } @empty {
-              <p class="unit-conversion-empty">Für diese Zutat sind noch keine Varianten angelegt.</p>
-            }
-          </section>
-          <div class="property-groups">
-            <details class="property-group" open>
-              <summary><span>Allergene</span><small>{{ specifiedMainAllergenCount(revision) }} von 14 angegeben</small></summary>
-              <div class="property-review">
-                <mat-checkbox [checked]="isReviewed(revision.allergenReviewState)"
-                  (change)="revision.allergenReviewState = reviewState($event.checked)"
-                  [disabled]="revision.state === publishedState || disabled()">Allergenangaben vollständig geprüft</mat-checkbox>
-              </div>
-              <div class="allergen-grid">
-                @for (property of mainAllergens(); track property.id) {
-                  <article class="allergen-card">
-                    <div class="property-row allergen-main">
-                      <span class="allergen-name"><strong>{{ allergenLetter(property.code) }}</strong>{{ property.name }}</span>
-                      <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Zustand</mat-label>
-                        <mat-select [value]="propertyState(revision.allergens, property.id)"
-                          (selectionChange)="setPropertyState(revision, 'allergens', property.id, $event.value)"
-                          [disabled]="revision.state === publishedState || disabled()">
-                          <mat-option [value]="null">Nicht angegeben</mat-option>
-                          @for (state of propertyStates; track state.value) {
-                            <mat-option [value]="state.value">{{ state.label }}</mat-option>
-                          }
-                        </mat-select>
-                      </mat-form-field>
-                    </div>
-                    @if (allergenChildren(property.id); as children) {
-                      @if (children.length && propertyState(revision.allergens, property.id) === containsState) {
-                        <details class="allergen-details">
-                          <summary>Enthaltene Untertypen auswählen</summary>
-                          <div class="allergen-children">
-                            @for (child of children; track child.id) {
-                              <div class="property-row property-child">
-                                <span>{{ child.name }}</span>
-                                <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Zustand</mat-label>
-                                  <mat-select [value]="propertyState(revision.allergens, child.id)"
-                                    (selectionChange)="setPropertyState(revision, 'allergens', child.id, $event.value)"
-                                    [disabled]="revision.state === publishedState || disabled()">
-                                    @for (state of propertyStates; track state.value) {
-                                      <mat-option [value]="state.value">{{ state.label }}</mat-option>
-                                    }
-                                  </mat-select>
-                                </mat-form-field>
-                              </div>
-                            }
-                          </div>
-                        </details>
-                      } @else if (children.length && propertyState(revision.allergens, property.id) !== null) {
-                        <p class="inherited-details">Alle Untertypen übernehmen „{{ propertyStateLabel(propertyState(revision.allergens, property.id)) }}“.</p>
-                      }
-                    }
-                  </article>
-                }
-              </div>
-            </details>
-            <details class="property-group">
-              <summary><span>Unverträglichkeiten und Inhaltsstoffe</span><small>{{ specifiedVisibleIntoleranceCount(revision) }} angegeben</small></summary>
-              <div class="property-review">
-                <mat-checkbox [checked]="isReviewed(revision.intoleranceReviewState)"
-                  (change)="setIntoleranceReviewState(revision, $event.checked)"
-                  [disabled]="revision.state === publishedState || disabled()">Qualitative Angaben vollständig geprüft</mat-checkbox>
-              </div>
-              <p class="property-info">Gluten wird über Allergen A ausgewertet. Dosisabhängige Stoffe werden als Gehalt erfasst; persönliche Grenzwerte gehören nicht zur Zutat.</p>
-              <div class="property-grid">
-                @for (property of qualitativeIntolerances(); track property.id) {
-                  <div class="property-row">
-                    <span>{{ intoleranceLabel(property.code, property.name) }}</span>
-                    <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Zustand</mat-label>
-                      <mat-select [value]="propertyState(revision.intolerances, property.id)"
-                        (selectionChange)="setPropertyState(revision, 'intolerances', property.id, $event.value)"
-                        [disabled]="revision.state === publishedState || disabled()">
-                        <mat-option [value]="null">Nicht angegeben</mat-option>
-                        @for (state of propertyStates; track state.value) {
-                          <mat-option [value]="state.value">{{ state.label }}</mat-option>
-                        }
-                      </mat-select>
-                    </mat-form-field>
-                  </div>
-                }
-              </div>
-              <div class="property-grid">
-                @for (property of quantitativeSubstances(); track property.id) {
-                  <article class="property-card">
-                    <div class="property-row">
-                      <strong>{{ property.name }}</strong>
-                      <mat-form-field appearance="outline"><mat-label>Angabe</mat-label>
-                        <mat-select [value]="substanceMode(revision, property.id)"
-                          (selectionChange)="setSubstanceMode(revision, property.id, $event.value)"
-                          [disabled]="revision.state === publishedState || disabled()">
-                          <mat-option value="unknown">Unbekannt</mat-option>
-                          <mat-option value="quantitative">Quantitativ – Gehalt</mat-option>
-                          <mat-option value="contains">Qualitativ – enthalten</mat-option>
-                          <mat-option value="absent">Qualitativ – nicht enthalten</mat-option>
-                        </mat-select>
-                      </mat-form-field>
-                    </div>
-                    @if (substanceMode(revision, property.id) === 'unknown' && substanceContent(revision, property.id)) {
-                      <p class="property-info">Widersprüchliche Altangaben: Bitte den gewünschten Modus ausdrücklich auswählen.</p>
-                    }
-                    @if (substanceMode(revision, property.id) === 'quantitative' && substanceContent(revision, property.id); as content) {
-                      <div class="form-grid">
-                        <mat-form-field appearance="outline"><mat-label>Menge</mat-label>
-                          <input matInput type="number" min="0" step="0.001" [(ngModel)]="content.amount"
-                            [name]="'substanceAmount' + property.id"
-                            [disabled]="revision.state === publishedState || disabled()">
-                        </mat-form-field>
-                        <mat-form-field appearance="outline"><mat-label>Einheit</mat-label>
-                          <mat-select [(ngModel)]="content.amountUnitId" [name]="'substanceAmountUnit' + property.id"
-                            [disabled]="revision.state === publishedState || disabled()">
-                            @for (unit of substanceAmountUnits(); track unit.id) { <mat-option [value]="unit.id">{{ unit.symbol }}</mat-option> }
-                          </mat-select>
-                        </mat-form-field>
-                        <mat-form-field appearance="outline"><mat-label>Bezugsmenge</mat-label>
-                          <input matInput type="number" min="0.001" step="0.001" [(ngModel)]="content.referenceQuantity"
-                            [name]="'substanceReferenceQuantity' + property.id"
-                            [disabled]="revision.state === publishedState || disabled()">
-                        </mat-form-field>
-                        <mat-form-field appearance="outline"><mat-label>Bezugseinheit</mat-label>
-                          <mat-select [(ngModel)]="content.referenceUnitId" [name]="'substanceReferenceUnit' + property.id"
-                            [disabled]="revision.state === publishedState || disabled()">
-                            @for (unit of substanceReferenceUnits(revision); track unit.id) { <mat-option [value]="unit.id">{{ unit.symbol }}</mat-option> }
-                          </mat-select>
-                        </mat-form-field>
-                      </div>
-                      <mat-checkbox [checked]="content.reviewState === 1"
-                        (change)="content.reviewState = $event.checked ? 1 : 0"
-                        [disabled]="revision.state === publishedState || disabled()">Stoffgehalt geprüft</mat-checkbox>
-                    }
-                  </article>
-                }
-              </div>
-            </details>
-            <details class="property-group">
-              <summary><span>Herkunft</span><small>{{ primaryOriginLabel(revision) }}</small></summary>
-              <div class="property-review">
-                <mat-checkbox [checked]="isReviewed(revision.originReviewState)"
-                  (change)="setOriginReviewState(revision, $event.checked)"
-                  [disabled]="revision.state === publishedState || disabled() || !primaryOriginId(revision)">Herkunftsangaben vollständig geprüft</mat-checkbox>
-              </div>
-              <p class="property-info">Wähle genau eine Hauptherkunft. Besondere tierische Bestandteile können danach zusätzlich angegeben werden.</p>
-              <div class="origin-main-selection">
-                <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Hauptherkunft</mat-label>
-                  <mat-select [value]="primaryOriginId(revision)"
-                    (selectionChange)="setPrimaryOrigin(revision, $event.value)"
-                    [disabled]="revision.state === publishedState || disabled()">
-                    <mat-option [value]="null" disabled>Bitte auswählen</mat-option>
-                    @for (property of primaryOrigins(); track property.id) {
-                      <mat-option [value]="property.id">{{ property.name }}</mat-option>
-                    }
-                  </mat-select>
-                </mat-form-field>
-              </div>
-              <details class="secondary-details">
-                <summary>Zusätzliche tierische Merkmale</summary>
-                <div class="property-grid">
-                @for (property of additionalOrigins(); track property.id) {
-                  <div class="property-row">
-                    <span>{{ property.name }}</span>
-                    <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Zustand</mat-label>
-                      <mat-select [value]="propertyState(revision.origins, property.id)"
-                        (selectionChange)="setPropertyState(revision, 'origins', property.id, $event.value)"
-                        [disabled]="revision.state === publishedState || disabled()">
-                        <mat-option [value]="null">Nicht angegeben</mat-option>
-                        @for (state of propertyStates; track state.value) {
-                          <mat-option [value]="state.value">{{ state.label }}</mat-option>
-                        }
-                      </mat-select>
-                    </mat-form-field>
-                  </div>
-                }
-                </div>
-              </details>
-            </details>
-          </div>
-          @if (centralCandidates().length) {
-            <section class="central-candidates">
-              <div><h4>Passende zentrale Zutat vorhanden</h4>
-                <p>Du kannst die lokale Zutat durch einen zentralen Eintrag ablösen.</p></div>
-              @for (candidate of centralCandidates(); track candidate.revisionId) {
-                <div class="central-candidate-row">
-                  <span><strong>{{ candidate.name }}</strong><small>{{ categoryName(candidate.categoryId) }} · {{ unitSymbol(candidate.baseUnitId) }}</small></span>
-                  <button matButton type="button" (click)="replaceWithCentral(candidate)"
-                    [disabled]="submitting()">Zentrale Zutat verwenden</button>
-                </div>
-              }
-              <div class="revision-actions">
-                <button matButton type="button" (click)="centralCandidates.set([])">Zurück</button>
-                @if (revision.state === draftState) {
-                  <button matButton="filled" type="button" (click)="publishAnyway()"
-                    [disabled]="submitting()">Trotzdem lokal veröffentlichen</button>
-                }
-              </div>
-            </section>
-          }
-          @if (revision.state === draftState) {
-            <p class="revision-hint">„Geprüft“ bedeutet: Auch fehlende Einträge wurden bewusst kontrolliert.</p>
-            <div class="revision-actions">
-              <button matButton type="submit"
-                [disabled]="submitting() || disabled() || !isDirty(revision) || !unitConversionsValid(revision) || !nutritionProfilesValid(revision) || !substanceContentsValid(revision, false) || !variantsValid(revision)">
-                <scp-action-icon name="save"/>{{ pendingForkSourceRevisionId() ? 'Als Lageranpassung speichern' : 'Entwurf speichern' }}</button>
-              @if (!pendingForkSourceRevisionId()) {
-                <button matButton="filled" type="button" (click)="publish()"
-                  [disabled]="submitting() || disabled() || isDirty(revision) || !allReviewed(revision) || !unitConversionsValid(revision) || !nutritionProfilesValid(revision) || !substanceContentsValid(revision, true) || !variantsValid(revision)">Veröffentlichen</button>
-              }
-            </div>
-            @if (isDirty(revision) && allReviewed(revision)) {
-              <p class="revision-hint revision-unsaved">Vor dem Veröffentlichen muss der aktuelle Entwurf gespeichert werden.</p>
-            }
-          } @else if (!disabled()) {
-            <p class="revision-hint">Veröffentlichte Versionen bleiben unveränderlich. Änderungen erfolgen in einem neuen Entwurf.</p>
-            <div class="revision-actions">
-              <button matButton="filled" type="button" (click)="createNextDraft()" [disabled]="submitting()">
-                <scp-action-icon name="edit"/>Neue Bearbeitung beginnen</button>
-              @if (scope() !== 'central') {
-                <button matButton type="button" (click)="findCentralAlternatives()" [disabled]="submitting()">
-                  Zentrale Alternative prüfen</button>
-                <button matButton type="button" (click)="submitToCentral()" [disabled]="submitting()">
-                  Zur zentralen Prüfung einreichen</button>
-              }
-            </div>
-          }
-        </form>
-      }
-    }
-  `,
-  styles: `
-    :host { display: grid; gap: 1rem; }
-    .revision-editor-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-    h4, p { margin: 0; } h4 { font-size: 1.05rem; } .revision-editor-heading p { color: #667168; font-size: .88rem; }
-    .revision-loading { display: flex; align-items: center; gap: .75rem; min-height: 3rem; }
-    .revision-message { margin: 0; padding: .75rem .9rem; border: 1px solid; border-radius: .65rem; }
-    .revision-error { color: #8b2525; border-color: #efb8b8; background: #fff1f0; }
-    .revision-notice { color: #214b28; border-color: #b8d9bd; background: #edf8ee; }
-    .revision-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .6rem; }
-    .revision-list-item { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .8rem;
-      border: 1px solid #dce4da; border-radius: .7rem; background: #f8faf7; color: inherit; text-align: left; cursor: pointer; }
-    .revision-list-item.active { border-color: #6d9975; background: #edf5ed; }
-    .revision-list-item span:first-child { display: grid; gap: .15rem; } .revision-list-item small { color: #667168; }
-    .revision-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; padding: 1rem;
-      border: 1px solid #cddbcc; border-radius: .8rem; background: #f5faf4; }
-    .revision-form h4, .revision-form .revision-editor-heading, .ingredient-source-summary, .ingredient-suggestions, .unit-conversions, .nutrition-profile, .ingredient-variants, .property-groups, .revision-hint, .revision-actions { grid-column: 1 / -1; }
-    .revision-form mat-form-field:first-of-type { grid-column: 1 / -1; }
-    .property-groups { display: grid; gap: .65rem; }
-    .unit-conversions { display: grid; gap: .65rem; padding: .85rem; border: 1px solid #d7e1d5;
-      border-radius: .65rem; background: #fff; }
-    .nutrition-profile { display: grid; gap: .75rem; padding: .85rem; border: 1px solid #d7e1d5;
-      border-radius: .65rem; background: #fff; }
-    .ingredient-source-summary { display: grid; grid-template-columns: minmax(13rem, .7fr) minmax(18rem, 1.3fr);
-      gap: .8rem; align-items: start; padding: .85rem; border: 1px solid #d7e1d5;
-      border-radius: .65rem; background: #fff; }
-    .ingredient-source-summary h4, .ingredient-source-summary p { margin: 0; }
-    .ingredient-source-summary p { margin-top: .2rem; color: #667168; font-size: .85rem; }
-    .source-entry-list { display: grid; gap: .55rem; }
-    .source-entry-row, .source-entry-add { display: grid; grid-template-columns: minmax(0, 1fr) auto;
-      align-items: center; gap: .4rem; }
-    .source-entry-empty, .source-entry-list small { color: #667168; font-size: .82rem; }
-    .ingredient-suggestions { display: grid; gap: .7rem; padding: .85rem; border: 1px solid #d7e1d5;
-      border-radius: .65rem; background: #fff; }
-    .suggestion-heading, .suggestion-result-heading { display: flex; align-items: flex-start;
-      justify-content: space-between; gap: 1rem; }
-    .suggestion-heading p, .suggestion-values, .suggestion-empty, .suggestion-disclaimer {
-      color: #667168; font-size: .84rem; }
-    .suggestion-badge { padding: .25rem .55rem; border-radius: 999px; background: #e8f1e7;
-      color: #31543a; font-size: .78rem; font-weight: 700; white-space: nowrap; }
-    .suggestion-search { display: grid; grid-template-columns: minmax(14rem, 1fr) auto; align-items: center; gap: .6rem; }
-    .suggestion-loading { display: flex; align-items: center; gap: .55rem; color: #667168; }
-    .suggestion-warning { padding: .55rem .7rem; border-radius: .5rem; background: #fff5df;
-      color: #725416; font-size: .84rem; }
-    .suggestion-result { display: grid; gap: .4rem; padding: .7rem; border: 1px solid #e0e7de;
-      border-radius: .6rem; background: #f8faf7; }
-    .suggestion-result-heading > div:first-child { display: grid; gap: .15rem; }
-    .suggestion-result-heading small { color: #667168; }
-    .suggestion-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .35rem; }
-    .suggestion-disclaimer { padding-top: .55rem; border-top: 1px solid #e1e8df; }
-    .ingredient-variants { display: grid; gap: .65rem; padding: .85rem; border: 1px solid #d7e1d5;
-      border-radius: .65rem; background: #fff; }
-    .unit-conversion-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-    .unit-conversion-heading p, .unit-conversion-empty { color: #667168; font-size: .84rem; }
-    .unit-conversion-row { display: grid; grid-template-columns: minmax(10rem, 1.2fr) auto minmax(7rem, .7fr) auto minmax(10rem, 1fr) auto;
-      align-items: center; gap: .55rem; padding: .65rem; border: 1px solid #e0e7de; border-radius: .6rem; background: #f8faf7; }
-    .conversion-formula { white-space: nowrap; color: #536056; font-weight: 600; }
-    .variant-row { display: grid; gap: .65rem; padding: .65rem; border: 1px solid #e0e7de;
-      border-radius: .6rem; background: #f8faf7; }
-    .variant-row.inactive { background: #f3f3f1; color: #69706a; }
-    .variant-header { display: grid; grid-template-columns: minmax(12rem, 1fr) auto auto; align-items: center; gap: .7rem; }
-    .variant-actions { display: flex; align-items: center; }
-    .variant-overrides { border-top: 1px solid #dde5db; }
-    .variant-overrides > summary { display: flex; justify-content: space-between; gap: .75rem; padding: .65rem .2rem .1rem;
-      color: #425247; font-weight: 650; cursor: pointer; }
-    .variant-overrides > summary small { color: #68736a; font-weight: 500; }
-    .variant-override-groups { display: grid; gap: .65rem; padding-top: .7rem; }
-    .variant-override-groups section { overflow: hidden; border: 1px solid #e0e7de; border-radius: .55rem; background: #fff; }
-    .variant-override-groups h5 { margin: 0; padding: .6rem .75rem; background: #f0f5ef; font-size: .9rem; }
-    .variant-override-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem .8rem; padding: .7rem; }
-    .variant-child-property { padding-left: 1.35rem; color: #5f6b61; }
-    .variant-primary-origin { padding: .7rem .7rem 0; }
-    .variant-primary-origin mat-form-field { width: min(100%, 28rem); }
-    .variant-conversion-list { display: grid; gap: .55rem; padding: .7rem; }
-    .variant-nutrition { display: grid; gap: .75rem; padding: .7rem; }
-    .variant-conversion-row { display: grid; grid-template-columns: minmax(14rem, 1fr) auto minmax(7rem, .7fr) auto minmax(10rem, 1fr);
-      align-items: center; gap: .55rem; }
-    .variant-inherited-value { color: #68736a; font-size: .84rem; }
-    .property-group { overflow: hidden; border: 1px solid #d7e1d5; border-radius: .65rem; background: #fff; }
-    .property-group summary { display: flex; justify-content: space-between; gap: .75rem; padding: .8rem .9rem;
-      background: #eef4ed; color: #334737; font-weight: 700; cursor: pointer; }
-    .property-group summary small { color: #68736a; font-weight: 500; }
-    .property-review { padding: .65rem .85rem; border-bottom: 1px solid #e2e8e0; }
-    .property-info { padding: .7rem .85rem 0; color: #58635a; font-size: .84rem; }
-    .allergen-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; padding: .8rem; }
-    .allergen-card { align-self: start; overflow: hidden; border: 1px solid #dfe7dc; border-radius: .65rem; background: #fbfcfa; }
-    .allergen-main { padding: .65rem; }
-    .allergen-name { display: flex; align-items: center; gap: .55rem; font-weight: 600; }
-    .allergen-name strong { display: inline-grid; place-items: center; flex: 0 0 1.7rem; height: 1.7rem; border-radius: .4rem;
-      background: #3f7048; color: #fff; font-size: .85rem; }
-    .allergen-details { border-top: 1px solid #e1e8df; }
-    .allergen-details summary { padding: .6rem .75rem; background: #f2f6f1; font-size: .86rem; }
-    .allergen-children { display: grid; gap: .45rem; padding: .65rem; }
-    .inherited-details { padding: 0 .7rem .65rem; color: #667168; font-size: .8rem; }
-    .secondary-details { margin: 0 .8rem .8rem; border: 1px solid #dfe7dc; border-radius: .6rem; }
-    .secondary-details > summary { padding: .65rem .75rem; background: #f2f6f1; font-size: .88rem; }
-    .origin-main-selection { padding: .8rem; }
-    .origin-main-selection mat-form-field { width: min(100%, 28rem); }
-    .property-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem .8rem; padding: .8rem; }
-    .property-row { display: grid; grid-template-columns: minmax(7rem, 1fr) minmax(9rem, 12rem); align-items: center; gap: .6rem; }
-    .property-row > span { line-height: 1.25; }
-    .property-child > span { padding-left: 1rem; color: #58635a; }
-    .revision-hint { color: #58635a; font-size: .85rem; }
-    .revision-actions { display: flex; justify-content: flex-end; gap: .4rem; }
-    .revision-state { padding: .25rem .55rem; border-radius: 999px; background: #f1e6d5; color: #674a1d; font-size: .78rem; font-weight: 700; }
-    .revision-state.published { background: #dcebdd; color: #214b28; }
-    .contribution-review, .central-candidates { display: grid; gap: .7rem; padding: .9rem;
-      border: 1px solid #c9d9c7; border-radius: .75rem; background: #f6faf5; }
-    .contribution-review > div > p, .central-candidates > div > p { color: #667168; font-size: .85rem; }
-    .contribution-card { display: grid; grid-template-columns: minmax(12rem, 1fr) minmax(14rem, 1fr) auto;
-      align-items: center; gap: .75rem; padding: .75rem; border: 1px solid #dce5da; border-radius: .65rem; background: #fff; }
-    .contribution-card > div:first-child { display: grid; gap: .2rem; }
-    .contribution-card small { color: #667168; }
-    .contribution-actions { display: flex; gap: .35rem; }
-    .central-candidates { grid-column: 1 / -1; border-color: #d8b46a; background: #fff9ed; }
-    .central-candidate-row { display: flex; align-items: center; justify-content: space-between;
-      gap: .75rem; padding: .65rem; border: 1px solid #ead7ad; border-radius: .55rem; background: #fff; }
-    .central-candidate-row > span { display: grid; gap: .15rem; }
-    .central-candidate-row small { color: #667168; }
-    .revision-empty { padding: 1rem; border: 1px dashed #b8c4b7; border-radius: .7rem; color: #5b665c; }
-    @media (max-width: 800px) { .revision-form, .property-grid, .allergen-grid, .contribution-card { grid-template-columns: 1fr; }
-      .revision-form > * { grid-column: 1 !important; } }
-    @media (max-width: 680px) { .unit-conversion-heading { align-items: flex-start; flex-direction: column; }
-      .unit-conversion-row { grid-template-columns: 1fr auto; }
-      .unit-conversion-row mat-form-field { grid-column: 1 / -1; }
-      .variant-header, .variant-override-grid { grid-template-columns: 1fr auto; }
-      .variant-header mat-form-field, .variant-override-grid .property-row { grid-column: 1 / -1; }
-      .variant-conversion-row { grid-template-columns: 1fr auto; }
-      .variant-conversion-row mat-checkbox, .variant-conversion-row .variant-inherited-value { grid-column: 1 / -1; } }
-    @media (max-width: 560px) { .suggestion-search { grid-template-columns: 1fr; }
-      .suggestion-heading, .suggestion-result-heading { flex-direction: column; }
-      .suggestion-actions { justify-content: flex-start; }
-      .ingredient-source-summary { grid-template-columns: 1fr; }
-      .source-entry-add { grid-template-columns: 1fr; } }
-    @media (max-width: 480px) { .property-row { grid-template-columns: 1fr; } }
-  `
+  imports: [NgTemplateOutlet, ListPaginationComponent, DatePipe, FormsModule, MatButtonModule, MatCardModule, MatCheckboxModule, MatFormFieldModule,
+    MatInputModule, MatMenuModule, MatProgressSpinnerModule, MatSelectModule, ActionIconComponent,
+    IngredientNutritionEditorComponent, IngredientCatalogComponent],
+  templateUrl: './ingredient-revision-editor.component.html',
+  styleUrl: './ingredient-revision-editor.component.scss'
 })
 export class IngredientRevisionEditorComponent {
+  readonly availableIngredients = input<IngredientCatalogEntry[]>([]);
+  readonly activeTab = signal('basic');
+  readonly unitPage = signal(0);
+  readonly allergenPage = signal(0);
+  readonly substancePage = signal(0);
+  readonly sourcePage = signal(0);
+  readonly selectedSuggestionKey = signal('');
+  readonly referenceContext = signal<'both' | 'nutrition' | 'substances'>('both');
+  onPage(index: number, length: number, page: number, size = 5) {
+    const start = Math.min(Math.max(0, page), Math.max(0, Math.ceil(length / size) - 1)) * size;
+    return index >= start && index < start + size;
+  }
+  selectedSuggestion(): IngredientDataSuggestion | undefined {
+    return this.suggestionResults().find(value => value.sourceKey === this.selectedSuggestionKey()) ?? this.suggestionResults()[0];
+  }
+  suggestionComparison(revision: IngredientRevisionDetails, suggestion: IngredientDataSuggestion) {
+    const profile = revision.nutritionProfile;
+    const unit = this.referenceData()?.units.find(value => value.id === profile?.referenceUnitId);
+    const grams = this.referenceData()?.units.find(value => value.symbol === 'g' && value.dimension === 0);
+    const referenceMass = profile && unit?.dimension === 0 && grams
+      ? profile.referenceQuantity * unit.baseUnitFactor / grams.baseUnitFactor : 0;
+    const current = profile ? this.nutritionSummary(profile) : [];
+    return this.nutritionSummary(suggestion.nutrition).map((item, index) => {
+      const value = current[index]?.value;
+      const scaled = value != null && referenceMass > 0 ? value * suggestion.referenceQuantity / referenceMass : null;
+      return { ...item, current: scaled === null ? null : Math.round(scaled * 1000) / 1000 };
+    });
+  }
+  readonly selectedVariantId = signal<string | null>(null);
+  readonly editorTabs: { id: string; label: string; icon: ActionIconName }[] = [
+    { id: 'basic', label: 'Grunddaten', icon: 'planning' },
+    { id: 'units', label: 'Einheiten', icon: 'refresh' },
+    { id: 'allergies', label: 'Allergene & Unverträglichkeiten', icon: 'warning' },
+    { id: 'origins', label: 'Herkunft', icon: 'structure' },
+    { id: 'nutrition', label: 'Nährwerte', icon: 'planning' },
+    { id: 'variants', label: 'Varianten', icon: 'people' },
+    { id: 'sources', label: 'Quellen & Prüfung', icon: 'recipe' }
+  ];
+  scopeLabel() { return this.scope() === 'central' ? 'Zentral' : this.scope() === 'tenant' ? 'Organisation' : 'Lager'; }
+  tabKey(event: KeyboardEvent, index: number) {
+    const count = this.editorTabs.length;
+    let next = index;
+    if (event.key === 'ArrowRight') next = (index + 1) % count;
+    else if (event.key === 'ArrowLeft') next = (index + count - 1) % count;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = count - 1;
+    else return;
+    event.preventDefault();
+    this.activeTab.set(this.editorTabs[next].id);
+    this.host.nativeElement.querySelector<HTMLButtonElement>('#ingredient-tab-' + this.editorTabs[next].id)?.focus();
+  }
+  hasPendingChanges() {
+    const revision = this.selected();
+    return !!revision && revision.state === this.draftState && (this.isDirty(revision) || !!this.newSourceEntry().trim()) ||
+      this.createOpen() && !!this.createName.trim();
+  }
+  closeEditor() {
+    const revision = this.selected();
+    if (this.submitting() || revision && this.hasPendingChanges() && !window.confirm('Nicht gespeicherte Zutatenänderungen verwerfen?')) return;
+    this.selected.set(null); this.pendingForkSourceRevisionId.set(null); this.centralCandidates.set([]);
+    this.activeTab.set('basic');
+  }
+  openVersion(revisionId: string) {
+    if (this.submitting() || this.hasPendingChanges() && !window.confirm('Nicht gespeicherte Zutatenänderungen verwerfen?')) return;
+    this.open(revisionId);
+  }
+  ingredientVersions(revision: IngredientRevisionDetails) { return this.revisions().filter(value => value.ingredientId === revision.ingredientId); }
+  variantVisible(revision: IngredientRevisionDetails, id: string) {
+    const selected = revision.variants.find(value => value.id === this.selectedVariantId()) ?? revision.variants[0];
+    return selected?.id === id;
+  }
+  variantSummary(revision: IngredientRevisionDetails, variant: IngredientVariantRevisionItem) {
+    const reference = this.referenceData();
+    const properties = [
+      { label: 'Allergene', overrides: variant.allergenOverrides, definitions: reference?.allergens ?? [] },
+      { label: 'Unverträglichkeiten', overrides: variant.intoleranceOverrides, definitions: reference?.intolerances ?? [] },
+      { label: 'Herkunft', overrides: variant.originOverrides, definitions: reference?.origins ?? [] }
+    ];
+    return properties.map(group => ({ label: group.label, changed: group.overrides.length > 0,
+      value: group.overrides.length ? group.overrides.map(item =>
+        (group.definitions.find(definition => definition.id === item.propertyId)?.name ?? 'Merkmal') + ' · ' + this.propertyStateLabel(item.state)).join(', ') : 'Wie Basiszutat' }))
+      .concat([
+        { label: 'Nährwerte', changed: !!variant.nutritionProfile, value: variant.nutritionProfile ? 'Eigenes Nährwertprofil' : revision.nutritionProfile ? 'Wie Basiszutat' : 'Keine Angaben' },
+        { label: 'Stoffgehalte', changed: variant.substanceContentOverrides.length > 0, value: variant.substanceContentOverrides.length ? variant.substanceContentOverrides.length + ' abweichende Angaben' : 'Wie Basiszutat' },
+        { label: 'Einheiten', changed: variant.unitConversionOverrides.length > 0, value: variant.unitConversionOverrides.length ? variant.unitConversionOverrides.length + ' abweichende Umrechnungen' : 'Wie Basiszutat' }
+      ]);
+  }
+  nutritionSummary(profile: IngredientNutritionProfileItem | IngredientSuggestionNutrition) {
+    return [
+      { label: 'Energie', value: profile.energyKilojoules, unit: 'kJ' },
+      { label: 'Fett', value: profile.fatGrams, unit: 'g' },
+      { label: 'davon gesättigt', value: profile.saturatedFatGrams, unit: 'g' },
+      { label: 'Kohlenhydrate', value: profile.carbohydrateGrams, unit: 'g' },
+      { label: 'davon Zucker', value: profile.sugarsGrams, unit: 'g' },
+      { label: 'Eiweiß', value: profile.proteinGrams, unit: 'g' },
+      { label: 'Salz', value: profile.saltGrams, unit: 'g' }
+    ];
+  }
   readonly scope = input<'camp' | 'tenant' | 'central'>('camp');
   readonly campId = input('');
   readonly tenantId = input('');
@@ -1394,7 +622,7 @@ export class IngredientRevisionEditorComponent {
     return value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('de');
   }
 
-  private formatSuggestionValue(value: number) {
+  formatSuggestionValue(value: number) {
     return new Intl.NumberFormat('de-DE', { maximumFractionDigits: 3 }).format(value);
   }
 
@@ -1523,6 +751,7 @@ export class IngredientRevisionEditorComponent {
       precision: IngredientConversionPrecision.Average,
       factorInput: '1'
     });
+    this.unitPage.set(Math.floor((revision.unitConversions.length - 1) / 5));
   }
 
   removeUnitConversion(revision: IngredientRevisionDetails, index: number) {
@@ -1594,8 +823,10 @@ export class IngredientRevisionEditorComponent {
   }
 
   addVariant(revision: IngredientRevisionDetails) {
+    const id = crypto.randomUUID();
+    this.selectedVariantId.set(id);
     revision.variants.push({
-      id: crypto.randomUUID(),
+      id,
       variantKey: '',
       name: '',
       isActive: true,
@@ -1760,8 +991,9 @@ export class IngredientRevisionEditorComponent {
     });
   }
 
-  open(revisionId: string) {
+  open(revisionId: string, variantId?: string | null) {
     this.pendingForkSourceRevisionId.set(null);
+    this.unitPage.set(0); this.allergenPage.set(0); this.substancePage.set(0); this.sourcePage.set(0);
     this.error.set(''); this.notice.set('');
     this.api.get(revisionId).subscribe({ next: value => { this.initializeConversionFactorInputs(value);
       this.initializeNutritionProfiles(value);
@@ -1772,6 +1004,7 @@ export class IngredientRevisionEditorComponent {
         this.normalizePrimaryOrigin(value);
       }
       this.selected.set(value);
+      if (variantId !== undefined) { this.selectedVariantId.set(variantId); this.activeTab.set(variantId ? 'variants' : 'basic'); }
       this.sourceEntries.set(this.parseSourceEntries(value.sourceSummary));
       this.newSourceEntry.set('');
       this.resetSuggestionSearch(value.name); },
@@ -2060,7 +1293,7 @@ export class IngredientRevisionEditorComponent {
   }
 
   private snapshot(value: IngredientRevisionDetails) {
-    return JSON.stringify({ name: value.name.trim(), categoryId: value.categoryId, baseUnitId: value.baseUnitId,
+    return JSON.stringify({ sourceSummary: value.sourceSummary, name: value.name.trim(), categoryId: value.categoryId, baseUnitId: value.baseUnitId,
       allergenReviewState: value.allergenReviewState, intoleranceReviewState: value.intoleranceReviewState,
       originReviewState: value.originReviewState,
       nutritionProfile: value.nutritionProfile,

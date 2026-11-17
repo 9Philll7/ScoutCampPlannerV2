@@ -76,7 +76,7 @@
         </div>
       }
     </aside>
-    <main id="workspace-content" [class.catering-page]="openedCampId() && isCateringSection()" [class.structure-page]="openedCampId() && (campSection() === 'structure' || campSection() === 'participants')" tabindex="-1" (focusin)="sidebarOpen.set(false)" (input)="trackEdit($event)" (change)="trackEdit($event)">
+    <main id="workspace-content" [class.catering-page]="openedCampId() && isCateringSection() || isIngredientWorkspace()" [class.structure-page]="openedCampId() && (campSection() === 'structure' || campSection() === 'participants')" tabindex="-1" (focusin)="sidebarOpen.set(false)" (input)="trackEdit($event)" (change)="trackEdit($event)">
       @switch (state()) {
         @case ('loading') {
           <section class="centered"><mat-spinner diameter="42"/><p>ScoutCampPlanner wird geladen …</p></section>
@@ -129,7 +129,7 @@
           <div class="application-shell">
           @if (openedCampId() && (campSection() === 'structure' || campSection() === 'participants')) {
             <h1 class="structure-page-heading">{{ campSection() === 'structure' ? 'Struktur' : 'Teilnehmerübersicht' }}</h1>
-          } @else if (!isCateringSection()) {
+          } @else if (!isCateringSection() && !isIngredientWorkspace()) {
           <header class="page-header">
             <div>
               @if (openedCampId()) {
@@ -308,7 +308,7 @@
           }
           }
           @for (camp of visibleCamps(); track camp.id) {
-            <mat-card class="content-card camp-card" [class.catering-container]="openedCampId() && isCateringSection()" [class.dashboard-container]="openedCampId() && campSection() === 'overview'" [class.structure-container]="openedCampId() && campSection() === 'structure'" [class.participants-container]="openedCampId() && campSection() === 'participants'">
+            <mat-card class="content-card camp-card" [class.catering-container]="openedCampId() && (isCateringSection() || campSection() === 'ingredients')" [class.dashboard-container]="openedCampId() && campSection() === 'overview'" [class.structure-container]="openedCampId() && campSection() === 'structure'" [class.participants-container]="openedCampId() && campSection() === 'participants'">
               @if (!openedCampId()) {
                 <mat-card-header><mat-card-title>{{ camp.name }}</mat-card-title></mat-card-header>
               }
@@ -743,61 +743,11 @@
                     </section>
                   }
                   @if (campSection() === 'ingredients') {
-                    <section class="settings-section">
-                      <div class="section-heading"><div><p class="eyebrow">Zutatenverwaltung</p><h3>Eigene Lagerzutaten</h3></div></div>
-                      <p class="context-info">Lagerzutaten werden zuerst als Entwurf angelegt und nach bewusster Prüfung veröffentlicht.</p>
-                      <scp-ingredient-revision-editor [campId]="camp.id" [disabled]="!camp.canEdit || camp.isFrozen"
+                    <section class="ingredient-workspace">
+                      <scp-ingredient-revision-editor [availableIngredients]="ingredients()" [campId]="camp.id" [disabled]="!camp.canEdit || camp.isFrozen"
                         (published)="loadIngredients(camp.id)"/>
                     </section>
-                    <section class="settings-section">
-                      <details><summary>Vorlagen für eine lokale Lagerkopie</summary>
-                      <div class="section-heading"><div><h3>Verfügbare Zutaten als Vorlage</h3></div>
-                        <span class="catalog-count">{{ filteredIngredients().length }} von {{ ingredients().length }}</span>
-                      </div>
-                      <p class="context-info">Hier erscheinen die bisher verfügbaren zentralen Zutaten sowie Zutaten deiner Organisation und dieses Lagers.</p>
-                      <mat-form-field appearance="outline" class="catalog-search"><mat-label>Zutaten durchsuchen</mat-label>
-                        <input matInput [ngModel]="ingredientSearch()" (ngModelChange)="ingredientSearch.set($event)"
-                          name="ingredientSearch" autocomplete="off">
-                      </mat-form-field>
-                      @if (ingredientsLoading()) {
-                        <div class="inline-loading"><mat-spinner diameter="28"/><span>Zutaten werden geladen …</span></div>
-                      } @else {
-                        <div class="ingredient-grid">
-                          @for (ingredient of filteredIngredients(); track ingredient.id) {
-                            <article class="ingredient-card">
-                              <header><div><span class="scope-badge" [class]="'scope-badge scope-' + ingredient.scope.toLowerCase()">
-                                {{ ingredientScopeLabel(ingredient.scope) }}</span><h4>{{ ingredient.name }}</h4></div>
-                                @if (ingredient.scope === 'Central' && ingredient.revisionId && camp.canEdit && !camp.isFrozen) {
-                                  <button matButton type="button" (click)="prepareIngredientFork(ingredient.revisionId)">
-                                    <scp-action-icon name="edit"/>Für Lager anpassen</button>
-                                }
-                              </header>
-                              @if (ingredient.originInformation) { <p class="ingredient-origin">{{ ingredient.originInformation }}</p> }
-                              <div class="ingredient-detail"><strong>Einheiten</strong>
-                                @if (ingredient.units.length) {
-                                  <div class="chip-list">@for (unit of ingredient.units; track unit.unitId) {
-                                    <span class="detail-chip" [matTooltip]="measurementDimensionLabel(unit.dimension)">{{ unit.name }} ({{ unit.symbol }})</span>
-                                  }</div>
-                                } @else { <span class="muted">Keine Einheit hinterlegt</span> }
-                              </div>
-                              @if (ingredient.variants.length) {
-                                <div class="ingredient-detail"><strong>Varianten</strong><div class="chip-list">
-                                  @for (variant of ingredient.variants; track variant.id) { <span class="detail-chip">{{ variant.name }}</span> }
-                                </div></div>
-                              }
-                              @if (ingredient.conflicts.length) {
-                                <div class="ingredient-detail"><strong>Hinweise</strong><div class="chip-list">
-                                  @for (conflict of ingredient.conflicts; track conflict.type + conflict.id) {
-                                    <span class="detail-chip conflict-chip">{{ conflictTypeLabel(conflict.type) }}: {{ conflict.name }}</span>
-                                  }
-                                </div></div>
-                              }
-                            </article>
-                          } @empty { <p class="stage-empty">Keine passenden Zutaten vorhanden.</p> }
-                        </div>
-                      }
-                      </details>
-                    </section>
+
                   }
                 }
               </mat-card-content>

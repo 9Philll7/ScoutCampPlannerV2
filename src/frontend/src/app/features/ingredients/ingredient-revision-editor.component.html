@@ -1,0 +1,913 @@
+
+    @if (error()) { <p class="revision-message revision-error" role="alert">{{ error() }}</p> }
+    @if (notice()) { <p class="revision-message revision-notice" role="status">{{ notice() }}</p> }
+    @if (scope() === 'central' && contributions().length) {
+      <section class="contribution-review">
+        <div>
+<h4>Offene Einreichungen</h4>
+<p>Die Annahme erzeugt einen ungeprüften zentralen Entwurf.</p>
+</div>
+        @for (contribution of contributions(); track contribution.id) {
+          <article class="contribution-card">
+            <div>
+              <strong>{{ contribution.name }}</strong>
+              <small>{{ contribution.sourceScopeType === 1 ? 'Organisation' : 'Lager' }} ·
+                eingereicht {{ contribution.submittedAtUtc | date:'dd.MM.yyyy HH:mm' }}</small>
+            </div>
+            <mat-form-field appearance="outline" subscriptSizing="dynamic">
+              <mat-label>Zentrales Ziel</mat-label>
+              <mat-select [value]="contributionTarget(contribution)"
+                (selectionChange)="setContributionTarget(contribution.id, $event.value)">
+                <mat-option [value]="''">Neue zentrale Zutat</mat-option>
+                @for (target of publishedCentralRevisions(); track target.ingredientId) {
+                  <mat-option [value]="target.ingredientId">{{ target.name }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+            <div class="contribution-actions">
+              <button matButton type="button" (click)="rejectContribution(contribution.id)"
+                [disabled]="submitting()">Ablehnen</button>
+              <button matButton="filled" type="button" (click)="acceptContribution(contribution)"
+                [disabled]="submitting()">Als Entwurf übernehmen</button>
+            </div>
+          </article>
+        }
+      </section>
+    }
+    @if (loading()) {
+      <div class="revision-loading">
+<mat-spinner diameter="28"/>
+<span>Zutatenentwürfe werden geladen …</span>
+</div>
+    } @else {
+      @if (createOpen()) {
+        <form class="revision-form" (ngSubmit)="create()">
+          <h4>{{ createButtonLabel() }}</h4>
+          <mat-form-field appearance="outline">
+<mat-label>Name</mat-label>
+            <input matInput name="createIngredientName" [(ngModel)]="createName" maxlength="200" required>
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+<mat-label>Kategorie</mat-label>
+            <mat-select name="createIngredientCategory" [(ngModel)]="createCategoryId" required>
+              @for (category of referenceData()?.categories ?? []; track category.id) {
+                <mat-option [value]="category.id">{{ category.name }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+<mat-label>Basiseinheit</mat-label>
+            <mat-select name="createIngredientUnit" [(ngModel)]="createBaseUnitId" required>
+              <mat-optgroup label="Gewicht">
+                @for (unit of baseUnitsByDimension(0); track unit.id) {
+                  <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
+                }
+              </mat-optgroup>
+              <mat-optgroup label="Volumen">
+                @for (unit of baseUnitsByDimension(1); track unit.id) {
+                  <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
+                }
+              </mat-optgroup>
+              <mat-optgroup label="Anzahl">
+                @for (unit of baseUnitsByDimension(2); track unit.id) {
+                  <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
+                }
+              </mat-optgroup>
+            </mat-select>
+          </mat-form-field>
+          <div class="revision-actions">
+            <button matButton type="button" (click)="createOpen.set(false)">Abbrechen</button>
+            <button matButton="filled" type="submit" [disabled]="submitting() || !canCreate()">
+              <scp-action-icon name="save"/>Entwurf anlegen</button>
+          </div>
+        </form>
+      }
+
+        <scp-ingredient-catalog [available]="availableIngredients()" (fork)="prepareCampFork($event)" [hidden]="!!selected() || createOpen()" [revisions]="revisions()" [reference]="referenceData()" [disabled]="disabled()" [scopeLabel]="scopeLabel()" (create)="openCreate()" (selected)="open($event.revisionId, $event.variantId)"/>
+      @if (selected(); as revision) {
+        <form class="revision-form revision-details" (ngSubmit)="save()">
+<header class="ingredient-heading">
+<span class="ingredient-image">
+<scp-action-icon name="image"/>
+</span>
+<div class="ingredient-title">
+<h2>{{ revision.name }}</h2>
+<span class="kind-label">Basiszutat</span>
+</div>
+<div class="heading-fact">
+<span>
+<scp-action-icon name="ingredients"/>Kategorie</span>
+<strong>{{ categoryName(revision.categoryId) }}</strong>
+</div>
+<div class="heading-fact">
+<span>
+<scp-action-icon name="organization"/>Geltungsbereich</span>
+<strong>{{ scopeLabel() }}</strong>
+</div>
+<div class="heading-fact">
+<span>Status</span>
+<strong class="revision-state" [class.published]="revision.state === publishedState">{{ pendingForkSourceRevisionId() ? 'Neue Lageranpassung' : stateLabel(revision.state) }}</strong>
+</div>
+@if (revision.state === publishedState && !disabled() && scope() !== 'central') {
+<button matIconButton type="button" [matMenuTriggerFor]="ingredientActions" aria-label="Weitere Zutatenaktionen" [disabled]="submitting()">
+<span class="more-icon" aria-hidden="true">⋮</span>
+</button>
+<mat-menu #ingredientActions="matMenu">
+<button mat-menu-item type="button" (click)="findCentralAlternatives()">Zentrale Alternative prüfen</button>
+<button mat-menu-item type="button" (click)="submitToCentral()">Zur zentralen Prüfung einreichen</button>
+</mat-menu>
+}
+</header>
+<nav class="editor-tabs" aria-label="Zutatenbereiche" role="tablist">@for (tab of editorTabs; track tab.id; let index = $index) {
+<button type="button" role="tab" [id]="'ingredient-tab-' + tab.id" [attr.aria-selected]="activeTab() === tab.id" [attr.aria-controls]="'ingredient-panel-' + tab.id" [attr.tabindex]="activeTab() === tab.id ? 0 : -1" (click)="activeTab.set(tab.id)" (keydown)="tabKey($event, index)">
+<scp-action-icon [name]="tab.icon"/>{{ tab.label }}
+@if (tab.id === 'variants') { <span class="tab-count">{{ revision.variants.length }}</span> }</button>
+}</nav>
+@if (revision.state === draftState) { <div class="editing-banner">
+<scp-action-icon name="info"/>
+<span>
+<strong>Bearbeitungsmodus</strong>Entwurf bearbeiten und speichern. Die Veröffentlichung erfolgt nach der Prüfung.</span>
+</div> }
+<section class="editor-panel" role="tabpanel" id="ingredient-panel-basic" aria-labelledby="ingredient-tab-basic" [hidden]="activeTab() !== 'basic'" tabindex="0">
+<div class="panel-main">
+<section class="editor-card basic-fields">
+<h3>Grunddaten</h3>@if (revision.state === publishedState || disabled()) { <dl class="basic-readonly">
+<div>
+<dt>Name</dt>
+<dd>{{ revision.name }}</dd>
+</div>
+<div>
+<dt>Kategorie</dt>
+<dd>{{ categoryName(revision.categoryId) }}</dd>
+</div>
+<div>
+<dt>Basiseinheit</dt>
+<dd>{{ unitSymbol(revision.baseUnitId) }}</dd>
+</div>
+</dl> }
+@else {
+          <mat-form-field appearance="outline">
+<mat-label>Name</mat-label>
+            <input matInput name="revisionName" [(ngModel)]="revision.name" maxlength="200" required
+              [disabled]="disabled()">
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+<mat-label>Kategorie</mat-label>
+            <mat-select name="revisionCategory" [(ngModel)]="revision.categoryId"
+              [disabled]="disabled()">
+              @for (category of referenceData()?.categories ?? []; track category.id) {
+                <mat-option [value]="category.id">{{ category.name }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+<mat-label>Basiseinheit</mat-label>
+            <mat-select name="revisionUnit" [ngModel]="revision.baseUnitId"
+              (ngModelChange)="setBaseUnit(revision, $event)"
+              [disabled]="disabled()">
+              <mat-optgroup label="Gewicht">
+                @for (unit of baseUnitsByDimension(0); track unit.id) {
+                  <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
+                }
+              </mat-optgroup>
+              <mat-optgroup label="Volumen">
+                @for (unit of baseUnitsByDimension(1); track unit.id) {
+                  <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
+                }
+              </mat-optgroup>
+              <mat-optgroup label="Anzahl">
+                @for (unit of baseUnitsByDimension(2); track unit.id) {
+                  <mat-option [value]="unit.id">{{ unit.name }} ({{ unit.symbol }})</mat-option>
+                }
+              </mat-optgroup>
+            </mat-select>
+          </mat-form-field>
+}
+</section>
+<section class="editor-card">
+<h3>Kurzüberblick</h3>
+<div class="quick-facts">
+<button type="button" (click)="activeTab.set('allergies')">
+<scp-action-icon name="warning"/>
+<strong>Allergene</strong>
+<span>{{ specifiedMainAllergenCount(revision) }} von 14 angegeben</span>
+</button>
+<button type="button" (click)="activeTab.set('origins')">
+<scp-action-icon name="structure"/>
+<strong>Herkunft</strong>
+<span>{{ primaryOriginLabel(revision) }}</span>
+</button>
+<button type="button" (click)="activeTab.set('nutrition')">
+<scp-action-icon name="planning"/>
+<strong>Nährwerte</strong>
+<span>{{ revision.nutritionProfile ? 'Profil hinterlegt' : 'Keine Angaben' }}</span>
+</button>
+</div>
+</section>
+</div>
+<aside class="panel-aside">
+<section class="editor-card">
+<div class="card-heading">
+<h3>Varianten ({{ revision.variants.length }})</h3>
+<button matButton type="button" (click)="activeTab.set('variants')">Anzeigen<scp-action-icon name="expand"/>
+</button>
+</div>@for (variant of revision.variants; track variant.id) { <button class="variant-link" type="button" (click)="selectedVariantId.set(variant.id); activeTab.set('variants')">
+<scp-action-icon name="ingredients"/>
+<span>
+<strong>{{ variant.name }}</strong>
+<small>{{ variant.isActive ? 'Aktiv' : 'Inaktiv' }} · {{ variantOverrideCount(variant) }} Abweichungen</small>
+</span>
+<scp-action-icon name="expand"/>
+</button> }@empty { <p class="empty-note">Noch keine Varianten vorhanden.</p> }</section>
+<section class="editor-card">
+<h3>Versionen & Status</h3>@for (entry of ingredientVersions(revision); track entry.revisionId) { <button class="version-link" type="button" (click)="openVersion(entry.revisionId)" [disabled]="submitting()">
+<scp-action-icon [name]="entry.state === publishedState ? 'check' : 'edit'"/>
+<span>{{ stateLabel(entry.state) }}</span>
+<small>{{ entry.name }}</small>
+</button> }</section>
+</aside>
+</section>
+<section class="editor-panel" role="tabpanel" id="ingredient-panel-units" aria-labelledby="ingredient-tab-units" [hidden]="activeTab() !== 'units'" tabindex="0">
+<div class="panel-main">
+<section class="editor-card compact-units">
+<div class="card-heading">
+<h3>Einheiten & Umrechnungen</h3>@if (revision.state === draftState && !disabled()) { <button matButton="outlined" type="button" (click)="addUnitConversion(revision)" [disabled]="!availableConversionUnits(revision).length">
+<scp-action-icon name="add"/>Einheit hinzufügen</button> }</div>
+<label class="base-unit-bar">Basiseinheit<select name="unitsBaseUnit" [ngModel]="revision.baseUnitId" (ngModelChange)="setBaseUnit(revision, $event)" [disabled]="revision.state === publishedState || disabled()">@for (unit of baseUnits(); track unit.id) { <option [ngValue]="unit.id">{{ unit.name }} ({{ unit.symbol }})</option> }</select>
+</label>
+<div class="compact-table unit-table">
+<div class="table-head">
+<span>Einheit</span>
+<span>Entspricht in {{ unitSymbol(revision.baseUnitId) }}</span>
+<span>Genauigkeit</span>
+<span>
+</span>
+</div>
+@for (conversion of revision.unitConversions; track conversion.sourceUnitId; let index = $index) { <div class="table-row" [hidden]="!onPage(index, revision.unitConversions.length, unitPage())">
+<select [attr.aria-label]="'Einheit ' + (index + 1)" [(ngModel)]="conversion.sourceUnitId" [name]="'conversionUnit' + index" [disabled]="revision.state === publishedState || disabled()">@for (unit of availableConversionUnits(revision, conversion.sourceUnitId); track unit.id) { <option [ngValue]="unit.id">{{ unit.name }} ({{ unit.symbol }})</option> }</select>
+<input type="text" inputmode="decimal" [attr.aria-label]="'Umrechnungsfaktor ' + (index + 1)" [ngModel]="conversion.factorInput" (ngModelChange)="setConversionFactor(conversion, $event)" (blur)="normalizeConversionFactorInput(conversion)" [name]="'conversionFactor' + index" [disabled]="revision.state === publishedState || disabled()" required>
+<select [attr.aria-label]="'Genauigkeit ' + (index + 1)" [(ngModel)]="conversion.precision" [name]="'conversionPrecision' + index" [disabled]="revision.state === publishedState || disabled()">@for (precision of conversionPrecisions; track precision.value) { <option [ngValue]="precision.value">{{ precision.label }}</option> }</select>
+<button matIconButton type="button" aria-label="Einheit entfernen" (click)="removeUnitConversion(revision, index)" [disabled]="revision.state === publishedState || disabled()">
+<scp-action-icon name="remove"/>
+</button>
+</div> }@empty { <p class="empty-note">Keine zusätzlichen Umrechnungen hinterlegt.</p> }</div>
+<scp-list-pagination [length]="revision.unitConversions.length" [pageIndex]="unitPage()" [pageSize]="5" label="Einheitenseiten" (changed)="unitPage.set($event.pageIndex)"/>
+</section>
+</div>
+<aside class="panel-aside">
+<section class="editor-card">
+<h3>Einheiten – Zusammenfassung</h3>
+<dl>
+<div>
+<dt>Basiseinheit</dt>
+<dd>{{ unitSymbol(revision.baseUnitId) }}</dd>
+</div>
+<div>
+<dt>Weitere Einheiten</dt>
+<dd>{{ revision.unitConversions.length }}</dd>
+</div>
+</dl>
+</section>
+<div class="editing-banner">
+<scp-action-icon name="info"/>
+<p>Umrechnungen innerhalb derselben Einheitenklasse erfolgen automatisch. Weitere Faktoren gelten für diese Zutat.</p>
+</div>
+</aside>
+</section>
+<section class="editor-panel" role="tabpanel" id="ingredient-panel-allergies" aria-labelledby="ingredient-tab-allergies" [hidden]="activeTab() !== 'allergies'" tabindex="0">
+<div class="panel-main">
+<div class="allergy-columns">
+<section class="editor-card">
+<div class="card-heading">
+<h3>Allergene</h3>
+<small>{{ specifiedMainAllergenCount(revision) }} von 14 angegeben</small>
+</div>
+<mat-checkbox [checked]="isReviewed(revision.allergenReviewState)" (change)="revision.allergenReviewState = reviewState($event.checked)" [disabled]="revision.state === publishedState || disabled()">Vollständig geprüft</mat-checkbox>
+<div class="compact-table allergen-table">
+<div class="table-head">
+<span>Code</span>
+<span>Allergen</span>
+<span>Einstufung</span>
+<span>
+</span>
+</div>
+@for (property of mainAllergens(); track property.id; let index = $index) { <div class="table-row" [hidden]="!onPage(index, mainAllergens().length, allergenPage())">
+<strong>{{ allergenLetter(property.code) }}</strong>
+<span>{{ property.name }}</span>
+<select [attr.aria-label]="property.name + ' Einstufung'" [ngModel]="propertyState(revision.allergens, property.id)" (ngModelChange)="setPropertyState(revision, 'allergens', property.id, $event)" [name]="'allergen' + property.id" [disabled]="revision.state === publishedState || disabled()">
+<option [ngValue]="null">Nicht angegeben</option>@for (state of propertyStates; track state.value) { <option [ngValue]="state.value">{{ state.label }}</option> }</select>
+@if (allergenChildren(property.id).length && propertyState(revision.allergens, property.id) === containsState) { <button matIconButton type="button" [attr.aria-label]="property.name + ' Untertypen'" (click)="allergenDialog.showModal()">
+<scp-action-icon name="edit"/>
+</button> }
+@else { <span>
+</span> }
+<dialog #allergenDialog class="detail-dialog" [attr.aria-label]="property.name + ' Untertypen'">
+<header>
+<h3>{{ property.name }}</h3>
+<button matButton type="button" (click)="allergenDialog.close()">Schließen</button>
+</header>
+<div class="dialog-body">@for (child of allergenChildren(property.id); track child.id) { <label class="dialog-field">{{ child.name }}<select [ngModel]="propertyState(revision.allergens, child.id)" (ngModelChange)="setPropertyState(revision, 'allergens', child.id, $event)" [name]="'allergenChild' + child.id" [disabled]="revision.state === publishedState || disabled()">@for (state of propertyStates; track state.value) { <option [ngValue]="state.value">{{ state.label }}</option> }</select>
+</label> }</div>
+</dialog>
+</div> }</div>
+<scp-list-pagination [length]="mainAllergens().length" [pageIndex]="allergenPage()" label="Allergenseiten" (changed)="allergenPage.set($event.pageIndex)"/>
+</section>
+<section class="editor-card">
+<div class="card-heading">
+<h3>Unverträglichkeiten</h3>@if (revision.state === draftState && !disabled()) { <button matButton type="button" (click)="referenceContext.set('substances'); referenceDialog.showModal()">
+<scp-action-icon name="recipe"/>Werte suchen</button> }</div>
+<mat-checkbox [checked]="isReviewed(revision.intoleranceReviewState)" (change)="revision.intoleranceReviewState = reviewState($event.checked)" [disabled]="revision.state === publishedState || disabled()">Qualitative Angaben geprüft</mat-checkbox>
+<div class="compact-table intolerance-table">
+<div class="table-head">
+<span>Merkmal</span>
+<span>Einstufung</span>
+<span>Gehalt</span>
+</div>
+@for (property of qualitativeIntolerances(); track property.id) { <div class="table-row">
+<strong>{{ property.name }}</strong>
+<select [attr.aria-label]="property.name + ' Einstufung'" [ngModel]="propertyState(revision.intolerances, property.id)" (ngModelChange)="setPropertyState(revision, 'intolerances', property.id, $event)" [name]="'intolerance' + property.id" [disabled]="revision.state === publishedState || disabled()">
+<option [ngValue]="null">Nicht angegeben</option>@for (state of propertyStates; track state.value) { <option [ngValue]="state.value">{{ state.label }}</option> }</select>
+<span>
+</span>
+</div> }
+@for (property of quantitativeSubstances(); track property.id; let index = $index) { <div class="table-row" [hidden]="!onPage(index, quantitativeSubstances().length, substancePage(), 4)">
+<strong>{{ property.name }}</strong>
+<select [attr.aria-label]="property.name + ' Angabe'" [ngModel]="substanceMode(revision, property.id)" (ngModelChange)="setSubstanceMode(revision, property.id, $event)" [name]="'substanceMode' + property.id" [disabled]="revision.state === publishedState || disabled()">
+<option value="unknown">Unbekannt</option>
+<option value="quantitative">Gehalt</option>
+<option value="contains">Enthalten</option>
+<option value="absent">Nicht enthalten</option>
+</select>
+@if (substanceMode(revision, property.id) === 'quantitative' && substanceContent(revision, property.id); as content) { <button matButton type="button" (click)="substanceDialog.showModal()">{{ content.amount }} {{ unitSymbol(content.amountUnitId) }}<scp-action-icon name="edit"/>
+</button> }
+@else { <span>—</span> }
+<dialog #substanceDialog class="detail-dialog" [attr.aria-label]="property.name + ' Gehalt'">
+<header>
+<h3>{{ property.name }} – Gehalt</h3>
+<button matButton type="button" (click)="substanceDialog.close()">Fertig</button>
+</header>
+<div class="dialog-body">@if (substanceContent(revision, property.id); as content) {
+                      <div class="form-grid">
+                        <mat-form-field appearance="outline">
+<mat-label>Menge</mat-label>
+                          <input matInput type="number" min="0" step="0.001" [(ngModel)]="content.amount"
+                            [name]="'substanceAmount' + property.id"
+                            [disabled]="revision.state === publishedState || disabled()">
+                        </mat-form-field>
+                        <mat-form-field appearance="outline">
+<mat-label>Einheit</mat-label>
+                          <mat-select [(ngModel)]="content.amountUnitId" [name]="'substanceAmountUnit' + property.id"
+                            [disabled]="revision.state === publishedState || disabled()">
+                            @for (unit of substanceAmountUnits(); track unit.id) { <mat-option [value]="unit.id">{{ unit.symbol }}</mat-option> }
+                          </mat-select>
+                        </mat-form-field>
+                        <mat-form-field appearance="outline">
+<mat-label>Bezugsmenge</mat-label>
+                          <input matInput type="number" min="0.001" step="0.001" [(ngModel)]="content.referenceQuantity"
+                            [name]="'substanceReferenceQuantity' + property.id"
+                            [disabled]="revision.state === publishedState || disabled()">
+                        </mat-form-field>
+                        <mat-form-field appearance="outline">
+<mat-label>Bezugseinheit</mat-label>
+                          <mat-select [(ngModel)]="content.referenceUnitId" [name]="'substanceReferenceUnit' + property.id"
+                            [disabled]="revision.state === publishedState || disabled()">
+                            @for (unit of substanceReferenceUnits(revision); track unit.id) { <mat-option [value]="unit.id">{{ unit.symbol }}</mat-option> }
+                          </mat-select>
+                        </mat-form-field>
+                      </div>
+                      <mat-checkbox [checked]="content.reviewState === 1"
+                        (change)="content.reviewState = $event.checked ? 1 : 0"
+                        [disabled]="revision.state === publishedState || disabled()">Stoffgehalt geprüft</mat-checkbox>
+ }</div>
+</dialog>
+</div> }</div>
+<scp-list-pagination [length]="quantitativeSubstances().length" [pageIndex]="substancePage()" [pageSize]="4" label="Stoffseiten" (changed)="substancePage.set($event.pageIndex)"/>
+</section>
+</div>
+</div>
+</section>
+<section class="editor-panel" role="tabpanel" id="ingredient-panel-origins" aria-labelledby="ingredient-tab-origins" [hidden]="activeTab() !== 'origins'" tabindex="0">
+<div class="panel-main">
+<div class="property-groups">            <details class="property-group" open>
+              <summary>
+<span>Herkunft</span>
+<small>{{ primaryOriginLabel(revision) }}</small>
+</summary>
+              <div class="property-review">
+                <mat-checkbox [checked]="isReviewed(revision.originReviewState)"
+                  (change)="setOriginReviewState(revision, $event.checked)"
+                  [disabled]="revision.state === publishedState || disabled() || !primaryOriginId(revision)">Herkunftsangaben vollständig geprüft</mat-checkbox>
+              </div>
+              <p class="property-info">Wähle genau eine Hauptherkunft. Besondere tierische Bestandteile können danach zusätzlich angegeben werden.</p>
+              <div class="origin-main-selection">
+                <mat-form-field appearance="outline" subscriptSizing="dynamic">
+<mat-label>Hauptherkunft</mat-label>
+                  <mat-select [value]="primaryOriginId(revision)"
+                    (selectionChange)="setPrimaryOrigin(revision, $event.value)"
+                    [disabled]="revision.state === publishedState || disabled()">
+                    <mat-option [value]="null" disabled>Bitte auswählen</mat-option>
+                    @for (property of primaryOrigins(); track property.id) {
+                      <mat-option [value]="property.id">{{ property.name }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+              </div>
+              <details class="secondary-details">
+                <summary>Zusätzliche tierische Merkmale</summary>
+                <div class="property-grid">
+                @for (property of additionalOrigins(); track property.id) {
+                  <div class="property-row">
+                    <span>{{ property.name }}</span>
+                    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+<mat-label>Zustand</mat-label>
+                      <mat-select [value]="propertyState(revision.origins, property.id)"
+                        (selectionChange)="setPropertyState(revision, 'origins', property.id, $event.value)"
+                        [disabled]="revision.state === publishedState || disabled()">
+                        <mat-option [value]="null">Nicht angegeben</mat-option>
+                        @for (state of propertyStates; track state.value) {
+                          <mat-option [value]="state.value">{{ state.label }}</mat-option>
+                        }
+                      </mat-select>
+                    </mat-form-field>
+                  </div>
+                }
+                </div>
+              </details>
+            </details>
+          </div>
+</div>
+
+</section>
+<section class="editor-panel" role="tabpanel" id="ingredient-panel-nutrition" aria-labelledby="ingredient-tab-nutrition" [hidden]="activeTab() !== 'nutrition'" tabindex="0">
+<div class="panel-main">          <section class="nutrition-profile">
+            <div class="unit-conversion-heading">
+              <div>
+                <h4>Nährwerte</h4>
+                <p>Optionale Schätzwerte für spätere Rezeptberechnungen. Fehlende Angaben werden nicht als 0 behandelt.</p>
+              </div>
+              <mat-checkbox [checked]="revision.nutritionProfile !== null"
+                (change)="setNutritionEnabled(revision, $event.checked)"
+                [disabled]="revision.state === publishedState || disabled()">
+                Nährwerte hinterlegen
+              </mat-checkbox>
+            </div>
+@if (revision.state === draftState && !disabled()) { <button matButton="outlined" type="button" class="context-search" (click)="referenceContext.set('nutrition'); referenceDialog.showModal()">
+<scp-action-icon name="recipe"/>Referenzwerte suchen</button> }
+            @if (revision.nutritionProfile; as nutrition) {
+              <scp-ingredient-nutrition-editor [profile]="nutrition"
+                [units]="referenceData()?.units ?? []"
+                [disabled]="revision.state === publishedState || disabled()"/>
+            } @else {
+              <p class="unit-conversion-empty">Für diese Zutat sind keine Nährwerte hinterlegt.</p>
+            }
+          </section>
+</div>
+<aside class="panel-aside">
+<section class="editor-card">
+<h3>Nährwerte – Zusammenfassung</h3>@if (revision.nutritionProfile; as profile) { <div class="summary-highlight">Pro {{ profile.referenceQuantity }} {{ unitSymbol(profile.referenceUnitId) }}</div>
+<dl>@for (item of nutritionSummary(profile); track item.label) { <div>
+<dt>{{ item.label }}</dt>
+<dd>{{ item.value === null ? '—' : item.value }} {{ item.value === null ? '' : item.unit }}</dd>
+</div> }</dl> }
+@else { <p class="empty-note">Keine Nährwerte hinterlegt.</p> }</section>
+<section class="editor-card">
+<h3>Quelle & Prüfung</h3>
+<p>{{ sourceEntries().join(' · ') || 'Keine Quelle erfasst' }}</p>
+<button matButton type="button" (click)="activeTab.set('sources')">Quellen bearbeiten<scp-action-icon name="expand"/>
+</button>
+</section>
+</aside>
+</section>
+<section class="editor-panel variants-panel" role="tabpanel" id="ingredient-panel-variants" aria-labelledby="ingredient-tab-variants" [hidden]="activeTab() !== 'variants'" tabindex="0">
+<div class="panel-main">          <section class="ingredient-variants">
+            <div class="unit-conversion-heading">
+              <div>
+                <h4>Varianten</h4>
+                <p>Varianten sind Ausprägungen derselben Zutat, zum Beispiel „laktosefrei“ oder „geräuchert“.</p>
+              </div>
+              @if (revision.state === draftState && !disabled()) {
+                <button matButton type="button" (click)="addVariant(revision)">
+                  <scp-action-icon name="add"/>Variante hinzufügen
+                </button>
+              }
+            </div>
+            @for (variant of revision.variants; track variant.id; let index = $index) {
+              <article class="variant-row" [hidden]="!variantVisible(revision, variant.id)" [class.inactive]="!variant.isActive">
+                <div class="variant-header">
+                  <mat-form-field appearance="outline" subscriptSizing="dynamic">
+<mat-label>Bezeichnung</mat-label>
+                    <input matInput [ngModel]="variant.name" (ngModelChange)="setVariantName(revision, variant, $event)"
+                      [name]="'variantName' + index" maxlength="200" required
+                      [disabled]="revision.state === publishedState || disabled()">
+                  </mat-form-field>
+                  <mat-checkbox [(ngModel)]="variant.isActive" [name]="'variantActive' + index"
+                    [disabled]="revision.state === publishedState || disabled()">Aktiv</mat-checkbox>
+                  @if (revision.state === draftState && !disabled()) {
+                    <div class="variant-actions">
+                      <button matIconButton type="button"
+                        [attr.aria-label]="variant.isNew ? 'Neue Variante verwerfen' : 'Variante aus dem Entwurf entfernen'"
+                        [title]="variant.isNew ? 'Neue Variante verwerfen' : 'Variante aus dem Entwurf entfernen'"
+                        (click)="removeVariant(revision, index)">
+<scp-action-icon name="remove"/>
+</button>
+                    </div>
+                  }
+                </div>
+                <div class="variant-summary">
+<h3>Abweichungen zur Basiszutat</h3>
+<p class="empty-note">{{ revision.name }}</p>
+<dl>@for (item of variantSummary(revision, variant); track item.label) { <div>
+<dt>{{ item.label }}</dt>
+<dd>
+<span class="inheritance-state" [class.changed]="item.changed">{{ item.changed ? 'Abweichung' : 'Unverändert' }}</span>{{ item.value }}</dd>
+</div> }</dl>
+</div>
+<button matButton="outlined" type="button" (click)="variantDialog.showModal()">
+<scp-action-icon name="edit"/>Details bearbeiten</button>
+<dialog #variantDialog class="detail-dialog variant-dialog" [attr.aria-label]="variant.name + ' bearbeiten'">
+<header>
+<h3>{{ variant.name || 'Neue Variante' }}</h3>
+<button matButton type="button" (click)="variantDialog.close()">Fertig</button>
+</header>
+<div class="dialog-body">                  <p class="property-info">Ohne abweichende Auswahl gilt automatisch der Wert der Basiszutat.</p>
+                  <div class="variant-override-groups">
+                    <section>
+                      <h5>Allergene</h5>
+                      <div class="variant-override-grid">
+                        @for (property of variantVisibleAllergens(revision, variant); track property.id) {
+                          <div class="property-row">
+                            <span [class.variant-child-property]="!!property.parentAllergenId">{{ property.isEuMajorAllergen ? allergenLetter(property.code) + ' · ' : '' }}{{ property.name }}</span>
+                            <mat-form-field appearance="outline" subscriptSizing="dynamic">
+<mat-label>Abweichung</mat-label>
+                              <mat-select [value]="propertyState(variant.allergenOverrides, property.id)"
+                                (selectionChange)="setVariantPropertyState(revision, variant, 'allergens', property.id, $event.value)"
+                                [disabled]="revision.state === publishedState || disabled()">
+                                <mat-option [value]="null">Wie Basis ({{ propertyStateLabel(propertyState(revision.allergens, property.id)) }})</mat-option>
+                                @for (state of propertyStates; track state.value) {
+                                  <mat-option [value]="state.value">{{ state.label }}</mat-option>
+                                }
+                              </mat-select>
+                            </mat-form-field>
+                          </div>
+                        }
+                      </div>
+                    </section>
+                    <section>
+                      <h5>Unverträglichkeiten</h5>
+                      <div class="variant-override-grid">
+                        @for (property of visibleIntolerances(); track property.id) {
+                          <div class="property-row">
+                            <span>{{ property.name }}</span>
+                            <mat-form-field appearance="outline" subscriptSizing="dynamic">
+<mat-label>Abweichung</mat-label>
+                              <mat-select [value]="propertyState(variant.intoleranceOverrides, property.id)"
+                                (selectionChange)="setVariantPropertyState(revision, variant, 'intolerances', property.id, $event.value)"
+                                [disabled]="revision.state === publishedState || disabled()">
+                                <mat-option [value]="null">Wie Basis ({{ propertyStateLabel(propertyState(revision.intolerances, property.id)) }})</mat-option>
+                                @for (state of propertyStates; track state.value) {
+                                  <mat-option [value]="state.value">{{ state.label }}</mat-option>
+                                }
+                              </mat-select>
+                            </mat-form-field>
+                          </div>
+                        }
+                      </div>
+                    </section>
+                    <section>
+                      <h5>Stoffgehalte</h5>
+                      @for (property of quantitativeSubstances(); track property.id) {
+                        <article class="property-card">
+                          <strong>{{ property.name }}</strong>
+                          <mat-form-field appearance="outline">
+<mat-label>Abweichung</mat-label>
+                            <mat-select [value]="variantSubstanceMode(variant, property.id)"
+                              (selectionChange)="setVariantSubstanceMode(revision, variant, property.id, $event.value)"
+                              [disabled]="revision.state === publishedState || disabled()">
+                              <mat-option value="inherit">Wie Basis</mat-option>
+                              <mat-option value="unknown">Unbekannt</mat-option>
+                              <mat-option value="quantitative">Quantitativ – Gehalt</mat-option>
+                              <mat-option value="contains">Qualitativ – enthalten</mat-option>
+                              <mat-option value="absent">Qualitativ – nicht enthalten</mat-option>
+                            </mat-select>
+                          </mat-form-field>
+                          @if (variantSubstanceContent(variant, property.id); as content) {
+                            <div class="form-grid">
+                              <mat-form-field appearance="outline">
+<mat-label>Menge</mat-label>
+                                <input matInput type="number" min="0" step="0.001" [(ngModel)]="content.amount"
+                                  [name]="'variantSubstanceAmount' + variant.id + property.id" [disabled]="revision.state === publishedState || disabled()">
+                              </mat-form-field>
+                              <mat-form-field appearance="outline">
+<mat-label>Einheit</mat-label>
+                                <mat-select [(ngModel)]="content.amountUnitId" [name]="'variantSubstanceUnit' + variant.id + property.id"
+                                  [disabled]="revision.state === publishedState || disabled()">
+                                  @for (unit of substanceAmountUnits(); track unit.id) { <mat-option [value]="unit.id">{{ unit.symbol }}</mat-option> }
+                                </mat-select>
+                              </mat-form-field>
+                              <mat-form-field appearance="outline">
+<mat-label>Bezugsmenge</mat-label>
+                                <input matInput type="number" min="0.001" step="0.001" [(ngModel)]="content.referenceQuantity"
+                                  [name]="'variantSubstanceReference' + variant.id + property.id" [disabled]="revision.state === publishedState || disabled()">
+                              </mat-form-field>
+                              <mat-form-field appearance="outline">
+<mat-label>Bezugseinheit</mat-label>
+                                <mat-select [(ngModel)]="content.referenceUnitId" [name]="'variantSubstanceReferenceUnit' + variant.id + property.id"
+                                  [disabled]="revision.state === publishedState || disabled()">
+                                  @for (unit of substanceReferenceUnits(revision); track unit.id) { <mat-option [value]="unit.id">{{ unit.symbol }}</mat-option> }
+                                </mat-select>
+                              </mat-form-field>
+                            </div>
+                            <mat-checkbox [checked]="content.reviewState === 1" (change)="content.reviewState = $event.checked ? 1 : 0"
+                              [disabled]="revision.state === publishedState || disabled()">Stoffgehalt geprüft</mat-checkbox>
+                          }
+                        </article>
+                      }
+                    </section>
+                    <section>
+                      <h5>Herkunft</h5>
+                      <div class="variant-primary-origin">
+                        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+<mat-label>Hauptherkunft</mat-label>
+                          <mat-select [value]="variantPrimaryOriginOverrideId(variant)"
+                            (selectionChange)="setVariantPrimaryOrigin(revision, variant, $event.value)"
+                            [disabled]="revision.state === publishedState || disabled()">
+                            <mat-option [value]="null">Wie Basis ({{ primaryOriginLabel(revision) }})</mat-option>
+                            @for (property of primaryOrigins(); track property.id) {
+                              <mat-option [value]="property.id">{{ property.name }}</mat-option>
+                            }
+                          </mat-select>
+                        </mat-form-field>
+                      </div>
+                      <div class="variant-override-grid">
+                        @for (property of additionalOrigins(); track property.id) {
+                          <div class="property-row">
+                            <span>{{ property.name }}</span>
+                            <mat-form-field appearance="outline" subscriptSizing="dynamic">
+<mat-label>Abweichung</mat-label>
+                              <mat-select [value]="propertyState(variant.originOverrides, property.id)"
+                                (selectionChange)="setVariantPropertyState(revision, variant, 'origins', property.id, $event.value)"
+                                [disabled]="revision.state === publishedState || disabled()">
+                                <mat-option [value]="null">Wie Basis ({{ propertyStateLabel(propertyState(revision.origins, property.id)) }})</mat-option>
+                                @for (state of propertyStates; track state.value) {
+                                  <mat-option [value]="state.value">{{ state.label }}</mat-option>
+                                }
+                              </mat-select>
+                            </mat-form-field>
+                          </div>
+                        }
+                      </div>
+                    </section>
+                    <section>
+                      <h5>Weitere Einheiten</h5>
+                      <div class="variant-conversion-list">
+                        @for (baseConversion of revision.unitConversions; track baseConversion.sourceUnitId) {
+                          <div class="variant-conversion-row">
+                            <mat-checkbox [checked]="hasVariantConversionOverride(variant, baseConversion.sourceUnitId)"
+                              (change)="setVariantConversionOverride(variant, baseConversion, $event.checked)"
+                              [disabled]="revision.state === publishedState || disabled()">
+                              1 {{ unitSymbol(baseConversion.sourceUnitId) }} abweichend berechnen
+                            </mat-checkbox>
+                            @if (variantConversionOverride(variant, baseConversion.sourceUnitId); as conversion) {
+                              <span class="conversion-formula">=</span>
+                              <mat-form-field appearance="outline" subscriptSizing="dynamic">
+<mat-label>Menge</mat-label>
+                                <input matInput type="text" inputmode="decimal" [ngModel]="conversion.factorInput"
+                                  (ngModelChange)="setConversionFactor(conversion, $event)"
+                                  (blur)="normalizeConversionFactorInput(conversion)"
+                                  [name]="'variantConversionFactor' + index + baseConversion.sourceUnitId"
+                                  [disabled]="revision.state === publishedState || disabled()" required>
+                              </mat-form-field>
+                              <span class="conversion-formula">{{ unitSymbol(revision.baseUnitId) }}</span>
+                              <mat-form-field appearance="outline" subscriptSizing="dynamic">
+<mat-label>Genauigkeit</mat-label>
+                                <mat-select [(ngModel)]="conversion.precision"
+                                  [name]="'variantConversionPrecision' + index + baseConversion.sourceUnitId"
+                                  [disabled]="revision.state === publishedState || disabled()">
+                                  @for (precision of conversionPrecisions; track precision.value) {
+                                    <mat-option [value]="precision.value">{{ precision.label }}</mat-option>
+                                  }
+                                </mat-select>
+                              </mat-form-field>
+                            } @else {
+                              <span class="variant-inherited-value">Wie Basis: {{ baseConversion.factorInput }} {{ unitSymbol(revision.baseUnitId) }}</span>
+                            }
+                          </div>
+                        }
+                        @if (!revision.unitConversions.length) {
+                          <p class="unit-conversion-empty">Lege weitere Einheiten zuerst bei der Basiszutat an. Die Variante kann anschließend deren Faktor oder Genauigkeit überschreiben.</p>
+                        }
+                      </div>
+                    </section>
+                    <section>
+                      <h5>Nährwerte</h5>
+                      <div class="variant-nutrition">
+                        <mat-checkbox [checked]="variant.nutritionProfile !== null"
+                          (change)="setVariantNutritionEnabled(revision, variant, $event.checked)"
+                          [disabled]="revision.state === publishedState || disabled()">
+                          Abweichendes vollständiges Nährwertprofil
+                        </mat-checkbox>
+                        @if (variant.nutritionProfile; as nutrition) {
+                          <scp-ingredient-nutrition-editor [profile]="nutrition"
+                            [units]="referenceData()?.units ?? []"
+                            [disabled]="revision.state === publishedState || disabled()"/>
+                        } @else {
+                          <p class="variant-inherited-value">Wie Basiszutat: Das vollständige Nährwertprofil wird geerbt.</p>
+                        }
+                      </div>
+                    </section>
+                  </div>
+</div>
+</dialog>
+              </article>
+            } @empty {
+              <p class="unit-conversion-empty">Für diese Zutat sind noch keine Varianten angelegt.</p>
+            }
+          </section>
+</div>
+<aside class="variant-navigation editor-card">
+<h3>Varianten</h3>@for (variant of revision.variants; track variant.id) { <button type="button" [class.active]="variantVisible(revision, variant.id)" (click)="selectedVariantId.set(variant.id)">
+<scp-action-icon name="ingredients"/>
+<span>{{ variant.name }}</span>
+<small>{{ variant.isActive ? 'Aktiv' : 'Inaktiv' }}</small>
+</button> }@empty { <p class="empty-note">Noch keine Varianten vorhanden.</p> }</aside>
+</section>
+<section class="editor-panel" role="tabpanel" id="ingredient-panel-sources" aria-labelledby="ingredient-tab-sources" [hidden]="activeTab() !== 'sources'" tabindex="0">
+<div class="panel-main">          <section class="ingredient-source-summary">
+            <div>
+              <h4>Quellen und Schätzgrundlage</h4>
+              <p>Eine gemeinsame Angabe für die gesamte Zutat. Referenzwerte bleiben Schätzungen, auch nachdem sie geprüft wurden.</p>
+            </div>
+            <div class="source-entry-list">
+              @for (source of sourceEntries(); track $index; let index = $index) {
+                <div class="source-entry-row" [hidden]="!onPage(index, sourceEntries().length, sourcePage(), 3)">
+                  <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                    <mat-label>Quelle {{ index + 1 }}</mat-label>
+                    <input matInput [ngModel]="source"
+                      (ngModelChange)="setSourceEntry(revision, index, $event)"
+                      [name]="'revisionSource' + index" maxlength="500"
+                      [disabled]="revision.state === publishedState || disabled()">
+                  </mat-form-field>
+    
+              @if (revision.state === draftState && !disabled()) {
+                    <button matIconButton type="button" aria-label="Quelle entfernen"
+                      (click)="removeSourceEntry(revision, index)">
+                      <scp-action-icon name="remove"/>
+                    </button>
+                  }
+                </div>
+              } @empty {
+                <p class="source-entry-empty">Noch keine Quelle erfasst.</p>
+              }
+<scp-list-pagination [length]="sourceEntries().length" [pageIndex]="sourcePage()" [pageSize]="3" label="Quellenseiten" (changed)="sourcePage.set($event.pageIndex)"/>
+              @if (revision.state === draftState && !disabled()) {
+                <div class="source-entry-add">
+                  <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                    <mat-label>Weitere Quelle</mat-label>
+                    <input matInput [ngModel]="newSourceEntry()"
+                      (ngModelChange)="newSourceEntry.set($event)" name="newRevisionSource"
+                      maxlength="500" placeholder="z. B. Herstelleretikett vom …"
+                      (keydown.enter)="$event.preventDefault(); addSourceEntry(revision)">
+                  </mat-form-field>
+                  <button matButton type="button" (click)="addSourceEntry(revision)"
+                    [disabled]="!newSourceEntry().trim()">
+                    <scp-action-icon name="add"/>Quelle ergänzen
+                  </button>
+                </div>
+              }
+              <small>Mindestens eine Quelle ist erforderlich, sobald Nährwerte oder Stoffgehalte hinterlegt sind.</small>
+            </div>
+          </section>
+</div>
+<aside class="panel-aside">
+<section class="editor-card">
+<h3>Prüfung der Datenqualität</h3>
+<div class="review-line">
+<scp-action-icon [name]="allReviewed(revision) ? 'check' : 'warning'"/>{{ allReviewed(revision) ? 'Alle Bereiche geprüft' : 'Prüfung ausstehend' }}</div>
+<dl>
+<div>
+<dt>Allergene</dt>
+<dd>{{ isReviewed(revision.allergenReviewState) ? 'Geprüft' : 'Offen' }}</dd>
+</div>
+<div>
+<dt>Unverträglichkeiten</dt>
+<dd>{{ isReviewed(revision.intoleranceReviewState) ? 'Geprüft' : 'Offen' }}</dd>
+</div>
+<div>
+<dt>Herkunft</dt>
+<dd>{{ isReviewed(revision.originReviewState) ? 'Geprüft' : 'Offen' }}</dd>
+</div>
+</dl>
+<button matButton type="button" (click)="activeTab.set('allergies')">Angaben prüfen<scp-action-icon name="expand"/>
+</button>
+</section>
+<section class="editor-card">
+<h3>Veröffentlichung</h3>
+<span class="revision-state" [class.published]="revision.state === publishedState">{{ stateLabel(revision.state) }}</span>
+<p class="empty-note">{{ revision.state === publishedState ? 'Für Rezepte und Menüpläne verfügbar.' : 'Vor der Veröffentlichung alle Angaben prüfen und speichern.' }}</p>
+</section>
+</aside>
+</section>
+<ng-template #referenceSearch>
+<section class="ingredient-suggestions compact-reference">
+<div class="card-heading">
+<h3>Referenzwerte vorschlagen</h3>
+<span class="suggestion-badge">BLS 4.0</span>
+</div>
+<div class="reference-search">
+<label>Lebensmittel suchen<input type="search" [ngModel]="suggestionQuery()" (ngModelChange)="suggestionQuery.set($event)" [ngModelOptions]="{standalone:true}" (keydown.enter)="$event.preventDefault(); searchSuggestions()" maxlength="100">
+</label>
+<button matButton="outlined" type="button" (click)="searchSuggestions()" [disabled]="suggestionLoading() || suggestionQuery().trim().length < 2">Suchen</button>
+</div>
+@if (suggestionLoading()) { <p role="status">Referenzwerte werden gesucht …</p> }
+@if (suggestionError()) { <p class="suggestion-warning" role="alert">{{ suggestionError() }}</p> }
+@if (suggestionResults().length) {
+<label class="reference-choice">Referenz auswählen<select [ngModel]="selectedSuggestion()?.sourceKey" (ngModelChange)="selectedSuggestionKey.set($event)" [ngModelOptions]="{standalone:true}">@for (result of suggestionResults(); track result.sourceKey) { <option [ngValue]="result.sourceKey">{{ result.name }}</option> }</select>
+</label>
+@if (selectedSuggestion(); as suggestion) {
+<p class="empty-note">{{ suggestion.name }} · BLS {{ suggestion.sourceKey }} · pro {{ suggestion.referenceQuantity }} g</p>
+@if (referenceContext() !== 'substances') {
+<table class="reference-comparison">
+<thead>
+<tr>
+<th>Nährwert</th>
+<th>Aktuell</th>
+<th>Vorschlag</th>
+</tr>
+</thead>
+<tbody>@for (row of suggestionComparison(revision, suggestion); track row.label) { <tr>
+<th scope="row">{{ row.label }}</th>
+<td>{{ row.current === null ? '—' : formatSuggestionValue(row.current) }} {{ row.current === null ? '' : row.unit }}</td>
+<td>{{ row.value === null ? '—' : formatSuggestionValue(row.value) }} {{ row.value === null ? '' : row.unit }}</td>
+</tr> }</tbody>
+</table>
+}
+@if (referenceContext() !== 'nutrition' && suggestion.substanceContents.length) { <p class="suggestion-values">{{ suggestionSubstanceSummary(suggestion) }}</p> }
+<div class="suggestion-actions">@if (referenceContext() !== 'substances') { <button matButton="outlined" type="button" (click)="applySuggestionNutrition(revision, suggestion)" [disabled]="!canApplyBlsSuggestion(revision) || !hasSuggestedNutrition(suggestion)">Nährwerte übernehmen</button> }
+@if (referenceContext() !== 'nutrition') { <button matButton="outlined" type="button" (click)="applySuggestionSubstances(revision, suggestion)" [disabled]="!canApplyBlsSuggestion(revision) || !suggestion.substanceContents.length">Stoffgehalte übernehmen</button> }</div>
+}
+}
+@else if (suggestionSearched() && !suggestionLoading() && !suggestionError()) { <p class="empty-note">Keine passenden BLS-Einträge gefunden.</p> }
+@if (!canApplyBlsSuggestion(revision)) { <p class="suggestion-warning">BLS-Werte pro 100 g können bei Zutaten mit Gewichtsbasiseinheit übernommen werden.</p> }
+<p class="empty-note">Die Übernahme ändert den Entwurf und ergänzt die Quelle. Die Werte sind anschließend zu prüfen.</p>
+</section>
+</ng-template>
+<dialog #referenceDialog class="detail-dialog reference-dialog" aria-label="Referenzwerte suchen" (close)="referenceContext.set('both')">
+<header>
+<h3>Referenzwerte suchen</h3>
+<button matButton type="button" (click)="referenceDialog.close()">Fertig</button>
+</header>
+<div class="dialog-body">@if (referenceDialog.open) { <ng-container [ngTemplateOutlet]="referenceSearch"/> }</div>
+</dialog>
+<footer class="editor-footer">
+<button matButton type="button" (click)="closeEditor()" [disabled]="submitting()">
+<scp-action-icon name="back"/>Zur Zutatenübersicht</button>
+<div class="footer-actions">          @if (centralCandidates().length) {
+            <section class="central-candidates">
+              <div>
+<h4>Passende zentrale Zutat vorhanden</h4>
+                <p>Du kannst die lokale Zutat durch einen zentralen Eintrag ablösen.</p>
+</div>
+              @for (candidate of centralCandidates(); track candidate.revisionId) {
+                <div class="central-candidate-row">
+                  <span>
+<strong>{{ candidate.name }}</strong>
+<small>{{ categoryName(candidate.categoryId) }} · {{ unitSymbol(candidate.baseUnitId) }}</small>
+</span>
+                  <button matButton type="button" (click)="replaceWithCentral(candidate)"
+                    [disabled]="submitting()">Zentrale Zutat verwenden</button>
+                </div>
+              }
+              <div class="revision-actions">
+                <button matButton type="button" (click)="centralCandidates.set([])">Zurück</button>
+                @if (revision.state === draftState) {
+                  <button matButton="filled" type="button" (click)="publishAnyway()"
+                    [disabled]="submitting()">Trotzdem lokal veröffentlichen</button>
+                }
+              </div>
+            </section>
+          }
+          @if (revision.state === draftState) {
+            <div class="revision-actions">
+              <button matButton="outlined" type="button" (click)="closeEditor()" [disabled]="submitting()">Abbrechen</button>
+<button matButton="filled" type="submit"
+                [disabled]="submitting() || disabled() || !isDirty(revision) || !unitConversionsValid(revision) || !nutritionProfilesValid(revision) || !substanceContentsValid(revision, false) || !variantsValid(revision)">
+                <scp-action-icon name="save"/>{{ pendingForkSourceRevisionId() ? 'Als Lageranpassung speichern' : 'Entwurf speichern' }}</button>
+              @if (!pendingForkSourceRevisionId()) {
+                <button matButton="filled" type="button" (click)="publish()"
+                  [disabled]="submitting() || disabled() || isDirty(revision) || !allReviewed(revision) || !unitConversionsValid(revision) || !nutritionProfilesValid(revision) || !substanceContentsValid(revision, true) || !variantsValid(revision)">Veröffentlichen</button>
+              }
+            </div>
+            @if (isDirty(revision) && allReviewed(revision)) {
+              <p class="revision-hint revision-unsaved">Vor dem Veröffentlichen muss der aktuelle Entwurf gespeichert werden.</p>
+            }
+          } @else if (!disabled()) {
+            <div class="revision-actions">
+              <button matButton="filled" type="button" (click)="createNextDraft()" [disabled]="submitting()">
+                <scp-action-icon name="edit"/>Neue Bearbeitung beginnen</button>
+
+            </div>
+          }
+</div>
+</footer>        </form>
+      }
+    }

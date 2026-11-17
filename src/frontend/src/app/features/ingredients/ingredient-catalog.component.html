@@ -1,0 +1,139 @@
+<section class="catalog">
+<header class="catalog-heading">
+<span class="catalog-icon">
+<scp-action-icon name="ingredients"/>
+</span>
+<div>
+<h2>Zutaten</h2>
+<p>{{ scopeLabel() }} · Basiszutaten und Varianten für Rezepte und Verpflegungsplanung.</p>
+</div>
+<button matButton="filled" type="button" (click)="create.emit()" [disabled]="disabled()">
+<scp-action-icon name="add"/>Zutat erstellen</button>
+</header>
+<div class="catalog-toolbar">
+<nav aria-label="Zutatentyp" class="kind-tabs">
+<button type="button" [class.active]="kind() === 'all'" [attr.aria-pressed]="kind() === 'all'" (click)="changeKind('all')">Alle Zutaten<span>{{ rows().length }}</span>
+</button>
+<button type="button" [class.active]="kind() === 'base'" [attr.aria-pressed]="kind() === 'base'" (click)="changeKind('base')">Basiszutaten<span>{{ baseCount() }}</span>
+</button>
+<button type="button" [class.active]="kind() === 'variants'" [attr.aria-pressed]="kind() === 'variants'" (click)="changeKind('variants')">Varianten<span>{{ variantCount() }}</span>
+</button>
+</nav>
+<label class="catalog-search">
+<span class="visually-hidden">Zutaten suchen</span>
+<input type="search" placeholder="Zutaten suchen …" [ngModel]="query()" (ngModelChange)="query.set($event); page.set(0)">
+</label>
+<button matButton="outlined" type="button" (click)="filtersOpen.set(!filtersOpen())" [attr.aria-expanded]="filtersOpen()" aria-controls="ingredient-catalog-filters">Filter{{ scopeFilter() || category() || state() || allergen() ? ' aktiv' : '' }}</button>
+<label class="sort-choice">
+<span class="visually-hidden">Sortierung</span>
+<select aria-label="Sortierung" [ngModel]="sort()" (ngModelChange)="sort.set($event); page.set(0)">
+<option value="name">Name A–Z</option>
+<option value="name-desc">Name Z–A</option>
+<option value="category">Kategorie</option>
+<option value="state">Status</option>
+</select>
+</label>
+<div class="view-toggle" role="group" aria-label="Darstellung">
+<button type="button" aria-label="Listenansicht" [attr.aria-pressed]="!grid()" (click)="grid.set(false)">
+<scp-action-icon name="planning"/>
+</button>
+<button type="button" aria-label="Kartenansicht" [attr.aria-pressed]="grid()" (click)="grid.set(true)">
+<scp-action-icon name="structure"/>
+</button>
+</div>
+</div>
+@if (filtersOpen()) { <div class="filter-panel" id="ingredient-catalog-filters">
+<label>Geltungsbereich<select [ngModel]="scopeFilter()" (ngModelChange)="scopeFilter.set($event); page.set(0)"><option value="">Alle Bereiche</option><option value="Lager">Lager</option><option value="Organisation">Organisation</option><option value="Zentral">Zentral</option></select></label>
+<label>Kategorie<select [ngModel]="category()" (ngModelChange)="category.set($event); page.set(0)">
+<option value="">Alle Kategorien</option>@for (item of reference()?.categories ?? []; track item.id) { <option [value]="item.id">{{ item.name }}</option> }</select>
+</label>
+<label>Status<select [ngModel]="state()" (ngModelChange)="state.set($event); page.set(0)">
+<option value="">Alle Status</option>
+<option value="0">Entwurf</option>
+<option value="1">Veröffentlicht</option>
+</select>
+</label>
+<label>Allergen enthalten oder möglich<select [ngModel]="allergen()" (ngModelChange)="allergen.set($event); page.set(0)">
+<option value="">Alle Allergene</option>@for (item of reference()?.allergens ?? []; track item.id) { @if (item.isEuMajorAllergen) { <option [value]="item.id">{{ item.name }}</option> } }</select>
+</label>
+<button matButton type="button" (click)="resetFilters()">Zurücksetzen</button>
+</div> }
+@if (loading()) { <p class="catalog-feedback" role="status">Zutatendetails und Varianten werden geladen …</p> }
+@if (failed()) { <p class="catalog-feedback" role="alert">Einige Zutatendetails konnten nicht geladen werden. <button matButton type="button" (click)="retryDetails()">Details erneut laden</button></p> }
+<div class="catalog-results" [class.card-view]="grid()">
+@if (!grid()) { <div class="catalog-table">
+<table>
+<thead>
+<tr>
+<th scope="col" [attr.aria-sort]="sort() === 'name' ? 'ascending' : sort() === 'name-desc' ? 'descending' : 'none'">
+<button type="button" (click)="sort.set(sort() === 'name' ? 'name-desc' : 'name'); page.set(0)">Name {{ sort() === 'name' ? '↑' : sort() === 'name-desc' ? '↓' : '' }}</button>
+</th>
+<th scope="col">Typ / Bereich</th>
+<th scope="col">Kategorie</th>
+<th scope="col">Allergene</th>
+<th scope="col">Unverträglichkeiten</th>
+<th scope="col">Herkunft</th>
+<th scope="col">Status</th>
+</tr>
+</thead>
+<tbody>
+@for (row of visibleRows(); track row.key) { <tr (click)="open(row)">
+<td>
+<button class="name-button" type="button" (click)="$event.stopPropagation(); open(row)">
+<span class="image-placeholder">
+<scp-action-icon name="image"/>
+</span>
+<span>{{ row.name }}
+@if (row.variant) { <small>{{ row.revision?.name ?? row.entry?.name }}</small> }</span>
+</button>
+</td>
+<td>
+<span class="type-badge" [class.variant]="!!row.variant">{{ row.variant ? 'Variante' : 'Basiszutat' }}</span><small class="scope-label">{{ row.scope }}</small>
+</td>
+<td>{{ categoryName(row) }}</td>
+<td>
+<div class="badges" [title]="propertyLabels(allergens(row))">@for (property of allergens(row).slice(0, 1); track property.label) { <span class="property-badge" [title]="property.state === 2 ? 'Enthalten oder möglich' : 'Enthalten'">{{ property.label }}{{ property.state === 2 ? ' ?' : '' }}</span> }@empty { <span class="muted">{{ propertySummary(row, 'allergens') }}</span> }
+@if (allergens(row).length > 1) { <span class="extra-count">+{{ allergens(row).length - 1 }}</span> }</div>
+</td>
+<td>
+<div class="badges" [title]="propertyLabels(intolerances(row))">@for (property of intolerances(row).slice(0, 1); track property.label) { <span class="property-badge" [class.excluded]="property.state === 1" [title]="property.state === 1 ? 'Nicht enthalten oder Gehalt null' : property.state === 2 ? 'Enthalten oder möglich' : 'Enthalten'">{{ property.label }}{{ property.state === 1 ? ' ausgeschlossen' : property.state === 2 ? ' ?' : '' }}</span> }@empty { <span class="muted">{{ propertySummary(row, 'intolerances') }}</span> }
+@if (intolerances(row).length > 1) { <span class="extra-count">+{{ intolerances(row).length - 1 }}</span> }</div>
+</td>
+<td>
+<span class="origin" [title]="origin(row)">{{ origin(row) }}</span>
+</td>
+<td>
+<span class="status-badge" [class.published]="status(row) === 'Veröffentlicht'">
+<scp-action-icon [name]="status(row) === 'Veröffentlicht' ? 'check' : 'edit'"/>{{ status(row) }}</span>@if (row.variant && row.variant.isActive === false) { <small>Inaktiv</small> }@if (canFork(row) && !row.variant) { <button matButton type="button" (click)="$event.stopPropagation(); fork.emit(row.entry!.revisionId!)">Für Lager anpassen</button> }</td>
+</tr> }
+</tbody>
+</table>
+</div> }
+@else { <div class="ingredient-cards">@for (row of visibleRows(); track row.key) { <button type="button" class="ingredient-tile" (click)="open(row)">
+<span class="tile-heading">
+<span class="image-placeholder">
+<scp-action-icon name="image"/>
+</span>
+<strong>{{ row.name }}</strong>
+</span>
+<span class="type-badge" [class.variant]="!!row.variant">{{ row.variant ? 'Variante' : 'Basiszutat' }}</span><small class="scope-label">{{ row.scope }}</small>
+<span>{{ categoryName(row) }}</span>
+<span class="tile-properties">{{ allergens(row).length ? allergens(row).length + ' enthaltene oder mögliche Allergene' : propertySummary(row, 'allergens') }} · {{ origin(row) }}</span>
+<span class="status-badge" [class.published]="status(row) === 'Veröffentlicht'">{{ status(row) }}</span>@if (row.variant && row.variant.isActive === false) { <small>Inaktiv</small> }</button> }</div> }
+@if (!filtered().length && !loading()) { <div class="catalog-empty">{{ rows().length ? 'Keine Zutaten entsprechen der Auswahl.' : 'Noch keine Zutaten vorhanden.' }}</div> }
+</div>
+<scp-list-pagination [length]="filtered().length" [pageIndex]="page()" [pageSize]="10" label="Zutatenlistenseiten" (changed)="page.set($event.pageIndex)"/>
+@if (preview(); as row) {
+<dialog #previewDialog (cancel)="preview.set(null)" class="catalog-preview" aria-labelledby="catalog-preview-title">
+<header><h3 id="catalog-preview-title">{{ row.name }}</h3><button matButton type="button" (click)="preview.set(null)" aria-label="Vorschau schließen">×</button></header>
+<p>{{ row.scope }} · {{ status(row) }}</p>
+<p>{{ origin(row) }}</p>
+@if (row.variant) { <p>Detailangaben zur Variante sind im verfügbaren Katalog nicht enthalten.</p> }
+@else { <p>Allergene: {{ propertyLabels(allergens(row)) || propertySummary(row, 'allergens') }}</p><p>Unverträglichkeiten: {{ propertyLabels(intolerances(row)) || propertySummary(row, 'intolerances') }}</p> }
+@if (!row.variant) { @for (hint of row.entry?.conflicts ?? []; track hint.type + hint.id) { @if (hint.type === 'DietaryRequirement') { <p>Ernährungshinweis: {{ hint.name }}</p> } } }
+<h4>Einheiten</h4><p>@for (unit of row.entry?.units ?? []; track unit.unitId) { <span>{{ unit.name }} ({{ unit.symbol }}) </span> }@empty { Keine Angaben }</p>
+@if (canFork(row)) { <button matButton="filled" type="button" (click)="fork.emit(row.entry!.revisionId!); preview.set(null)">Für Lager anpassen</button> }
+<button matButton type="button" (click)="preview.set(null)">Schließen</button>
+</dialog>
+}
+</section>

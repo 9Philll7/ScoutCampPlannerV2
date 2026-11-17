@@ -195,8 +195,10 @@ export class AppComponent {
       organization: 'Organisation', centralIngredients: 'Zentraler Zutatenstamm' }[this.applicationSection()];
   }
 
+  ingredientRevisionEditorOpen() { return !!this.ingredientRevisionEditor()?.selected(); }
+
   trackEdit(event: Event) {
-    if (this.state() === 'application' && !(event.target as HTMLElement).closest('.tenant-select, .catalog-search, .structure-workspace, scp-participants, scp-meal-plan-workspace, scp-cooking-units-workspace, scp-operative-meal-workspace, scp-catering-issues, [readonly]')) {
+    if (this.state() === 'application' && !(event.target as HTMLElement).closest('.tenant-select, .catalog-search, .structure-workspace, scp-participants, scp-meal-plan-workspace, scp-cooking-units-workspace, scp-operative-meal-workspace, scp-catering-issues, scp-ingredient-revision-editor, [readonly]')) {
       this.potentialEdits = true;
     }
   }
@@ -219,9 +221,9 @@ export class AppComponent {
       (this.creatingStructureParent() !== null && this.newStructureNodeName.trim() !== '') ||
       (this.movingStructureNodeId() !== null && this.structureNodes().some(node => node.id === this.movingStructureNodeId() && (this.moveTargetParentIds[node.id] || null) !== node.parentId)) ||
       (this.estimateNodeId() !== null && JSON.stringify(this.participantEstimates()) !== JSON.stringify(this.persistedParticipantEstimates)));
-    return this.state() === 'application' && (structureDraft || this.mealPlanningEditor()?.hasPendingPlanChanges() || this.mealPlanningEditor()?.hasPendingUnitChanges() || this.participantsEditor()?.hasPendingChanges() || this.participantFilters()?.hasPendingChanges() || this.potentialEdits || Array.from(document.querySelectorAll(
+    return this.state() === 'application' && (structureDraft || this.ingredientRevisionEditor()?.hasPendingChanges() || this.mealPlanningEditor()?.hasPendingPlanChanges() || this.mealPlanningEditor()?.hasPendingUnitChanges() || this.participantsEditor()?.hasPendingChanges() || this.participantFilters()?.hasPendingChanges() || this.potentialEdits || Array.from(document.querySelectorAll(
       'main input:not([disabled]):not([readonly]), main textarea:not([disabled]):not([readonly]), main mat-select:not(.mat-mdc-select-disabled)'
-    )).some(control => !control.closest('.tenant-select, .catalog-search, .structure-workspace, scp-participants, scp-participant-filter-settings, scp-meal-plan-workspace, scp-cooking-units-workspace, scp-operative-meal-workspace, scp-catering-issues, .catering-meal-settings:not([open])')));
+    )).some(control => !control.closest('.tenant-select, .catalog-search, .structure-workspace, scp-participants, scp-participant-filter-settings, scp-meal-plan-workspace, scp-cooking-units-workspace, scp-operative-meal-workspace, scp-catering-issues, scp-ingredient-revision-editor, .catering-meal-settings:not([open])')));
   }
 
   @HostListener('window:beforeunload', ['$event'])
@@ -291,6 +293,7 @@ export class AppComponent {
   }
   readonly cateringTarget = signal<CateringTarget | null>(null);
   isCateringSection() { return this.campSection().startsWith('catering'); }
+  isIngredientWorkspace() { return this.openedCampId() ? this.campSection() === 'ingredients' : ['ingredients', 'centralIngredients'].includes(this.applicationSection()); }
   cateringSection(): CateringSection {
     return ({ 'catering': 'overview', 'catering-plans': 'plans', 'catering-units': 'units', 'catering-issues': 'issues' } as const)[this.campSection() as 'catering' | 'catering-plans' | 'catering-units' | 'catering-issues'] ?? 'overview';
   }
