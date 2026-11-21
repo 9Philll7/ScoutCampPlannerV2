@@ -20,7 +20,7 @@ public sealed class RecipeDraftStoreTests
         var group = new RecipeIngredientGroup(Guid.NewGuid(), recipeId, null, 0);
         draft.AddGroup(group);
         var ingredientPosition = new RecipeIngredientPosition(
-            Guid.NewGuid(), recipeId, group.Id, null, null, null, 0);
+            Guid.NewGuid(), recipeId, group.Id, null, null, null, 0, minimumQuantity: 5m, maximumQuantity: 100m);
         ingredientPosition.AddReplacementRule(new IngredientReplacementRule(
             Guid.NewGuid(), ingredientPosition.Id, null, null, null));
         draft.AddIngredientPosition(ingredientPosition);
@@ -36,6 +36,8 @@ public sealed class RecipeDraftStoreTests
         Assert.Equal(0, loaded.DraftVersion);
         Assert.Single(loaded.Groups);
         Assert.Single(loaded.IngredientPositions);
+        Assert.Equal(5m, loaded.IngredientPositions[0].MinimumQuantity);
+        Assert.Equal(100m, loaded.IngredientPositions[0].MaximumQuantity);
         Assert.Single(loaded.IngredientPositions[0].ReplacementRules);
         Assert.Single(loaded.SubrecipePositions);
         Assert.Contains("SCHNELL", loaded.Tags);
@@ -169,6 +171,55 @@ public sealed class RecipeDraftStoreTests
             "ReactivatedBy IS NOT NULL AND ReactivatedAtUtc IS NOT NULL FROM Recipes WHERE Id = $id";
         command.Parameters.Add(new SqliteParameter("$id", draft.Id));
         Assert.Equal(1L, await command.ExecuteScalarAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Subrecipe_metadata_is_pinned_scoped_and_marks_cycles_without_reading_mutable_draft_names()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        var database = fixture.Database;
+        Guid camp = Guid.NewGuid(), parent = Guid.NewGuid(), child = Guid.NewGuid(), ancestor = Guid.NewGuid(), foreign = Guid.NewGuid();
+        Guid gram = Guid.NewGuid(), kilogram = Guid.NewGuid(), litre = Guid.NewGuid();
+        database.AddRange(new MeasurementUnit(gram, "Test gram", "tg", MeasurementDimension.Mass, 1),
+            new MeasurementUnit(kilogram, "Test kilogram", "tkg", MeasurementDimension.Mass, 1000),
+            new MeasurementUnit(litre, "Test litre", "tl", MeasurementDimension.Volume, 1000));
+        var mass = new MeasurementUnitSnapshot(gram, "Test gram", "tg", MeasurementDimension.Mass, 1);
+        Guid Revision(Guid recipe, string name, int number, Guid libraryCamp, bool quantity = false)
+        {
+            if (number == 1)
+            {
+                database.Add(new RecipeRecord { Id = recipe, ScopeType = 2, ScopeId = libraryCamp, Name = "Mutable " + recipe,
+                    NormalizedName = recipe.ToString(), Status = 1, RecipeType = quantity ? 1 : 0 });
+                database.Add(new CampRecipeEntryRecord { Id = Guid.NewGuid(), CampId = libraryCamp, CampRecipeId = recipe });
+            }
+            var snapshot = new RecipeSnapshot(RecipeSnapshotBuilder.CurrentSchemaVersion, name, null, null, null,
+                quantity ? RecipeType.QuantityBased : RecipeType.PortionBased,
+                new RecipeReferenceSnapshot(quantity ? null : 10, 1, quantity ? 1000 : null, quantity ? mass : null),
+                null, false, [], [], [], [], []);
+            Guid id = Guid.NewGuid();
+            database.Add(new RecipeRevisionRecord { Id = id, RecipeId = recipe, RevisionNumber = number,
+                SnapshotSchemaVersion = RecipeSnapshotBuilder.CurrentSchemaVersion, SnapshotJson = RecipeSnapshotBuilder.Serialize(snapshot) });
+            return id;
+        }
+        Guid parentRevision = Revision(parent, "Parent", 1, camp);
+        Guid old = Revision(child, "Pinned original", 1, camp, true);
+        Guid latest = Revision(child, "Published new", 2, camp, true);
+        Guid cyclic = Revision(ancestor, "Ancestor", 1, camp);
+        Guid hidden = Revision(foreign, "Other camp", 1, Guid.NewGuid());
+        database.Add(new RecipeSubrecipePositionRecord { Id = Guid.NewGuid(), RecipeId = ancestor, RecipeRevisionId = parentRevision, RequiredServings = 1 });
+        await database.SaveChangesAsync(TestContext.Current.CancellationToken);
+        var result = await new RecipeEditorSubrecipeReferenceStore(database).FindAsync(camp, parent, [old, hidden], TestContext.Current.CancellationToken);
+        Assert.DoesNotContain(result, value => value.RevisionId == hidden);
+        Assert.Equal("Pinned original", Assert.Single(result, value => value.RevisionId == old).Name);
+        Assert.False(Assert.Single(result, value => value.RevisionId == old).CanSelect);
+        Assert.False(Assert.Single(result, value => value.RevisionId == parentRevision).CanSelect);
+        Assert.False(Assert.Single(result, value => value.RevisionId == cyclic).CanSelect);
+        var current = Assert.Single(result, value => value.RevisionId == latest);
+        Assert.True(current.CanSelect);
+        Assert.Equal(RecipeType.QuantityBased, current.RecipeType);
+        Assert.Equal(1000, current.ReferenceQuantity);
+        Assert.Contains(current.Units, value => value.UnitId == kilogram);
+        Assert.DoesNotContain(current.Units, value => value.UnitId == litre);
     }
 
     private sealed class DatabaseFixture(

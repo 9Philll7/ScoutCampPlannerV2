@@ -73,7 +73,8 @@ public sealed record IngredientPositionSnapshot(
     ScalingMode ScalingMode,
     AgeGroupScalingMode AgeGroupScaling,
     StepwiseScaling? StepwiseScaling,
-    IReadOnlyList<IngredientReplacementSnapshot> Replacements);
+    IReadOnlyList<IngredientReplacementSnapshot> Replacements,
+    decimal? MinimumQuantity = null, decimal? MaximumQuantity = null);
 
 public sealed record RecipeReplacementSnapshot(
     Guid Id,
@@ -174,7 +175,8 @@ public sealed class RecipeSnapshotBuilder(IRecipeSnapshotReferences references)
             position.Quantity ?? throw new InvalidOperationException("Ingredient quantity is required."),
             references.GetIngredientUnit(ingredientRevisionId, unitId), position.ScalingMode, position.AgeGroupScaling,
             position.StepwiseScaling,
-            position.ReplacementRules.OrderBy(value => value.Id).Select(BuildIngredientReplacement).ToArray());
+            position.ReplacementRules.OrderBy(value => value.Id).Select(BuildIngredientReplacement).ToArray(),
+            position.MinimumQuantity, position.MaximumQuantity);
     }
 
     private IngredientReplacementSnapshot BuildIngredientReplacement(IngredientReplacementRule replacement)

@@ -24,7 +24,7 @@ export interface RecipeEditorIngredientReplacement {
 export interface RecipeEditorIngredientPosition {
   id: string; groupId: string | null; ingredientRevisionId: string | null;
   quantity: number | null; unitId: string | null; sortOrder: number;
-  scalingMode: number; ageGroupScaling: number; stepSize: number | null; quantityPerStep: number | null;
+  scalingMode: number; ageGroupScaling: number; stepSize: number | null; quantityPerStep: number | null; minimumQuantity?: number | null; maximumQuantity?: number | null;
   replacements: RecipeEditorIngredientReplacement[];
 }
 export interface RecipeEditorSubrecipeReplacement {
@@ -47,7 +47,17 @@ export interface RecipeEditorContent {
 export interface RecipeEditorDraft {
   id: string; campId: string; status: number; draftVersion: number; content: RecipeEditorContent;
   ingredientReferences: RecipeEditorIngredientReference[];
+  subrecipeReferences?: RecipeEditorSubrecipeReference[];
 }
+
+export interface RecipeEditorSubrecipeReference {
+  revisionId: string; recipeId: string; revisionNumber: number; name: string; recipeType: number;
+  referenceServings: number | null; referenceQuantity: number | null;
+  referenceUnit: RecipeEditorSubrecipeUnit | null; units: RecipeEditorSubrecipeUnit[]; canSelect: boolean;
+  conflicts: RecipeEditorConflictReference[];
+}
+export interface RecipeEditorSubrecipeUnit { unitId: string; name: string; symbol: string; dimension: number; baseUnitFactor: number; }
+export interface RecipeEditorConflictReference { type: number; id: string; name: string; preventableByVariants: string[]; }
 
 export interface RecipeEditorIngredientReference {
   revisionId: string;
@@ -116,6 +126,10 @@ export interface RecipePublicationResponse {
 export class RecipeEditorApiService {
   private readonly http = inject(HttpClient);
   private readonly baseUrl = inject(API_BASE_URL);
+
+  referenceData() {
+    return this.http.get<import('../ingredients/ingredient-revision-api.service').IngredientEditorReferenceData>(`${this.baseUrl}/api/ingredient-reference-data`, { withCredentials: true });
+  }
 
   list(campId: string) {
     return this.http.get<RecipeCatalogEntry[]>(`${this.baseUrl}/api/camps/${campId}/recipes`,

@@ -169,3 +169,8 @@ Desktop: Die zuvor installierte App vom 07.10. lehnt aktuelle Pakete ab. Für di
 erneute manuelle Prüfung den aktuellen Installer verwenden; nicht die lokale DB
 löschen oder Paketversionen heruntersetzen. `tools/test-seed-sidecar.ps1 -Package
 <Datei>` prüft ein Paket gegen eine eigene frische Sidecar-DB, ohne Nutzerdaten zu ändern.
+
+
+## Ergänzung für den Rezepteditor (20.11.2026)
+
+`./tools/dev-meal-planning.ps1 AddNutrition` ergänzt die aktuelle Testgeneration um acht Zutaten mit vollständigen, fehlenden oder ungeprüften Nährwerten und sechs Rezepte mit mehreren Zutaten. Vier zusätzliche Rezepte sind veröffentlicht, zwei bleiben zum Prüfen von Fehlern/Warnungen als Entwurf erhalten. Bestehende Daten und Planungen bleiben erhalten; die Ergänzung wird vorab gesichert und ist wiederholbar. Details und Erwartungswerte: [Nährwert-Testdaten](recipe-editor-nutrition-fixtures.md).

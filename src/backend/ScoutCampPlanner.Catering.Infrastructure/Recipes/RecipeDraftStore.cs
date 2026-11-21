@@ -395,7 +395,7 @@ public sealed class RecipeDraftStore(CateringDbContext database) : IRecipeDraftS
                 value.SortOrder, (ScalingMode)value.ScalingMode, (AgeGroupScalingMode)value.AgeGroupScaling,
                 value.StepSize.HasValue || value.QuantityPerStep.HasValue
                     ? new StepwiseScaling(value.StepSize, value.QuantityPerStep)
-                    : null);
+                    : null, value.MinimumQuantity, value.MaximumQuantity);
             foreach (RecipeIngredientReplacementRecord replacement in replacements
                          .Where(item => item.IngredientPositionId == value.Id))
                 position.AddReplacementRule(new IngredientReplacementRule(
@@ -544,6 +544,7 @@ public sealed class RecipeDraftStore(CateringDbContext database) : IRecipeDraftS
             SortOrder = position.SortOrder, ScalingMode = (int)position.ScalingMode,
             AgeGroupScaling = (int)position.AgeGroupScaling, StepSize = position.StepwiseScaling?.StepSize,
             QuantityPerStep = position.StepwiseScaling?.QuantityPerStep,
+            MinimumQuantity = position.MinimumQuantity, MaximumQuantity = position.MaximumQuantity,
         });
         foreach (IngredientReplacementRule replacement in position.ReplacementRules)
         {

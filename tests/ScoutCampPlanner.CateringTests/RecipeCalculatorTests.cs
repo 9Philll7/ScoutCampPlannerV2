@@ -7,6 +7,81 @@ namespace ScoutCampPlanner.CateringTests;
 public sealed class RecipeCalculatorTests
 {
     [Fact]
+    public void Returns_partial_nutrition_from_reviewed_ingredients_without_counting_missing_profiles_as_zero()
+    {
+        Guid id = Guid.NewGuid();
+        var available = Ingredient(200m) with { Ingredient = NutritionIngredient("Known", Nutrition(100m)) };
+        var missing = Ingredient(100m);
+        var unreviewed = Ingredient(100m) with { Ingredient = NutritionIngredient("Unreviewed", Nutrition(900m) with { ReviewState = IngredientNutritionReviewState.Unreviewed }) };
+        var result = Calculator((id, PortionRecipe(10m, false, available, missing, unreviewed))).Calculate(new(id, 10m, 10m));
+        Assert.False(result.Nutrition.IsComplete);
+        Assert.Equal(200m, result.Nutrition.Total!.EnergyKilojoules);
+        Assert.Equal(20m, result.Nutrition.PerStandardPortion!.EnergyKilojoules);
+        Assert.Equal(2, result.Nutrition.MissingContributions.Count);
+        Assert.Equal(20m, result.Nutrition.Total.FatGrams);
+    }
+
+    [Fact]
+    public void Linear_limits_convert_to_the_selected_replacement_unit()
+    {
+        Guid id = Guid.NewGuid();
+        Guid replacementId = Guid.NewGuid();
+        var replacement = new IngredientReplacementSnapshot(replacementId,
+            new IngredientSnapshotSource(Guid.NewGuid(), "Replacement", []), 0.01m,
+            new IngredientUnitSnapshot(Kilogram, 1000m), []);
+        var position = Ingredient(10m) with { MinimumQuantity = 50m, Replacements = [replacement] };
+        var result = Calculator((id, PortionRecipe(10m, false, position))).Calculate(
+            new RecipeCalculationRequest(id, 10m, 10m, new Dictionary<Guid, Guid> { [position.Id] = replacementId }));
+        Assert.Equal(0.05m, Assert.Single(result.Ingredients).Quantity);
+    }
+
+    [Fact]
+    public void Zero_demand_does_not_create_a_minimum_quantity()
+    {
+        Guid id = Guid.NewGuid();
+        var recipe = PortionRecipe(10m, false, Ingredient(10m) with { MinimumQuantity = 5m });
+        var result = Calculator((id, recipe)).Calculate(new RecipeCalculationRequest(id, 0m, 0m));
+        Assert.Empty(result.Ingredients);
+        Assert.Equal(0m, result.Nutrition.Total!.EnergyKilojoules);
+    }
+
+    [Theory]
+    [InlineData(1, 5)]
+    [InlineData(10, 10)]
+    [InlineData(200, 100)]
+    public void Linear_limits_clamp_the_calculated_total(int demand, int expected)
+    {
+        Guid id = Guid.NewGuid();
+        var position = Ingredient(10m) with { MinimumQuantity = 5m, MaximumQuantity = 100m };
+        var recipe = PortionRecipe(10m, false, position);
+        var result = Calculator((id, recipe)).Calculate(new RecipeCalculationRequest(id, demand, demand));
+        Assert.Equal(expected, Assert.Single(result.Ingredients).Quantity);
+    }
+
+    [Fact]
+    public void Limits_apply_after_age_adjustment_and_allow_independent_or_zero_bounds()
+    {
+        Guid id = Guid.NewGuid();
+        var recipe = PortionRecipe(10m, true,
+            Ingredient(10m) with { MinimumQuantity = 8m },
+            Ingredient(10m) with { MaximumQuantity = 3m },
+            Ingredient(10m) with { MaximumQuantity = 0m });
+        var result = Calculator((id, recipe)).Calculate(new RecipeCalculationRequest(id, 5m, 10m));
+        Assert.Equal([8m, 3m, 0m], result.Ingredients.Select(value => value.Quantity));
+    }
+
+    [Fact]
+    public void Snapshot_codec_preserves_limits_and_accepts_legacy_snapshots()
+    {
+        var recipe = PortionRecipe(10m, false, Ingredient(10m) with { MinimumQuantity = 5m, MaximumQuantity = 100m });
+        var decoded = RecipeSnapshotBuilder.Deserialize(RecipeSnapshotBuilder.Serialize(recipe));
+        Assert.Equal(5m, decoded.IngredientPositions[0].MinimumQuantity);
+        Assert.Equal(100m, decoded.IngredientPositions[0].MaximumQuantity);
+        var legacy = RecipeSnapshotBuilder.Serialize(recipe).Replace("\"minimumQuantity\":5,", "").Replace(",\"minimumQuantity\":5", "").Replace(",\"maximumQuantity\":100", "");
+        Assert.Null(RecipeSnapshotBuilder.Deserialize(legacy).IngredientPositions[0].MinimumQuantity);
+    }
+
+    [Fact]
     public void Calculates_linear_fixed_and_stepwise_positions_without_rounding()
     {
         Guid revisionId = Guid.NewGuid();

@@ -2552,6 +2552,14 @@ namespace ScoutCampPlanner.Migrations.Sqlite.Catering
                     b.Property<Guid?>("IngredientRevisionId")
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal?>("MaximumQuantity")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("MinimumQuantity")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("TEXT");
+
                     b.Property<decimal?>("Quantity")
                         .HasPrecision(18, 6)
                         .HasColumnType("TEXT");

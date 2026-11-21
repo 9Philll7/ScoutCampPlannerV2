@@ -180,7 +180,7 @@ public static class RecipeDraftCopy
         var target = new RecipeIngredientPosition(
             Guid.NewGuid(), recipeId, groupId, source.Ingredient.IngredientRevisionId, source.Quantity,
             source.Unit.Unit.UnitId, source.SortOrder, source.ScalingMode, source.AgeGroupScaling,
-            source.StepwiseScaling);
+            source.StepwiseScaling, source.MinimumQuantity, source.MaximumQuantity);
         foreach (IngredientReplacementSnapshot replacement in source.Replacements)
             target.AddReplacementRule(new IngredientReplacementRule(
                 Guid.NewGuid(), target.Id, replacement.Ingredient.IngredientRevisionId, replacement.Quantity,

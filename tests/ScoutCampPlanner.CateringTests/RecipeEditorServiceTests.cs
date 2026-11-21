@@ -34,7 +34,7 @@ public sealed class RecipeEditorServiceTests
             IngredientPositions =
             [
                 new(Guid.NewGuid(), null, revisionId, 1.25m, unitId, 0,
-                    ScalingMode.Linear, AgeGroupScalingMode.Inherit, null, null, []),
+                    ScalingMode.Linear, AgeGroupScalingMode.Inherit, null, null, [], 5m, 100m),
             ],
         };
 
@@ -45,6 +45,8 @@ public sealed class RecipeEditorServiceTests
         Assert.Equal(campId, store.CreatedDraft!.ScopeId);
         Assert.Equal(revisionId, Assert.Single(store.CreatedDraft.IngredientPositions).IngredientRevisionId);
         Assert.Equal(revisionId, Assert.Single(result.Draft!.Content.IngredientPositions).IngredientRevisionId);
+        Assert.Equal(5m, Assert.Single(store.CreatedDraft.IngredientPositions).MinimumQuantity);
+        Assert.Equal(100m, Assert.Single(result.Draft.Content.IngredientPositions).MaximumQuantity);
         Assert.Equal(Now, store.CreatedAtUtc);
     }
 
@@ -99,6 +101,21 @@ public sealed class RecipeEditorServiceTests
         Assert.Equal("Haferflocken – Revision 1", reference.Name);
         Assert.Equal(unitId, Assert.Single(reference.Units).UnitId);
         Assert.Equal([revisionId], references.RequestedRevisionIds);
+    }
+
+    [Theory]
+    [InlineData(-1, 100, ScalingMode.Linear)]
+    [InlineData(20, 10, ScalingMode.Linear)]
+    [InlineData(5, 100, ScalingMode.Fixed)]
+    public async Task Invalid_limits_are_rejected_before_writing(int min, int max, ScalingMode mode)
+    {
+        var store = new FakeStore();
+        var service = new RecipeEditorService(store, new FakeAuthorization(true), new FixedTimeProvider(Now));
+        var content = Content() with { IngredientPositions = [new(Guid.NewGuid(), null, null, 10m, null, 0,
+            mode, AgeGroupScalingMode.Inherit, null, null, [], min, max)] };
+        var result = await service.CreateCampAsync(Guid.NewGuid(), content, Guid.NewGuid(), TestContext.Current.CancellationToken);
+        Assert.Equal(RecipeEditorStatus.InvalidQuantityLimits, result.Status);
+        Assert.Equal(0, store.CreateCallCount);
     }
 
     private static RecipeEditorContent Content() => new(

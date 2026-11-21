@@ -23,8 +23,8 @@ static async Task RunAsync(string[] args)
 if (Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") is not ("Development" or "Test") ||
     Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") is string environment && environment is not ("Development" or "Test"))
     throw new InvalidOperationException("Seed requires an explicit Development/Test environment.");
-if (args.Length > 1 || args.Length == 1 && args[0] is not ("--reset" or "--probe"))
-    throw new ArgumentException("Only --reset/--probe is supported. Arbitrary database targets are deliberately forbidden.");
+if (args.Length > 1 || args.Length == 1 && args[0] is not ("--reset" or "--probe" or "--nutrition"))
+    throw new ArgumentException("Only --reset/--probe/--nutrition is supported. Arbitrary database targets are deliberately forbidden.");
 var root = new DirectoryInfo(AppContext.BaseDirectory);
 while (root is not null && !File.Exists(Path.Combine(root.FullName, "ScoutCampPlanner.slnx"))) root = root.Parent;
 if (root is null) throw new InvalidOperationException("Run from the source repository.");
@@ -44,8 +44,20 @@ if (File.Exists(manifest) && args.Length == 0)
 // A reset NEVER deletes or overwrites a database. Publish the pointer only after successful validation.
 string generation = "TEST-" + Guid.NewGuid().ToString("N");
 string database = Path.Combine(directory, generation + ".db");
+if (args.Contains("--nutrition"))
+{
+    using var manifestDocument = JsonDocument.Parse(await File.ReadAllTextAsync(manifest));
+    string filename = manifestDocument.RootElement.GetProperty("database").GetString() ?? "";
+    generation = manifestDocument.RootElement.GetProperty("generation").GetString() ?? "";
+    if (manifestDocument.RootElement.GetProperty("seed").GetString() != "meal-planning-increment-2-v1" ||
+        !System.Text.RegularExpressions.Regex.IsMatch(filename, "^TEST-[0-9a-f]{32}\\.db$") || filename != generation + ".db")
+        throw new InvalidOperationException("Invalid TEST generation pointer.");
+    database = Path.Combine(directory, filename);
+    if (!File.Exists(database) || (File.GetAttributes(database) & FileAttributes.ReparsePoint) != 0)
+        throw new InvalidOperationException("The TEST database must exist and must not be redirected.");
+}
 SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_winsqlite3());
-await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = database, Pooling = false }.ToString());
+await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = database, Pooling = false, Mode = args.Contains("--nutrition") ? SqliteOpenMode.ReadWrite : SqliteOpenMode.ReadWriteCreate }.ToString());
 await connection.OpenAsync();
 DbContextOptions<T> Options<T>(string module) where T : DbContext => new DbContextOptionsBuilder<T>()
     .UseSqlite(connection, sqlite => sqlite.MigrationsAssembly(typeof(SqliteMigrationsAssembly).Assembly.FullName)
@@ -53,6 +65,20 @@ DbContextOptions<T> Options<T>(string module) where T : DbContext => new DbConte
 await using var platform = new PlatformDbContext(Options<PlatformDbContext>("platform"));
 await using var camp = new CampDbContext(Options<CampDbContext>("camp"));
 await using var catering = new CateringDbContext(Options<CateringDbContext>("catering"));
+if (args.Contains("--nutrition"))
+{
+    if (!await camp.Camps.AnyAsync(value => value.Id == AcceptanceSeed.Id("camp") && value.Name.StartsWith("TEST ")) ||
+        !await platform.UserAccounts.AnyAsync(value => value.Id == AcceptanceSeed.Id("actor") && value.Email == "acceptance@example.test"))
+        throw new InvalidOperationException("The selected generation is not the expected acceptance-test camp.");
+    string backupPath = Path.Combine(directory, generation + "-before-nutrition-" + Guid.NewGuid().ToString("N") + ".db");
+    await using (var backup = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = backupPath }.ToString()))
+    {
+        await backup.OpenAsync(); connection.BackupDatabase(backup);
+    }
+    Console.WriteLine("TEST database backup: " + backupPath);
+    await NutritionFixtures.AddAsync(catering);
+    return; // Keep current.json and all existing fixtures unchanged.
+}
 await platform.Database.MigrateAsync();
 await camp.Database.MigrateAsync();
 await catering.Database.MigrateAsync();

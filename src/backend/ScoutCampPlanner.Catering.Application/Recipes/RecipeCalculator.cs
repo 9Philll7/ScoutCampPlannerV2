@@ -89,14 +89,16 @@ public sealed class RecipeCalculator(IRecipeSnapshotSource snapshots, IRecipeVar
         ArgumentNullException.ThrowIfNull(root);
         if (request.RecipeRevisionId == Guid.Empty)
             throw new ArgumentException("Recipe revision ID is required.", nameof(request));
-        if (request.AgeAdjustedServings <= 0)
-            throw new ArgumentOutOfRangeException(nameof(request), "Age-adjusted servings must be positive.");
-        if (request.DirectParticipantDemand <= 0)
-            throw new ArgumentOutOfRangeException(nameof(request), "Direct participant demand must be positive.");
+        if (request.AgeAdjustedServings < 0)
+            throw new ArgumentOutOfRangeException(nameof(request), "Age-adjusted servings must not be negative.");
+        if (request.DirectParticipantDemand < 0)
+            throw new ArgumentOutOfRangeException(nameof(request), "Direct participant demand must not be negative.");
 
         if (root.RecipeType != RecipeType.PortionBased || root.Reference.StandardServings is not > 0)
             throw new InvalidOperationException("Only a published portion-based recipe can be calculated at top level.");
 
+        if (request.AgeAdjustedServings == 0 && request.DirectParticipantDemand == 0)
+            return new RecipeCalculationResult([], [], new RecipeNutritionCalculation(true, new(0, 0, 0, 0, 0, 0, 0, 0), null, []));
         var result = new List<CalculatedIngredient>();
         var activePath = new HashSet<Guid>();
         var path = new List<Guid>();
@@ -165,6 +167,14 @@ public sealed class RecipeCalculator(IRecipeSnapshotSource snapshots, IRecipeVar
                 decimal quantity = Scale(
                     referenceQuantity, position.ScalingMode, position.StepwiseScaling,
                     positionRatio, positionDemand);
+                if (position.ScalingMode == ScalingMode.Linear && positionDemand > 0)
+                {
+                    // Limits use the original position unit, including when a replacement uses another unit.
+                    decimal conversion = position.Unit.Unit.UnitId == unit.Unit.UnitId
+                        ? 1m : position.Unit.ReferenceQuantityPerUnit / unit.ReferenceQuantityPerUnit;
+                    if (position.MinimumQuantity is decimal minimum) quantity = Math.Max(quantity, minimum * conversion);
+                    if (position.MaximumQuantity is decimal maximum) quantity = Math.Min(quantity, maximum * conversion);
+                }
                 CalculatedNutritionValues? nutrition = CalculateNutrition(ingredient.Nutrition, quantity, unit);
                 result.Add(new CalculatedIngredient(
                     ingredient.IngredientRevisionId, ingredient.Name, quantity, unit.Unit,
@@ -290,12 +300,14 @@ public sealed class RecipeCalculator(IRecipeSnapshotSource snapshots, IRecipeVar
                 value.IngredientId, value.IngredientName, value.RecipeRevisionPath,
                 value.PositionId, value.NutritionIssue ?? MissingNutritionReason.InvalidReference))
             .ToArray();
-        if (ingredients.Count == 0 || missing.Length > 0)
+        CalculatedNutritionValues[] available = ingredients.Where(value => value.Nutrition is not null)
+            .Select(value => value.Nutrition!).ToArray();
+        if (available.Length == 0)
             return new RecipeNutritionCalculation(false, null, null, missing);
 
-        CalculatedNutritionValues total = Sum(ingredients.Select(value => value.Nutrition!).ToArray());
+        CalculatedNutritionValues total = Sum(available);
         return new RecipeNutritionCalculation(
-            true, total, Divide(total, standardPortionDemand), []);
+            missing.Length == 0, total, standardPortionDemand > 0 ? Divide(total, standardPortionDemand) : null, missing);
     }
 
     private static MissingNutritionReason? NutritionIssue(IngredientNutritionSnapshot? profile) => profile switch

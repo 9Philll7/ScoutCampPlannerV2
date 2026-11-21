@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('Seed', 'Reset', 'Start')][string]$Action = 'Seed',
+    [ValidateSet('Seed', 'Reset', 'Start', 'AddNutrition')][string]$Action = 'Seed',
     [ValidateRange(1024, 65535)][int]$Port = 5180
 )
 $ErrorActionPreference = 'Stop'
@@ -19,6 +19,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Seed-Build fehlgeschlagen.' }
         $seedArguments = @('run', '--no-build', '--project', (Join-Path $PSScriptRoot 'ScoutCampPlanner.MealPlanningSeed'))
         if ($Action -eq 'Reset') { $seedArguments += @('--', '--reset') }
+        if ($Action -eq 'AddNutrition') { $seedArguments += @('--', '--nutrition') }
         & dotnet @seedArguments
         if ($LASTEXITCODE -ne 0) { throw 'Testdaten wurden nicht aktiviert. Bisheriger Stand bleibt erhalten.' }
         return

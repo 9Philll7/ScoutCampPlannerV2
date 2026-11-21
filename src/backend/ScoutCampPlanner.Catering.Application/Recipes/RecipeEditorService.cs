@@ -11,7 +11,8 @@ public sealed record RecipeEditorIngredientPosition(
     Guid Id, Guid? GroupId, Guid? IngredientRevisionId, decimal? Quantity, Guid? UnitId,
     int SortOrder, ScalingMode ScalingMode, AgeGroupScalingMode AgeGroupScaling,
     decimal? StepSize, decimal? QuantityPerStep,
-    IReadOnlyList<RecipeEditorIngredientReplacement> Replacements);
+    IReadOnlyList<RecipeEditorIngredientReplacement> Replacements,
+    decimal? MinimumQuantity = null, decimal? MaximumQuantity = null);
 public sealed record RecipeEditorSubrecipeReplacement(
     Guid Id, Guid? RecipeRevisionId, decimal? Servings, decimal? Quantity, Guid? UnitId,
     IReadOnlyList<RecipeEditorConflict> Conflicts);
@@ -42,7 +43,19 @@ public sealed record RecipeEditorDraft(
     RecipeStatus Status,
     long DraftVersion,
     RecipeEditorContent Content,
-    IReadOnlyList<RecipeEditorIngredientReference> IngredientReferences);
+    IReadOnlyList<RecipeEditorIngredientReference> IngredientReferences,
+    IReadOnlyList<RecipeEditorSubrecipeReference>? SubrecipeReferences = null);
+
+public sealed record RecipeEditorSubrecipeReference(
+    Guid RevisionId, Guid RecipeId, int RevisionNumber, string Name, RecipeType RecipeType,
+    decimal? ReferenceServings, decimal? ReferenceQuantity, MeasurementUnitSnapshot? ReferenceUnit,
+    IReadOnlyList<MeasurementUnitSnapshot> Units, bool CanSelect, IReadOnlyList<RecipeEditorConflictReference> Conflicts);
+
+public interface IRecipeEditorSubrecipeReferenceStore
+{
+    Task<IReadOnlyList<RecipeEditorSubrecipeReference>> FindAsync(Guid campId, Guid recipeId,
+        IReadOnlyCollection<Guid> pinnedRevisionIds, CancellationToken cancellationToken = default);
+}
 
 public sealed record RecipeEditorIngredientReference(
     Guid RevisionId,
@@ -83,6 +96,7 @@ public enum RecipeEditorStatus
     NotFound,
     Forbidden,
     VersionConflict,
+    InvalidQuantityLimits,
 }
 
 public sealed record RecipeEditorResult(RecipeEditorStatus Status, RecipeEditorDraft? Draft = null);
@@ -116,7 +130,8 @@ public sealed class RecipeEditorService(
     IRecipeEditorStore drafts,
     IRecipeEditorAuthorization authorization,
     TimeProvider timeProvider,
-    IRecipeEditorIngredientReferenceStore? ingredientReferences = null)
+    IRecipeEditorIngredientReferenceStore? ingredientReferences = null,
+    IRecipeEditorSubrecipeReferenceStore? subrecipeReferences = null)
 {
     public async Task<RecipeEditorResult> FindCampAsync(
         Guid campId, Guid recipeId, Guid actorUserId, CancellationToken cancellationToken = default)
@@ -141,6 +156,7 @@ public sealed class RecipeEditorService(
         ArgumentNullException.ThrowIfNull(content);
         if (!await authorization.CanEditCampAsync(actorUserId, campId, cancellationToken))
             return new(RecipeEditorStatus.Forbidden);
+        if (!ValidQuantityLimits(content)) return new(RecipeEditorStatus.InvalidQuantityLimits);
         RecipeDraft draft = Build(Guid.NewGuid(), RecipeScopeType.Camp, campId, RecipeStatus.Draft, content);
         RecipeDraft created = await drafts.CreateCampAsync(
             draft, campId, actorUserId, timeProvider.GetUtcNow(), cancellationToken);
@@ -161,6 +177,7 @@ public sealed class RecipeEditorService(
         RecipeDraft? current = await drafts.FindAsync(recipeId, cancellationToken);
         if (current is null || current.ScopeType != RecipeScopeType.Camp || current.ScopeId != campId)
             return new(RecipeEditorStatus.NotFound);
+        if (!ValidQuantityLimits(content)) return new(RecipeEditorStatus.InvalidQuantityLimits);
         RecipeDraft replacement = Build(recipeId, current.ScopeType, current.ScopeId, current.Status, content);
         RecipeDraftSaveResult saved = await drafts.SaveAsync(
             replacement, expectedVersion, actorUserId, timeProvider.GetUtcNow(), cancellationToken);
@@ -173,6 +190,13 @@ public sealed class RecipeEditorService(
             _ => new(RecipeEditorStatus.NotFound),
         };
     }
+
+    private static bool ValidQuantityLimits(RecipeEditorContent content) =>
+        (content.IngredientPositions ?? []).All(value =>
+            value.MinimumQuantity is not < 0 && value.MaximumQuantity is not < 0 &&
+            !(value.MinimumQuantity > value.MaximumQuantity) &&
+            (value.ScalingMode == ScalingMode.Linear ||
+                value.MinimumQuantity is null && value.MaximumQuantity is null));
 
     private static RecipeDraft Build(
         Guid recipeId, RecipeScopeType scopeType, Guid? scopeId, RecipeStatus status, RecipeEditorContent content)
@@ -199,7 +223,7 @@ public sealed class RecipeEditorService(
                 value.SortOrder, value.ScalingMode, value.AgeGroupScaling,
                 value.StepSize.HasValue || value.QuantityPerStep.HasValue
                     ? new StepwiseScaling(value.StepSize, value.QuantityPerStep)
-                    : null);
+                    : null, value.MinimumQuantity, value.MaximumQuantity);
             foreach (RecipeEditorIngredientReplacement replacement in value.Replacements ?? [])
                 position.AddReplacementRule(new IngredientReplacementRule(
                     replacement.Id, position.Id, replacement.IngredientRevisionId,
@@ -255,7 +279,7 @@ public sealed class RecipeEditorService(
                     replacement.Id, replacement.ReplacementIngredientRevisionId,
                     replacement.ReplacementQuantity, replacement.ReplacementUnitId,
                     replacement.Conflicts.Select(conflict => new RecipeEditorConflict(conflict.Type, conflict.Id))
-                        .ToArray())).ToArray())).ToArray(),
+                        .ToArray())).ToArray(), position.MinimumQuantity, position.MaximumQuantity)).ToArray(),
             draft.SubrecipePositions.Select(position => new RecipeEditorSubrecipePosition(
                 position.Id, position.GroupId, position.RecipeRevisionId, position.RequiredServings,
                 position.RequiredQuantity, position.RequiredUnitId, position.SortOrder,
@@ -265,7 +289,10 @@ public sealed class RecipeEditorService(
                     replacement.ReplacementUnitId,
                     replacement.Conflicts.Select(conflict => new RecipeEditorConflict(conflict.Type, conflict.Id))
                         .ToArray())).ToArray())).ToArray()),
-            references);
+            references, subrecipeReferences is null ? [] : await subrecipeReferences.FindAsync(
+                draft.ScopeId!.Value, draft.Id, draft.SubrecipePositions.Select(value => value.RecipeRevisionId)
+                    .Concat(draft.SubrecipePositions.SelectMany(value => value.ReplacementRules).Select(value => value.ReplacementRecipeRevisionId))
+                    .OfType<Guid>().Distinct().ToArray(), cancellationToken));
     }
 
     private static Guid Required(Guid value, string parameterName) =>

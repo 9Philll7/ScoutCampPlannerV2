@@ -63,6 +63,8 @@ internal sealed class RecipeIngredientPositionRecord
     public int AgeGroupScaling { get; set; }
     public decimal? StepSize { get; set; }
     public decimal? QuantityPerStep { get; set; }
+    public decimal? MinimumQuantity { get; set; }
+    public decimal? MaximumQuantity { get; set; }
 }
 
 internal sealed class RecipeIngredientReplacementRecord

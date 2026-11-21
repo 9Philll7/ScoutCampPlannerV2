@@ -42,7 +42,8 @@ public sealed class RecipeIngredientPosition
         int sortOrder,
         ScalingMode scalingMode = ScalingMode.Linear,
         AgeGroupScalingMode ageGroupScaling = AgeGroupScalingMode.Inherit,
-        StepwiseScaling? stepwiseScaling = null)
+        StepwiseScaling? stepwiseScaling = null,
+        decimal? minimumQuantity = null, decimal? maximumQuantity = null)
     {
         Id = Required(id, nameof(id));
         RecipeId = Required(recipeId, nameof(recipeId));
@@ -53,7 +54,13 @@ public sealed class RecipeIngredientPosition
         SortOrder = sortOrder;
         ScalingMode = scalingMode;
         AgeGroupScaling = ageGroupScaling;
+        if (minimumQuantity < 0 || maximumQuantity < 0 || minimumQuantity > maximumQuantity)
+            throw new ArgumentException("Quantity limits must be non-negative and minimum must not exceed maximum.");
+        if (scalingMode != ScalingMode.Linear && (minimumQuantity.HasValue || maximumQuantity.HasValue))
+            throw new ArgumentException("Quantity limits apply only to linear scaling.");
         StepwiseScaling = stepwiseScaling;
+        MinimumQuantity = minimumQuantity;
+        MaximumQuantity = maximumQuantity;
     }
 
     public Guid Id { get; }
@@ -66,6 +73,8 @@ public sealed class RecipeIngredientPosition
     public ScalingMode ScalingMode { get; private set; }
     public AgeGroupScalingMode AgeGroupScaling { get; private set; }
     public StepwiseScaling? StepwiseScaling { get; private set; }
+    public decimal? MinimumQuantity { get; }
+    public decimal? MaximumQuantity { get; }
     public IReadOnlyList<IngredientReplacementRule> ReplacementRules => replacementRules.AsReadOnly();
 
     public void AddReplacementRule(IngredientReplacementRule rule)

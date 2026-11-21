@@ -148,6 +148,7 @@ builder.Services.AddScoped<RecipeEditorService>();
 builder.Services.AddScoped<CampRecipePublicationService>();
 builder.Services.AddScoped<IRecipeEditorStore, RecipeEditorStore>();
 builder.Services.AddScoped<IRecipeEditorIngredientReferenceStore, RecipeEditorIngredientReferenceStore>();
+builder.Services.AddScoped<IRecipeEditorSubrecipeReferenceStore, RecipeEditorSubrecipeReferenceStore>();
 builder.Services.AddScoped<RecipeLifecycleService>();
 builder.Services.AddScoped<IRecipeLibraryStore, RecipeLibraryStore>();
 builder.Services.AddScoped<RecipeLibraryService>();
@@ -1428,6 +1429,7 @@ static IResult ToIngredientContributionResult(IngredientContributionMutationResu
 static IResult ToRecipeEditorResult(RecipeEditorResult result) => result.Status switch
 {
     RecipeEditorStatus.Found or RecipeEditorStatus.Created or RecipeEditorStatus.Saved => Results.Ok(result.Draft),
+    RecipeEditorStatus.InvalidQuantityLimits => Results.BadRequest(new { message = "Mengengrenzen sind ungültig. Sie müssen mindestens null sein, Minimum darf Maximum nicht überschreiten und Grenzen gelten nur bei linearer Skalierung." }),
     RecipeEditorStatus.Forbidden => Results.Forbid(),
     RecipeEditorStatus.NotFound => Results.NotFound(),
     RecipeEditorStatus.VersionConflict => Results.Conflict(new

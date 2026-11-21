@@ -582,8 +582,8 @@ describe('SupplySolutionsComponent', () => {
       unit: 'g', scalingMode: 2, stepwiseScaling: { stepSize: 3, quantityPerStep: 30 } }];
     fixture.componentRef.setInput('state', updated); fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('90 g');
-    expect(fixture.nativeElement.textContent).toContain('Stufenweise');
-    expect(fixture.nativeElement.textContent).toContain('30 g je 3 Personen');
+    expect(fixture.nativeElement.textContent).toContain('In festen Schritten');
+    expect(fixture.nativeElement.textContent).toContain('30 g je angefangene 3 Standardportionen');
   });
   it('rejects duplicate proposals and guards verification of unsaved drafts', () => {
     const { fixture, component, api } = create();

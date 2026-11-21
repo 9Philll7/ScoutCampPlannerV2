@@ -76,7 +76,7 @@
         </div>
       }
     </aside>
-    <main id="workspace-content" [class.catering-page]="openedCampId() && isCateringSection() || isIngredientWorkspace()" [class.structure-page]="openedCampId() && (campSection() === 'structure' || campSection() === 'participants')" tabindex="-1" (focusin)="sidebarOpen.set(false)" (input)="trackEdit($event)" (change)="trackEdit($event)">
+    <main id="workspace-content" [class.catering-page]="openedCampId() && isCateringSection() || isIngredientWorkspace() || isRecipeWorkspace()" [class.structure-page]="openedCampId() && (campSection() === 'structure' || campSection() === 'participants')" tabindex="-1" (focusin)="sidebarOpen.set(false)" (input)="trackEdit($event)" (change)="trackEdit($event)">
       @switch (state()) {
         @case ('loading') {
           <section class="centered"><mat-spinner diameter="42"/><p>ScoutCampPlanner wird geladen …</p></section>
@@ -129,7 +129,7 @@
           <div class="application-shell">
           @if (openedCampId() && (campSection() === 'structure' || campSection() === 'participants')) {
             <h1 class="structure-page-heading">{{ campSection() === 'structure' ? 'Struktur' : 'Teilnehmerübersicht' }}</h1>
-          } @else if (!isCateringSection() && !isIngredientWorkspace()) {
+          } @else if (!isCateringSection() && !isIngredientWorkspace() && !isRecipeWorkspace()) {
           <header class="page-header">
             <div>
               @if (openedCampId()) {
@@ -308,7 +308,7 @@
           }
           }
           @for (camp of visibleCamps(); track camp.id) {
-            <mat-card class="content-card camp-card" [class.catering-container]="openedCampId() && (isCateringSection() || campSection() === 'ingredients')" [class.dashboard-container]="openedCampId() && campSection() === 'overview'" [class.structure-container]="openedCampId() && campSection() === 'structure'" [class.participants-container]="openedCampId() && campSection() === 'participants'">
+            <mat-card class="content-card camp-card" [class.catering-container]="openedCampId() && (isCateringSection() || campSection() === 'ingredients' || campSection() === 'recipes')" [class.dashboard-container]="openedCampId() && campSection() === 'overview'" [class.structure-container]="openedCampId() && campSection() === 'structure'" [class.participants-container]="openedCampId() && campSection() === 'participants'">
               @if (!openedCampId()) {
                 <mat-card-header><mat-card-title>{{ camp.name }}</mat-card-title></mat-card-header>
               }
@@ -737,8 +737,7 @@
                   }
                   }
                   @if (campSection() === 'recipes') {
-                    <section class="settings-section">
-                      <p>Hier findest du verwendete und lokal angepasste Rezepte. Weitere zugängliche Rezepte stehen bei der Auswahl in der Verpflegung bereit.</p>
+                    <section class="recipe-workspace">
                       <scp-recipe-editor [campId]="camp.id" [usedRevisionIds]="usedCampRecipes()" [disabled]="!camp.canEdit || camp.isFrozen"/>
                     </section>
                   }

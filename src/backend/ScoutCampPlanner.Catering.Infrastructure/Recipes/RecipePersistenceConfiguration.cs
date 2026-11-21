@@ -220,6 +220,8 @@ internal static class RecipePersistenceConfiguration
         entity.Property(x => x.Quantity).HasPrecision(18, 6);
         entity.Property(x => x.StepSize).HasPrecision(18, 6);
         entity.Property(x => x.QuantityPerStep).HasPrecision(18, 6);
+        entity.Property(x => x.MinimumQuantity).HasPrecision(18, 6);
+        entity.Property(x => x.MaximumQuantity).HasPrecision(18, 6);
     }
 
     private static void ConfigureIngredientReplacementConflicts(ModelBuilder modelBuilder)

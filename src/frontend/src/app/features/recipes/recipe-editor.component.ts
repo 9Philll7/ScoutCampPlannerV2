@@ -1,448 +1,80 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { DecimalPipe } from '@angular/common';
-import { Component, computed, effect, inject, input, signal } from '@angular/core';
+import { Component, computed, effect, ElementRef, inject, input, signal, viewChild } from '@angular/core';
+import { RecipeCatalogComponent } from './recipe-catalog.component';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
-import { MatCardModule } from '@angular/material/card';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { MatMenuModule } from '@angular/material/menu';
 import { MatSelectModule } from '@angular/material/select';
 import { IngredientCatalogEntry } from '../camp/camp-api.service';
-import { ActionIconComponent } from '../../shared/action-icon.component';
+import { ActionIconComponent, ActionIconName } from '../../shared/action-icon.component';
 import { RecipeCatalogEntry, RecipeEditorApiService, RecipeEditorContent,
   RecipeEditorDraft, RecipeEditorGroup, RecipeEditorIngredientPosition, RecipeEditorIngredientReplacement,
   RecipeEditorIngredientReference, RecipeEditorConflict,
   RecipeNutritionCalculation, RecipeNutritionValues, RecipePublicationResponse,
-  RecipeValidationIssue, RecipeEditorIngredientUpdate } from './recipe-editor-api.service';
+  RecipeValidationIssue, RecipeEditorIngredientUpdate, RecipeEditorSubrecipePosition, RecipeEditorSubrecipeReference, RecipeEditorSubrecipeReplacement } from './recipe-editor-api.service';
+
+type RecipeEditorEntry = { kind: 'ingredient'; position: RecipeEditorIngredientPosition } | { kind: 'subrecipe'; position: RecipeEditorSubrecipePosition };
 
 interface IngredientSection {
   id: string | null;
   group: RecipeEditorGroup | null;
   positions: RecipeEditorIngredientPosition[];
+  entries: RecipeEditorEntry[];
 }
+
+type IngredientDialogMode = 'picker' | 'group' | 'move' | 'scaling' | 'replacements' | 'updates' | 'subrecipe' | 'subrecipe-replacements';
 
 interface EditorConflictOption extends RecipeEditorConflict { name: string; }
 
 @Component({
   selector: 'scp-recipe-editor',
   standalone: true,
-  imports: [DecimalPipe, FormsModule, MatButtonModule, MatCardModule, MatCheckboxModule, MatFormFieldModule,
-    MatInputModule, MatProgressSpinnerModule, MatSelectModule, ActionIconComponent],
-  template: `
-    <div class="recipe-heading">
-      <div><p class="eyebrow">Rezepte</p><h3>{{ selected() ? selected()!.content.name || 'Neues Rezept' : 'Lagerrezepte' }}</h3></div>
-      @if (selected()) {
-        <button matButton type="button" (click)="closeEditor()"><scp-action-icon name="back"/>Rezeptliste</button>
-      } @else {
-        <button matButton="filled" type="button" (click)="createDraft()" [disabled]="disabled() || loading()">
-          <scp-action-icon name="add"/>Rezept anlegen</button>
-      }
-    </div>
-    @if (error()) { <p class="recipe-message error" role="alert">{{ error() }}</p> }
-    @if (notice()) { <p class="recipe-message notice" role="status">{{ notice() }}</p> }
-    @if (loading()) {
-      <div class="recipe-loading"><mat-spinner diameter="28"/><span>Rezepte werden geladen …</span></div>
-    } @else if (selected(); as draft) {
-      <form (ngSubmit)="save()" class="recipe-form">
-        <section class="recipe-section">
-          <div class="section-title"><h4>Grunddaten</h4></div>
-          <div class="field-grid">
-            <mat-form-field appearance="outline"><mat-label>Name</mat-label>
-              <input matInput name="recipeName" [(ngModel)]="draft.content.name" maxlength="200" [disabled]="disabled()">
-            </mat-form-field>
-            <mat-form-field appearance="outline"><mat-label>Standardportionen</mat-label>
-              <input matInput name="referenceServings" type="number" min="0.01" step="0.01"
-                [(ngModel)]="draft.content.referenceServings" [disabled]="disabled()">
-            </mat-form-field>
-          </div>
-          <mat-form-field appearance="outline" class="full"><mat-label>Beschreibung und Zubereitung</mat-label>
-            <textarea matInput name="description" rows="4" [(ngModel)]="draft.content.description" [disabled]="disabled()"></textarea>
-          </mat-form-field>
-          <mat-form-field appearance="outline" class="full"><mat-label>Quelle</mat-label>
-            <input matInput name="source" [(ngModel)]="draft.content.source" [disabled]="disabled()">
-          </mat-form-field>
-          <mat-checkbox name="ageScaling" [(ngModel)]="draft.content.defaultAgeGroupScalingApplies" [disabled]="disabled()">
-            Stufenfaktoren standardmäßig anwenden
-          </mat-checkbox>
-        </section>
-
-        <section class="recipe-section">
-          <div class="section-title">
-            <div><h4>Zutaten</h4><p>Mengen gelten für die angegebenen Standardportionen.</p></div>
-            @if (!disabled()) {
-              <button matButton type="button" (click)="addGroup()"><scp-action-icon name="add"/>Gruppe</button>
-            }
-          </div>
-          <div class="conflict-legend" aria-label="Legende für Zutatenkonflikte">
-            <span class="preventable">Gelb: durch eine Variante vermeidbar</span>
-            <span class="unavoidable">Rot: durch keine Variante vermeidbar</span>
-          </div>
-          <div class="group-list">
-            @for (section of ingredientSections(); track section.id ?? 'ungrouped') {
-              <article class="ingredient-group" [class.ungrouped]="!section.group">
-                <div class="group-heading">
-                  @if (section.group; as group) {
-                    <mat-form-field appearance="outline" subscriptSizing="dynamic" class="group-name">
-                      <mat-label>Gruppenname</mat-label>
-                      <input matInput [name]="'group-' + group.id" [(ngModel)]="group.name"
-                        maxlength="200" [disabled]="disabled()">
-                    </mat-form-field>
-                    <div class="icon-actions">
-                      <button matIconButton type="button" aria-label="Gruppe nach oben verschieben"
-                        title="Gruppe nach oben verschieben" (click)="moveGroup(group, -1)"
-                        [disabled]="disabled() || !canMoveGroup(group, -1)"><scp-action-icon name="up"/></button>
-                      <button matIconButton type="button" aria-label="Gruppe nach unten verschieben"
-                        title="Gruppe nach unten verschieben" (click)="moveGroup(group, 1)"
-                        [disabled]="disabled() || !canMoveGroup(group, 1)"><scp-action-icon name="down"/></button>
-                      <button matIconButton type="button" aria-label="Gruppe löschen"
-                        [title]="groupIsEmpty(group.id) ? 'Gruppe löschen' : 'Positionen zuerst aus der Gruppe verschieben'"
-                        (click)="removeGroup(group)" [disabled]="disabled() || !groupIsEmpty(group.id)">
-                        <scp-action-icon name="remove"/></button>
-                    </div>
-                  } @else {
-                    <div><strong>Ohne Gruppe</strong><small>Zutaten, die keiner Rezeptgruppe zugeordnet sind.</small></div>
-                  }
-                </div>
-
-                <div class="position-list">
-                  @for (position of section.positions; track position.id; let first = $first; let last = $last) {
-                    <div class="position-card">
-                      <div class="position-name"><strong>{{ ingredient(position)?.name ?? 'Unbekannte Zutat' }}</strong>
-                        <small>{{ scopeLabel(ingredient(position)?.scope) }}
-                          @if (ingredientReference(position); as reference) { · Revision {{ reference.revisionNumber }} }
-                        </small>
-                        @if ((ingredient(position)?.conflicts ?? []).length) {
-                          <div class="conflict-list" aria-label="Konflikte der Zutat">
-                            @for (conflict of ingredient(position)!.conflicts; track conflict.type + '-' + conflict.id) {
-                              <span
-                                [class.preventable]="conflictVariantNames(position, conflict.id)?.length"
-                                [class.unavoidable]="conflictVariantNames(position, conflict.id)?.length === 0"
-                                [class.unclassified]="conflictVariantNames(position, conflict.id) === null"
-                                [title]="conflictTitle(position, conflict.id, conflict.name)">{{ conflict.name }}</span>
-                            }
-                          </div>
-                        }
-                        @if (ingredientReference(position)?.availableUpdate; as update) {
-                          <button matButton type="button" class="ingredient-update"
-                            (click)="adoptIngredientUpdate(position, update)" [disabled]="disabled()">
-                            Auf Revision {{ update.revisionNumber }} aktualisieren
-                          </button>
-                        }
-                      </div>
-                      <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Gruppe</mat-label>
-                        <mat-select [name]="'position-group-' + position.id" [ngModel]="position.groupId"
-                          (ngModelChange)="movePositionToGroup(position, $event)" [disabled]="disabled()">
-                          <mat-option [value]="null">Ohne Gruppe</mat-option>
-                          @for (group of orderedGroups(); track group.id) {
-                            <mat-option [value]="group.id">{{ group.name || 'Unbenannte Gruppe' }}</mat-option>
-                          }
-                        </mat-select>
-                      </mat-form-field>
-                      <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Menge</mat-label>
-                        <input matInput type="number" min="0.000001" step="any" [name]="'quantity-' + position.id"
-                          [(ngModel)]="position.quantity" [disabled]="disabled()">
-                      </mat-form-field>
-                      <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Einheit</mat-label>
-                        <mat-select [name]="'unit-' + position.id" [(ngModel)]="position.unitId" [disabled]="disabled()">
-                          @for (unit of ingredient(position)?.units ?? []; track unit.unitId) {
-                            <mat-option [value]="unit.unitId">{{ unit.name }} ({{ unit.symbol }})</mat-option>
-                          }
-                        </mat-select>
-                      </mat-form-field>
-                      <div class="icon-actions">
-                        <mat-form-field><mat-label>Mengenregel</mat-label>
-                          <mat-select [name]="'scaling-' + position.id" [(ngModel)]="position.scalingMode" (ngModelChange)="position.stepSize = null; position.quantityPerStep = null" [disabled]="disabled()">
-                            <mat-option [value]="0">Linear</mat-option><mat-option [value]="1">Fixe Menge</mat-option><mat-option [value]="2">Stufenweise</mat-option>
-                          </mat-select>
-                        </mat-form-field>
-                        @if (position.scalingMode === 2) {
-                          <mat-form-field><mat-label>Portionen pro Stufe</mat-label><input matInput type="number" min="0.000001" step="any" [name]="'step-' + position.id" [(ngModel)]="position.stepSize" [disabled]="disabled()"></mat-form-field>
-                          <mat-form-field><mat-label>Menge pro Stufe</mat-label><input matInput type="number" min="0.000001" step="any" [name]="'step-quantity-' + position.id" [(ngModel)]="position.quantityPerStep" [disabled]="disabled()"></mat-form-field>
-                        }
-                        <button matIconButton type="button" aria-label="Zutat nach oben verschieben"
-                          title="Zutat nach oben verschieben" (click)="movePosition(position, -1)"
-                          [disabled]="disabled() || first"><scp-action-icon name="up"/></button>
-                        <button matIconButton type="button" aria-label="Zutat nach unten verschieben"
-                          title="Zutat nach unten verschieben" (click)="movePosition(position, 1)"
-                          [disabled]="disabled() || last"><scp-action-icon name="down"/></button>
-                        <button matIconButton type="button" aria-label="Zutat entfernen" title="Zutat entfernen"
-                          (click)="removePosition(position.id)" [disabled]="disabled()"><scp-action-icon name="remove"/></button>
-                      </div>
-                      <div class="replacement-section">
-                        <div class="replacement-heading">
-                          <div><strong>Ersatzzutaten</strong><small>Gelten nur für die ausgewählten Konflikte dieser Position.</small></div>
-                          @if (!disabled() && unassignedConflicts(position).length) {
-                            <button matButton type="button" (click)="toggleReplacementPicker(position.id)">
-                              <scp-action-icon name="add"/>Ersatzzutat
-                            </button>
-                          }
-                        </div>
-                        @for (replacement of position.replacements; track replacement.id) {
-                          <div class="replacement-card">
-                            <div class="position-name">
-                              <strong>{{ replacementIngredient(replacement)?.name ?? 'Unbekannte Ersatzzutat' }}</strong>
-                              <small>{{ scopeLabel(replacementIngredient(replacement)?.scope) }}</small>
-                              @if ((replacementIngredient(replacement)?.conflicts ?? []).length) {
-                                <div class="conflict-list" aria-label="Konflikte der Ersatzzutat">
-                                  @for (conflict of replacementIngredient(replacement)!.conflicts;
-                                    track conflict.type + '-' + conflict.id) {
-                                    <span
-                                      [class.preventable]="replacementConflictVariantNames(replacement, conflict.id)?.length"
-                                      [class.unavoidable]="replacementConflictVariantNames(replacement, conflict.id)?.length === 0"
-                                      [class.unclassified]="replacementConflictVariantNames(replacement, conflict.id) === null"
-                                      [title]="replacementConflictTitle(replacement, conflict.id, conflict.name)">
-                                      {{ conflict.name }}
-                                    </span>
-                                  }
-                                </div>
-                              }
-                            </div>
-                            <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Ersatzmenge</mat-label>
-                              <input matInput type="number" min="0.000001" step="any"
-                                [name]="'replacement-quantity-' + replacement.id"
-                                [(ngModel)]="replacement.quantity" [disabled]="disabled()">
-                            </mat-form-field>
-                            <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Einheit</mat-label>
-                              <mat-select [name]="'replacement-unit-' + replacement.id"
-                                [(ngModel)]="replacement.unitId" [disabled]="disabled()">
-                                @for (unit of replacementIngredient(replacement)?.units ?? []; track unit.unitId) {
-                                  <mat-option [value]="unit.unitId">{{ unit.name }} ({{ unit.symbol }})</mat-option>
-                                }
-                              </mat-select>
-                            </mat-form-field>
-                            <button matIconButton type="button" aria-label="Ersatzzutat entfernen"
-                              title="Ersatzzutat entfernen" (click)="removeReplacement(position, replacement.id)"
-                              [disabled]="disabled()"><scp-action-icon name="remove"/></button>
-                            <div class="replacement-conflicts">
-                              <span>Ersetzt bei:</span>
-                              @for (conflict of positionConflicts(position); track conflict.type + '-' + conflict.id) {
-                                <mat-checkbox
-                                  [name]="'replacement-conflict-' + replacement.id + '-' + conflict.type + '-' + conflict.id"
-                                  [ngModel]="replacementHasConflict(replacement, conflict)"
-                                  (ngModelChange)="setReplacementConflict(position, replacement, conflict, $event)"
-                                  [disabled]="disabled() || conflictAssignedToOtherReplacement(position, replacement.id, conflict)">
-                                  {{ conflict.name }}
-                                </mat-checkbox>
-                              } @empty {
-                                <small>Die Ausgangszutat weist keine Konflikte auf.</small>
-                              }
-                            </div>
-                          </div>
-                        } @empty {
-                          <p class="empty">Noch keine Ersatzzutat definiert.</p>
-                        }
-                        @if (activeReplacementPicker() === position.id) {
-                          <div class="replacement-picker">
-                            <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                              <mat-label>Ersatzzutat suchen</mat-label>
-                              <input matInput [name]="'replacement-search-' + position.id"
-                                [ngModel]="replacementSearch(position.id)"
-                                (ngModelChange)="setReplacementSearch(position.id, $event)" autocomplete="off">
-                            </mat-form-field>
-                            @if (replacementSearch(position.id).trim()) {
-                              <div class="candidate-list">
-                                @for (candidate of replacementCandidates(position); track candidate.revisionId) {
-                                  <button matButton type="button" (click)="addReplacement(position, candidate)">
-                                    <scp-action-icon name="add"/><span>{{ candidate.name }}<small>{{ scopeLabel(candidate.scope) }}</small></span>
-                                  </button>
-                                } @empty { <p class="empty">Keine passende Ersatzzutat gefunden.</p> }
-                              </div>
-                            }
-                          </div>
-                        }
-                      </div>
-                    </div>
-                  } @empty { <p class="empty">Noch keine Zutaten in dieser Gruppe.</p> }
-                </div>
-              </article>
-            }
-          </div>
-
-          @if (!disabled()) {
-            <div class="ingredient-picker">
-              <div class="picker-fields">
-                <mat-form-field appearance="outline"><mat-label>Zutat suchen</mat-label>
-                  <input matInput name="recipeIngredientSearch" [ngModel]="ingredientSearch()"
-                    (ngModelChange)="ingredientSearch.set($event)" autocomplete="off">
-                </mat-form-field>
-                <mat-form-field appearance="outline"><mat-label>In Gruppe einfügen</mat-label>
-                  <mat-select name="newIngredientGroup" [ngModel]="targetGroupId()"
-                    (ngModelChange)="targetGroupId.set($event)">
-                    <mat-option [value]="null">Ohne Gruppe</mat-option>
-                    @for (group of orderedGroups(); track group.id) {
-                      <mat-option [value]="group.id">{{ group.name || 'Unbenannte Gruppe' }}</mat-option>
-                    }
-                  </mat-select>
-                </mat-form-field>
-              </div>
-              @if (ingredientSearch().trim()) {
-                <div class="candidate-list">
-                  @for (candidate of ingredientCandidates(); track candidate.revisionId) {
-                    <button matButton type="button" (click)="addIngredient(candidate)">
-                      <scp-action-icon name="add"/><span>{{ candidate.name }}<small>{{ scopeLabel(candidate.scope) }}</small></span>
-                    </button>
-                  } @empty { <p class="empty">Keine passende veröffentlichte Zutat gefunden.</p> }
-                </div>
-              }
-            </div>
-          }
-        </section>
-
-        <section class="recipe-section nutrition-section">
-          <div class="section-title">
-            <div><h4>Nährwertschätzung</h4><p>Berechnet aus dem zuletzt gespeicherten Rezeptstand.</p></div>
-            <button matButton type="button" (click)="loadNutrition()"
-              [disabled]="changed() || nutritionLoading()">
-              Neu berechnen
-            </button>
-          </div>
-          @if (changed()) {
-            <p class="nutrition-hint">Speichere die Änderungen, um die Nährwerte neu zu berechnen.</p>
-          } @else if (nutritionLoading()) {
-            <div class="recipe-loading"><mat-spinner diameter="24"/><span>Nährwerte werden berechnet …</span></div>
-          } @else if (nutrition(); as calculation) {
-            @if (calculation.isComplete && calculation.perStandardPortion && calculation.total) {
-              <p class="nutrition-state complete">Vollständige Schätzung auf Basis geprüfter Zutatenprofile.</p>
-              <h5>Pro Standardportion</h5>
-              <div class="nutrition-grid">
-                <span><strong>{{ calculation.perStandardPortion.energyKilojoules | number:'1.0-1' }} kJ</strong><small>{{ calculation.perStandardPortion.energyKilocalories | number:'1.0-1' }} kcal</small></span>
-                <span><strong>{{ calculation.perStandardPortion.fatGrams | number:'1.0-2' }} g</strong><small>Fett</small></span>
-                <span><strong>{{ calculation.perStandardPortion.saturatedFatGrams | number:'1.0-2' }} g</strong><small>davon gesättigt</small></span>
-                <span><strong>{{ calculation.perStandardPortion.carbohydrateGrams | number:'1.0-2' }} g</strong><small>Kohlenhydrate</small></span>
-                <span><strong>{{ calculation.perStandardPortion.sugarsGrams | number:'1.0-2' }} g</strong><small>davon Zucker</small></span>
-                <span><strong>{{ calculation.perStandardPortion.proteinGrams | number:'1.0-2' }} g</strong><small>Eiweiß</small></span>
-                <span><strong>{{ calculation.perStandardPortion.saltGrams | number:'1.0-3' }} g</strong><small>Salz</small></span>
-                <span><strong>{{ optionalGrams(calculation.perStandardPortion.fiberGrams) }}</strong><small>Ballaststoffe</small></span>
-              </div>
-              <details class="nutrition-total">
-                <summary>Gesamtwerte des Rezepts</summary>
-                <div class="nutrition-grid">
-                  <span><strong>{{ calculation.total.energyKilojoules | number:'1.0-1' }} kJ</strong><small>{{ calculation.total.energyKilocalories | number:'1.0-1' }} kcal</small></span>
-                  <span><strong>{{ calculation.total.fatGrams | number:'1.0-2' }} g</strong><small>Fett</small></span>
-                  <span><strong>{{ calculation.total.saturatedFatGrams | number:'1.0-2' }} g</strong><small>davon gesättigt</small></span>
-                  <span><strong>{{ calculation.total.carbohydrateGrams | number:'1.0-2' }} g</strong><small>Kohlenhydrate</small></span>
-                  <span><strong>{{ calculation.total.sugarsGrams | number:'1.0-2' }} g</strong><small>davon Zucker</small></span>
-                  <span><strong>{{ calculation.total.proteinGrams | number:'1.0-2' }} g</strong><small>Eiweiß</small></span>
-                  <span><strong>{{ calculation.total.saltGrams | number:'1.0-3' }} g</strong><small>Salz</small></span>
-                  <span><strong>{{ optionalGrams(calculation.total.fiberGrams) }}</strong><small>Ballaststoffe</small></span>
-                </div>
-              </details>
-            } @else {
-              <p class="nutrition-state incomplete">Die Nährwertschätzung ist noch unvollständig.</p>
-              <ul class="nutrition-missing">
-                @for (missing of calculation.missingContributions; track missing.positionId + missing.ingredientRevisionId) {
-                  <li><strong>{{ missing.ingredientName }}</strong>: {{ nutritionReason(missing.reason) }}</li>
-                }
-              </ul>
-            }
-          } @else {
-            <p class="nutrition-hint">{{ nutritionMessage() || 'Für dieses Rezept sind noch keine Nährwerte berechenbar.' }}</p>
-          }
-        </section>
-
-        <div class="recipe-actions">
-          @if (publicationIssues().length) {
-            <div class="publication-validation" role="alert">
-              <strong>{{ publicationHasErrors() ? 'Das Rezept kann noch nicht veröffentlicht werden.' :
-                'Bitte prüfe diese Hinweise vor der Veröffentlichung.' }}</strong>
-              <ul>
-                @for (issue of publicationIssues(); track issue.code + ($index)) {
-                  <li>{{ validationIssueText(issue) }}</li>
-                }
-              </ul>
-              @if (!publicationHasErrors()) {
-                <button matButton="filled" type="button" (click)="publish(true)" [disabled]="publishing()">
-                  Hinweise bestätigen und veröffentlichen
-                </button>
-              }
-            </div>
-          }
-          <button matButton="filled" type="submit" [disabled]="disabled() || saving() || !changed()">
-            <scp-action-icon name="save"/>Speichern</button>
-          <button matButton type="button" (click)="publish(false)"
-            [disabled]="disabled() || saving() || publishing() || changed() || draft.status === 2">
-            {{ draft.status === 1 ? 'Neue Revision veröffentlichen' : 'Veröffentlichen' }}
-          </button>
-        </div>
-      </form>
-    } @else {
-      <div class="recipe-grid">
-        @for (recipe of visibleRecipes(); track recipe.libraryEntryId ?? recipe.recipeId) {
-          <mat-card><mat-card-header><mat-card-title>{{ recipe.name }}</mat-card-title>
-            <mat-card-subtitle>{{ recipe.isLocal ? statusLabel(recipe.status) : 'Übernommenes Rezept' }}</mat-card-subtitle>
-          </mat-card-header><mat-card-actions align="end">
-            @if (recipe.isLocal) {
-              <button matButton type="button" (click)="open(recipe)"><scp-action-icon name="edit"/>Öffnen</button>
-            }
-            @if (recipe.libraryEntryId) {
-              <button matIconButton type="button" class="remove-action" matTooltip="Aus Lagerbibliothek entfernen"
-                aria-label="Aus Lagerbibliothek entfernen" (click)="removeLibraryEntry(recipe.libraryEntryId)"
-                [disabled]="disabled()"><scp-action-icon name="remove"/></button>
-            }
-          </mat-card-actions></mat-card>
-        } @empty { <p class="empty">Noch keine Lagerrezepte vorhanden.</p> }
-      </div>
-    }
-  `,
-  styles: `
-    :host { display: grid; gap: 1rem; }
-    h3, h4, p { margin: 0; } .eyebrow { color: #557064; font-size: .75rem; font-weight: 700; text-transform: uppercase; }
-    .recipe-heading, .section-title, .recipe-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-    .recipe-message { padding: .75rem 1rem; border-radius: .65rem; border: 1px solid; }
-    .recipe-message.error { color: #8b2525; background: #fff1f0; border-color: #efb8b8; }
-    .recipe-message.notice { color: #205b3b; background: #edf8f1; border-color: #aed5bd; }
-    .recipe-loading { display: flex; gap: .75rem; align-items: center; min-height: 4rem; }
-    .recipe-form { display: grid; gap: 1rem; }
-    .recipe-section { display: grid; gap: 1rem; padding: 1rem; border: 1px solid #d9e2dc; border-radius: .8rem; background: #fff; }
-    .section-title p, .empty, small { color: #657269; font-size: .84rem; }
-    .field-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(10rem, 1fr); gap: .8rem; }
-    .full { width: 100%; } .group-list, .position-list, .ingredient-picker { display: grid; gap: .65rem; }
-    .ingredient-group { display: grid; gap: .7rem; padding: .8rem; border: 1px solid #dce5df; border-radius: .7rem; background: #fbfcfb; }
-    .ingredient-group.ungrouped { border-style: dashed; }
-    .group-heading, .icon-actions { display: flex; align-items: center; justify-content: space-between; gap: .35rem; }
-    .group-heading > div:first-child { display: grid; gap: .15rem; }
-    .group-name { width: min(24rem, 100%); }
-    .position-card { display: grid; grid-template-columns: minmax(10rem, 1.5fr) minmax(9rem, 1fr) minmax(7rem, .7fr) minmax(9rem, 1fr) auto; gap: .7rem; align-items: center; padding: .7rem; border-radius: .65rem; background: #f1f6f3; }
-    .position-name { display: grid; gap: .25rem; }
-    .replacement-section { grid-column: 1 / -1; display: grid; gap: .6rem; padding-top: .65rem; border-top: 1px solid #d7e1da; }
-    .replacement-heading { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
-    .replacement-heading > div { display: grid; gap: .15rem; }
-    .replacement-card { display: grid; grid-template-columns: minmax(10rem, 1.5fr) minmax(7rem, .7fr) minmax(9rem, 1fr) auto; gap: .7rem; align-items: center; padding: .65rem; border: 1px solid #d7e1da; border-radius: .6rem; background: #fff; }
-    .replacement-conflicts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .8rem; }
-    .replacement-conflicts > span { color: #526158; font-size: .84rem; font-weight: 600; }
-    .replacement-picker { display: grid; gap: .5rem; padding: .65rem; border-radius: .6rem; background: #e9f1ec; }
-    .conflict-list, .conflict-legend { display: flex; flex-wrap: wrap; gap: .3rem; }
-    .conflict-list span, .conflict-legend span { padding: .15rem .45rem; border-radius: 999px; font-size: .76rem; }
-    .conflict-list .preventable, .conflict-legend .preventable { color: #72500b; background: #fff0b8; }
-    .conflict-list .unavoidable, .conflict-legend .unavoidable { color: #8b2525; background: #ffe2df; }
-    .conflict-list .unclassified { color: #4f5d55; background: #e8eeea; }
-    .ingredient-update { justify-self: start; margin-left: -.75rem; }
-    .picker-fields { display: grid; grid-template-columns: 2fr 1fr; gap: .7rem; }
-    .candidate-list { display: flex; flex-wrap: wrap; gap: .5rem; }
-    .candidate-list button span { display: grid; text-align: left; }
-    .nutrition-section h5 { margin: 0; }
-    .nutrition-state { padding: .65rem .8rem; border-radius: .6rem; }
-    .nutrition-state.complete { color: #205b3b; background: #edf8f1; }
-    .nutrition-state.incomplete { color: #7b5414; background: #fff7e8; }
-    .nutrition-hint, .nutrition-missing { color: #657269; }
-    .publication-validation { flex: 1 1 100%; padding: .8rem 1rem; border: 1px solid #e2bc70; border-radius: .65rem; background: #fff8e8; }
-    .publication-validation ul { margin: .5rem 0; padding-left: 1.25rem; }
-    .recipe-actions { flex-wrap: wrap; }
-    .nutrition-grid { display: grid; grid-template-columns: repeat(4, minmax(8rem, 1fr)); gap: .6rem; }
-    .nutrition-grid span { display: grid; gap: .15rem; padding: .65rem; border-radius: .6rem; background: #f1f6f3; }
-    .nutrition-grid small { display: block; }
-    .nutrition-total { display: grid; gap: .7rem; }
-    .nutrition-total summary { cursor: pointer; color: #315d48; font-weight: 600; }
-    .nutrition-missing { margin: 0; padding-left: 1.25rem; }
-    .recipe-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: .8rem; }
-    @media (max-width: 900px) { .position-card, .replacement-card, .nutrition-grid { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 720px) { .field-grid, .picker-fields, .position-card, .replacement-card, .nutrition-grid { grid-template-columns: 1fr; } }
-  `
+  imports: [RecipeCatalogComponent, FormsModule, MatButtonModule, MatCheckboxModule, MatFormFieldModule,
+    MatInputModule, MatProgressSpinnerModule, MatSelectModule, MatSlideToggleModule, MatMenuModule, ActionIconComponent],
+  templateUrl: './recipe-editor.component.html',
+  styleUrl: './recipe-editor.component.scss'
 })
 export class RecipeEditorComponent {
   private readonly api = inject(RecipeEditorApiService);
+  readonly activeTab = signal('basic');
+  readonly editing = signal(false);
+  readonly readOnly = computed(() => this.disabled() || !this.editing() || this.saving() || this.publishing() || this.selected()?.status === 2);
+  readonly tabs: { id: string; label: string; icon: ActionIconName }[] = [
+    { id: 'basic', label: 'Grunddaten', icon: 'planning' },
+    { id: 'ingredients', label: 'Zutaten', icon: 'ingredients' },
+    { id: 'nutrition', label: 'Nährwerte', icon: 'nutrition' },
+    { id: 'publication', label: 'Prüfung & Veröffentlichung', icon: 'check' }
+  ];
+  private savedDraft: RecipeEditorDraft | null = null;
+  readonly revisionNumber = computed(() => this.recipes().find(value => value.recipeId === this.selected()?.id)?.revisionNumber ?? null);
+  hasPendingChanges() { return this.editing() && (this.changed() || this.ingredientDialogDirty()); }
+  beginEdit() {
+    if (this.disabled() || this.saving() || this.publishing() || this.selected()?.status === 2 || !this.selected()) return;
+    this.savedDraft = structuredClone(this.selected()!);
+    this.snapshot = JSON.stringify(this.selected()!.content);
+    this.editing.set(true); this.publicationWarningsAcknowledged.set(false); this.notice.set(''); this.error.set('');
+  }
+  cancelEdit() {
+    if (this.saving() || this.publishing()) return;
+    this.closeIngredientDialog();
+    if (this.savedDraft) this.setDraft(structuredClone(this.savedDraft));
+    this.editing.set(false); this.notice.set(''); this.error.set('');
+  }
+  tabKey(event: KeyboardEvent, index: number) {
+    let next = index;
+    if (event.key === 'ArrowRight') next = (index + 1) % this.tabs.length;
+    else if (event.key === 'ArrowLeft') next = (index + this.tabs.length - 1) % this.tabs.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = this.tabs.length - 1;
+    else return;
+    event.preventDefault(); this.activeTab.set(this.tabs[next].id);
+    (event.currentTarget as HTMLElement).parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
+  }
   readonly campId = input.required<string>();
   readonly usedRevisionIds = input<ReadonlySet<string> | null>(null);
   readonly visibleRecipes = computed(() => this.recipes().filter(recipe =>
@@ -462,8 +94,21 @@ export class RecipeEditorComponent {
   readonly nutrition = signal<RecipeNutritionCalculation | null>(null);
   readonly nutritionLoading = signal(false);
   readonly nutritionMessage = signal('');
+  private nutritionRequest = 0;
+  readonly nutritionRows: { key: keyof RecipeNutritionValues; label: string; subrow?: boolean }[] = [
+    { key: 'energyKilocalories', label: 'Energie' },
+    { key: 'fatGrams', label: 'Fett' },
+    { key: 'saturatedFatGrams', label: 'davon gesättigte Fettsäuren', subrow: true },
+    { key: 'carbohydrateGrams', label: 'Kohlenhydrate' },
+    { key: 'sugarsGrams', label: 'davon Zucker', subrow: true },
+    { key: 'proteinGrams', label: 'Eiweiß' },
+    { key: 'saltGrams', label: 'Salz' },
+    { key: 'fiberGrams', label: 'Ballaststoffe' }
+  ];
   readonly publishing = signal(false);
   readonly publicationIssues = signal<RecipeValidationIssue[]>([]);
+  readonly publicationWarningsAcknowledged = signal(false);
+  readonly validationTargetId = signal<string | null>(null);
   readonly publicationHasErrors = computed(() => this.publicationIssues().some(issue => issue.severity === 0));
   private snapshot = '';
 
@@ -479,7 +124,305 @@ export class RecipeEditorComponent {
     return tenant.length ? tenant : matches.filter(value => value.scope === 'Central');
   });
 
-  constructor() { effect(() => { const campId = this.campId(); if (campId) this.load(); }); }
+  readonly ingredientDialogMode = signal<IngredientDialogMode | null>(null);
+  readonly dialogPositionId = signal<string | null>(null);
+  readonly dialogPosition = computed(() => this.selected()?.content.ingredientPositions.find(value => value.id === this.dialogPositionId()) ?? null);
+  readonly replacementDraft = signal<RecipeEditorIngredientPosition | null>(null);
+  readonly scalingDraft = signal<{ scalingMode: number; stepSize: number | null; quantityPerStep: number | null; minimumQuantity?: number | null; maximumQuantity?: number | null } | null>(null);
+  readonly groupDialogId = signal<string | null>(null);
+  readonly groupDialogName = signal('');
+  readonly dialogTargetGroupId = signal<string | null>(null);
+  readonly dialogError = signal('');
+  private readonly ingredientDialog = viewChild<ElementRef<HTMLDialogElement>>('ingredientDialog');
+  private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
+  private ingredientDialogReturnFocus: HTMLElement | null = null;
+  private ingredientDialogSnapshot = '';
+
+  constructor() {
+    effect(() => { const campId = this.campId(); if (campId) this.load(); });
+    effect(() => { const dialog = this.ingredientDialog()?.nativeElement; if (dialog && !dialog.open) dialog.showModal(); });
+  }
+  ingredientDialogTitle() {
+    return { picker: 'Zutat hinzufügen', group: this.groupDialogId() ? 'Gruppe umbenennen' : 'Gruppe hinzufügen',
+      move: 'Zutat verschieben', scaling: 'Mengenregel', replacements: 'Ernährung & Ersatz', updates: 'Zutatenaktualisierungen', 'subrecipe-replacements': 'Ernährung & Ersatz', subrecipe: this.subrecipeOriginalId() ? 'Unterrezept bearbeiten' : 'Unterrezept hinzufügen' }[this.ingredientDialogMode() ?? 'picker'];
+  }
+  private ingredientDialogPayload() {
+    switch (this.ingredientDialogMode()) {
+      case 'group': return this.groupDialogName();
+      case 'move': return this.dialogTargetGroupId();
+      case 'scaling': return this.scalingDraft();
+      case 'subrecipe-replacements':
+      case 'subrecipe': return { position: this.subrecipeDraft(), replacement: this.subrecipeReplacementDirty() ? this.subrecipeReplacementDraft() : null };
+      case 'replacements': return this.replacementDraft()?.replacements;
+      default: return null;
+    }
+  }
+  ingredientDialogDirty() { return !!this.ingredientDialogMode() && JSON.stringify(this.ingredientDialogPayload()) !== this.ingredientDialogSnapshot; }
+  openIngredientDialog(mode: IngredientDialogMode) {
+    if (['picker','group','move','scaling','subrecipe'].includes(mode) && this.readOnly()) return;
+    this.ingredientDialogReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    this.dialogError.set(''); this.ingredientDialogMode.set(mode);
+    this.ingredientDialogSnapshot = JSON.stringify(this.ingredientDialogPayload());
+  }
+  openPositionDialog(mode: 'move' | 'scaling' | 'replacements', position: RecipeEditorIngredientPosition) {
+    if (mode !== 'replacements' && this.readOnly()) return;
+    this.dialogPositionId.set(position.id);
+    this.dialogTargetGroupId.set(position.groupId);
+    this.scalingDraft.set({ scalingMode: position.scalingMode, stepSize: position.stepSize, quantityPerStep: position.quantityPerStep, minimumQuantity: position.minimumQuantity ?? null, maximumQuantity: position.maximumQuantity ?? null });
+    this.replacementDraft.set(structuredClone(position)); this.openIngredientDialog(mode);
+  }
+  openGroupEditor(group: RecipeEditorGroup | null) {
+    if (this.readOnly()) return;
+    this.groupDialogId.set(group?.id ?? null); this.groupDialogName.set(group?.name ?? this.nextGroupName()); this.openIngredientDialog('group');
+  }
+  closeIngredientDialog() {
+    const wasOpen = !!this.ingredientDialogMode();
+    const dialog = this.ingredientDialog()?.nativeElement;
+    if (dialog?.open && typeof dialog.close === 'function') dialog.close();
+    this.subrecipeReplacementDraft.set(null); this.subrecipeDraft.set(null); this.subrecipeOriginalId.set(null); this.subrecipeSearch.set('');
+    this.ingredientDialogMode.set(null); this.dialogPositionId.set(null); this.replacementDraft.set(null); this.scalingDraft.set(null);
+    this.dialogError.set(''); this.activeReplacementPicker.set(null); this.replacementSearches.set({}); this.ingredientDialogSnapshot = '';
+    if (wasOpen) {
+      const target = this.ingredientDialogReturnFocus?.isConnected ? this.ingredientDialogReturnFocus : this.hostElement.nativeElement.querySelector<HTMLElement>('[role=tab][aria-selected=true]');
+      target?.focus();
+    }
+    this.ingredientDialogReturnFocus = null;
+  }
+  changeDialogScalingMode(mode: number) {
+    this.scalingDraft.set({ scalingMode: mode, stepSize: null, quantityPerStep: null, minimumQuantity: null, maximumQuantity: null });
+  }
+  applyIngredientDialog() {
+    if (this.readOnly()) return;
+    const mode = this.ingredientDialogMode(); const position = this.dialogPosition();
+    if (mode === 'subrecipe' || mode === 'subrecipe-replacements') { this.applySubrecipe(); return; }
+    if (mode === 'group') {
+      const name = this.groupDialogName().trim();
+      if (!name) { this.dialogError.set('Bitte gib einen Gruppennamen ein.'); return; }
+      if (this.groupDialogId()) { const group = this.selected()?.content.groups.find(value => value.id === this.groupDialogId()); if (group) group.name = name; }
+      else { this.addGroup(); const group = this.selected()?.content.groups.find(value => value.id === this.targetGroupId()); if (group) group.name = name; }
+    } else if (mode === 'move' && position) { this.movePositionToGroup(position, this.dialogTargetGroupId()); }
+    else if (mode === 'scaling' && position && this.scalingDraft()) { if (!this.validScalingDraft()) { this.dialogError.set('Bitte prüfe die Mengenregel: positive Schrittwerte oder gültige Grenzen (Minimum darf Maximum nicht überschreiten).'); return; } Object.assign(position, this.scalingDraft()); }
+    else if (mode === 'replacements' && position && this.replacementDraft()) { position.replacements = structuredClone(this.replacementDraft()!.replacements); }
+    this.markContentChanged(); this.closeIngredientDialog();
+  }
+  scalingLabel(mode: number) { return mode === 1 ? 'Fixe Menge' : mode === 2 ? 'In festen Schritten' : 'Linear'; }
+  scalingDescription(position: RecipeEditorIngredientPosition) {
+    if (position.scalingMode === 0) {
+      const unit = this.ingredientUnitSymbol(position);
+      return ['Linear', position.minimumQuantity != null ? `min. ${this.scalingNumber(position.minimumQuantity)} ${unit}` : '', position.maximumQuantity != null ? `max. ${this.scalingNumber(position.maximumQuantity)} ${unit}` : ''].filter(Boolean).join(' · ');
+    }
+    return position.scalingMode === 2 ? `${this.scalingNumber(position.quantityPerStep)} ${this.ingredientUnitSymbol(position)} je angefangene ${this.scalingNumber(position.stepSize)} Standardportionen` : this.scalingLabel(position.scalingMode);
+  }
+  scalingNumber(value: number | null) { return value !== null && Number.isFinite(value) ? new Intl.NumberFormat('de-DE', { maximumFractionDigits: 12 }).format(value) : '—'; }
+  validScalingDraft() {
+    const rule = this.scalingDraft();
+    if (!rule) return false;
+    if (rule.scalingMode === 0) return [rule.minimumQuantity, rule.maximumQuantity].every(value => value == null || Number.isFinite(value) && value >= 0)
+      && (rule.minimumQuantity == null || rule.maximumQuantity == null || rule.minimumQuantity <= rule.maximumQuantity);
+    return (rule.scalingMode !== 2 || [rule.stepSize, rule.quantityPerStep].every(value => value !== null && Number.isFinite(value) && value > 0));
+  }
+  scalingPreview() {
+    const rule = this.scalingDraft();
+    if (!rule || rule.scalingMode !== 2 || !this.validScalingDraft()) return [];
+    return [1, 2, 3].map(index => ({
+      range: index === 1 ? `Bis ${this.scalingNumber(rule.stepSize)}` : `Über ${this.scalingNumber(rule.stepSize! * (index - 1))} bis ${this.scalingNumber(rule.stepSize! * index)}`,
+      amount: this.scalingNumber(rule.quantityPerStep! * index)
+    }));
+  }
+  scalingUsesStageFactors() {
+    const mode = this.dialogPosition()?.ageGroupScaling;
+    return mode === 1 || mode === 0 && this.selected()?.content.defaultAgeGroupScalingApplies === true;
+  }
+
+  readonly referenceData = signal<import('../ingredients/ingredient-revision-api.service').IngredientEditorReferenceData | null>(null);
+  readonly referenceDataLoading = signal(false);
+  loadRecipeReferenceData() {
+    if (this.referenceData() || this.referenceDataLoading()) return;
+    this.referenceDataLoading.set(true);
+    this.api.referenceData().subscribe({ next: value => { this.referenceData.set(value); this.referenceDataLoading.set(false); }, error: () => { this.referenceDataLoading.set(false); this.error.set('Die Einheiten konnten nicht geladen werden. Bitte erneut versuchen.'); } });
+  }
+  recipeUnits() {
+    return this.referenceData()?.units ?? [];
+  }
+  recipeReferenceLabel() {
+    const content = this.selected()?.content;
+    if (!content) return '—';
+    if (content.recipeType === 0) return `${this.scalingNumber(content.referenceServings)} ${content.referenceServings === 1 ? 'Standardportion' : 'Standardportionen'}`;
+    const unit = this.recipeUnits().find(value => value.id === content.referenceUnitId)
+      ?? this.ingredients().flatMap(value => value.units).find(value => value.unitId === content.referenceUnitId);
+    return `${this.scalingNumber(content.referenceQuantity)} ${unit?.symbol ?? '—'}`;
+  }
+  changeRecipeType(type: number) {
+    const content = this.selected()?.content;
+    if (!content || this.readOnly() || content.recipeType === type) return;
+    content.recipeType = type;
+    if (type === 1) { content.referenceServings = null; content.referenceQuantity = null; content.referenceUnitId = null; content.authoringStage = null; content.defaultAgeGroupScalingApplies = false; this.loadRecipeReferenceData(); }
+    else { content.referenceQuantity = null; content.referenceUnitId = null; content.referenceServings = null; }
+    this.markContentChanged();
+  }
+  readonly subrecipeReplacementDraft = signal<RecipeEditorSubrecipeReplacement | null>(null);
+  private subrecipeReplacementSnapshot = '';
+  subrecipeReplacementDirty() { return !!this.subrecipeReplacementDraft() && JSON.stringify(this.subrecipeReplacementDraft()) !== this.subrecipeReplacementSnapshot; }
+  openSubrecipeReplacement(value: RecipeEditorSubrecipeReplacement | null = null) {
+    if (this.readOnly() || !this.subrecipeDraft()) return;
+    const draft = value ? structuredClone(value) : { id: crypto.randomUUID(), recipeRevisionId: null, servings: null, quantity: null, unitId: null, conflicts: [] };
+    this.subrecipeReplacementDraft.set(draft); this.subrecipeReplacementSnapshot = JSON.stringify(draft);
+  }
+  subrecipeReplacementCandidates() {
+    const source = this.subrecipeDraft(), current = this.subrecipeReplacementDraft();
+    return (this.selected()?.subrecipeReferences ?? []).filter(value => value.recipeId !== this.selected()?.id
+      && (value.canSelect || value.revisionId === current?.recipeRevisionId)
+      && value.recipeType === (source ? this.subrecipeReference(source)?.recipeType : null)
+      && value.revisionId !== source?.recipeRevisionId);
+  }
+  selectSubrecipeReplacement(revisionId: string | null) {
+    const draft = this.subrecipeReplacementDraft(), reference = this.subrecipeReplacementCandidates().find(value => value.revisionId === revisionId);
+    if (!draft || !reference) return;
+    this.subrecipeReplacementDraft.set({ ...draft, recipeRevisionId: revisionId, servings: reference.recipeType === 0 ? this.subrecipeDraft()?.servings ?? 1 : null,
+      quantity: reference.recipeType === 1 ? reference.referenceQuantity : null, unitId: reference.recipeType === 1 ? reference.referenceUnit?.unitId ?? null : null });
+  }
+  subrecipeConflictOptions(): EditorConflictOption[] {
+    const source = this.subrecipeDraft(); if (!source) return [];
+    const named = [...(this.referenceData()?.allergens ?? []).map(value => ({type: 0, id: value.id, name: value.name})),
+      ...(this.referenceData()?.intolerances ?? []).map(value => ({type: 1, id: value.id, name: value.name})),
+      ...(this.selected()?.subrecipeReferences ?? []).flatMap(value => value.conflicts)];
+    const values = [...(this.subrecipeReference(source)?.conflicts ?? []), ...source.replacements.flatMap(value => value.conflicts)];
+    return values.filter((value,index) => values.findIndex(other => other.type === value.type && other.id === value.id) === index)
+      .map(value => ({...value, name: named.find(other => other.type === value.type && other.id === value.id)?.name ?? 'Gespeicherte Anforderung'}));
+  }
+  subrecipeConflictUsed(conflict: RecipeEditorConflict) { return this.subrecipeDraft()?.replacements.some(value => value.id !== this.subrecipeReplacementDraft()?.id && value.conflicts.some(other => other.type === conflict.type && other.id === conflict.id)) ?? false; }
+  subrecipeReplacementHasConflict(conflict: RecipeEditorConflict) { return this.subrecipeReplacementDraft()?.conflicts.some(value => value.type === conflict.type && value.id === conflict.id) ?? false; }
+  toggleSubrecipeReplacementConflict(conflict: RecipeEditorConflict, checked: boolean) {
+    const draft = this.subrecipeReplacementDraft(); if (!draft || this.subrecipeConflictUsed(conflict)) return;
+    this.subrecipeReplacementDraft.set({...draft, conflicts: checked ? [...draft.conflicts.filter(value => value.type !== conflict.type || value.id !== conflict.id), {type: conflict.type,id: conflict.id}] : draft.conflicts.filter(value => value.type !== conflict.type || value.id !== conflict.id)});
+  }
+  validSubrecipeReplacement() {
+    const value = this.subrecipeReplacementDraft(); if (!value || this.readOnly()) return false;
+    const reference = this.subrecipeReplacementCandidates().find(other => other.revisionId === value.recipeRevisionId);
+    return !!reference && value.conflicts.length > 0 && !value.conflicts.some(conflict => this.subrecipeConflictUsed(conflict))
+      && (reference.recipeType === 0 ? value.servings != null && Number.isFinite(value.servings) && value.servings > 0 : value.quantity != null && Number.isFinite(value.quantity) && value.quantity > 0 && reference.units.some(unit => unit.unitId === value.unitId));
+  }
+  subrecipeReplacementWarnings() {
+    const value = this.subrecipeReplacementDraft(), source = this.subrecipeDraft();
+    if (!value || !source) return [];
+    return (this.subrecipeReference(value)?.conflicts ?? []).filter(conflict => value.conflicts.some(other => other.type === conflict.type && other.id === conflict.id)
+      || !(this.subrecipeReference(source)?.conflicts ?? []).some(other => other.type === conflict.type && other.id === conflict.id));
+  }
+  applySubrecipeReplacement() {
+    if (!this.validSubrecipeReplacement()) return;
+    const source = this.subrecipeDraft()!, value = structuredClone(this.subrecipeReplacementDraft()!);
+    this.subrecipeDraft.set({...source, replacements: [...source.replacements.filter(other => other.id !== value.id), value]});
+    this.subrecipeReplacementDraft.set(null);
+  }
+  removeSubrecipeReplacement(id: string) {
+    const source = this.subrecipeDraft(); if (this.readOnly() || !source) return;
+    this.subrecipeDraft.set({...source, replacements: source.replacements.filter(value => value.id !== id)});
+  }
+
+  openSubrecipeReplacements(position: RecipeEditorSubrecipePosition) {
+    this.subrecipeOriginalId.set(position.id);
+    this.subrecipeDraft.set(structuredClone(position));
+    this.subrecipeReplacementDraft.set(null); this.subrecipeSearch.set('');
+    this.openIngredientDialog('subrecipe-replacements');
+  }
+  subrecipeReplacementConflictNames(position: RecipeEditorSubrecipePosition, replacement: RecipeEditorSubrecipeReplacement) {
+    const known = [...(this.subrecipeReference(position)?.conflicts ?? []), ...(this.selected()?.subrecipeReferences ?? []).flatMap(value => value.conflicts)];
+    return replacement.conflicts.map(conflict => known.find(value => value.type === conflict.type && value.id === conflict.id)?.name ?? 'Gespeicherte Anforderung').join(', ');
+  }
+  readonly subrecipeDraft = signal<RecipeEditorSubrecipePosition | null>(null);
+  readonly subrecipeOriginalId = signal<string | null>(null);
+  readonly subrecipeSearch = signal('');
+  subrecipeReference(position: Pick<RecipeEditorSubrecipePosition, 'recipeRevisionId'>): RecipeEditorSubrecipeReference | undefined {
+    return this.selected()?.subrecipeReferences?.find(value => value.revisionId === position.recipeRevisionId);
+  }
+  subrecipeDietState(position: Pick<RecipeEditorSubrecipePosition, 'recipeRevisionId'>) {
+    const reference = this.subrecipeReference(position);
+    if (!reference) return 'unknown';
+    return reference.conflicts.some(value => !value.preventableByVariants.length) ? 'unavoidable'
+      : reference.conflicts.length ? 'preventable' : 'clear';
+  }
+  subrecipeConflictTitle(conflict: {name: string; preventableByVariants: string[]}) {
+    return conflict.preventableByVariants.length ? `Vermeidbar durch ${conflict.preventableByVariants.join(', ')}.` : 'Durch keine aktive Zutatenvariante vermeidbar.';
+  }
+  subrecipeName(position: Pick<RecipeEditorSubrecipePosition, 'recipeRevisionId'>) { return this.subrecipeReference(position)?.name ?? 'Unterrezeptrevision nicht verfügbar'; }
+  subrecipeCandidates() {
+    const query = this.subrecipeSearch().trim().toLocaleLowerCase('de');
+    return (this.selected()?.subrecipeReferences ?? []).filter(value => value.canSelect && value.recipeId !== this.selected()?.id && value.name.toLocaleLowerCase('de').includes(query));
+  }
+  subrecipeAmount(position: Pick<RecipeEditorSubrecipePosition, 'recipeRevisionId' | 'servings' | 'quantity' | 'unitId'>) {
+    const reference = this.subrecipeReference(position);
+    return position.servings != null ? `${this.scalingNumber(position.servings)} ${position.servings === 1 ? 'Standardportion' : 'Standardportionen'}`
+      : `${this.scalingNumber(position.quantity)} ${reference?.units.find(value => value.unitId === position.unitId)?.symbol ?? '—'}`;
+  }
+  openSubrecipeEditor(position: RecipeEditorSubrecipePosition | null = null) {
+    if (this.readOnly()) return;
+    this.subrecipeOriginalId.set(position?.id ?? null);
+    this.subrecipeDraft.set(position ? structuredClone(position) : { id: crypto.randomUUID(), groupId: null, recipeRevisionId: null, servings: 1, quantity: null, unitId: null, sortOrder: 0, replacements: [] });
+    this.subrecipeSearch.set(''); this.openIngredientDialog('subrecipe');
+  }
+  selectSubrecipe(reference: RecipeEditorSubrecipeReference) {
+    const draft = this.subrecipeDraft(); if (!draft || !reference.canSelect || reference.recipeId === this.selected()?.id) return;
+    if (draft.recipeRevisionId === reference.revisionId) return;
+    const previous = this.subrecipeReference(draft);
+    if (draft.replacements.length && previous && previous.recipeType !== reference.recipeType) {
+      this.dialogError.set('Mit vorhandenen Ersatzrezepten kann der Rezepttyp nicht gewechselt werden.'); return;
+    }
+    this.dialogError.set('');
+    this.subrecipeDraft.set({ ...draft, recipeRevisionId: reference.revisionId,
+      servings: reference.recipeType === 0 ? 1 : null,
+      quantity: reference.recipeType === 1 ? reference.referenceQuantity : null,
+      unitId: reference.recipeType === 1 ? reference.referenceUnit?.unitId ?? null : null });
+  }
+  validSubrecipeDraft() {
+    const draft = this.subrecipeDraft(); if (!draft || this.readOnly() || this.subrecipeReplacementDraft()) return false;
+    const reference = this.subrecipeReference(draft);
+    const original = this.selected()?.content.subrecipePositions.find(value => value.id === this.subrecipeOriginalId());
+    if (!reference || reference.recipeId === this.selected()?.id || !reference.canSelect && original?.recipeRevisionId !== draft.recipeRevisionId) return false;
+    if (draft.groupId !== null && !this.selected()?.content.groups.some(value => value.id === draft.groupId)) return false;
+    if (this.selected()?.content.subrecipePositions.some(value => value.id !== draft.id && value.groupId === draft.groupId && value.recipeRevisionId === draft.recipeRevisionId)) return false;
+    return reference.recipeType === 0
+      ? draft.servings !== null && Number.isFinite(draft.servings) && draft.servings > 0
+      : draft.quantity !== null && Number.isFinite(draft.quantity) && draft.quantity > 0 && reference.units.some(value => value.unitId === draft.unitId);
+  }
+  private applySubrecipe() {
+    if (!this.validSubrecipeDraft()) { this.dialogError.set('Wähle eine zulässige veröffentlichte Revision, eine positive Menge und eine Gruppe ohne doppelten Eintrag.'); return; }
+    const content = this.selected()!.content, value = structuredClone(this.subrecipeDraft()!);
+    const original = content.subrecipePositions.find(position => position.id === this.subrecipeOriginalId());
+    const previousGroup = original?.groupId;
+    if (!original || original.groupId !== value.groupId) value.sortOrder = this.allPositionsForGroup(value.groupId).filter(position => position.id !== value.id).length;
+    if (original) content.subrecipePositions = content.subrecipePositions.map(position => position.id === original.id ? value : position);
+    else content.subrecipePositions.push(value);
+    if (previousGroup !== undefined) this.normalizePositions(previousGroup);
+    this.normalizePositions(value.groupId); this.markContentChanged(); this.closeIngredientDialog();
+  }
+  removeSubrecipe(position: RecipeEditorSubrecipePosition) {
+    if (this.readOnly()) return;
+    this.selected()!.content.subrecipePositions = this.selected()!.content.subrecipePositions.filter(value => value.id !== position.id);
+    this.normalizePositions(position.groupId); this.markContentChanged();
+  }
+  private entriesForGroup(groupId: string | null): RecipeEditorEntry[] {
+    const content = this.selected()?.content;
+    return [ ...(content?.ingredientPositions ?? []).map(position => ({kind: 'ingredient' as const, position})),
+      ...(content?.subrecipePositions ?? []).map(position => ({kind: 'subrecipe' as const, position})) ]
+      .filter(value => value.position.groupId === groupId).sort((a,b) => a.position.sortOrder - b.position.sortOrder);
+  }
+  private allPositionsForGroup(groupId: string | null) { return this.entriesForGroup(groupId).map(value => value.position); }
+
+  ingredientUnitSymbol(position: RecipeEditorIngredientPosition) { return this.ingredient(position)?.units.find(value => value.unitId === position.unitId)?.symbol ?? '—'; }
+  ingredientOrigin(position: RecipeEditorIngredientPosition) { return this.ingredients().find(value => value.revisionId === position.ingredientRevisionId)?.originInformation || 'Keine Angabe'; }
+  availableIngredientUpdates() { return (this.selected()?.content.ingredientPositions ?? []).filter(value => !!this.ingredientReference(value)?.availableUpdate); }
+  ingredientHintCount() { return (this.selected()?.content.ingredientPositions ?? []).filter(value => this.positionConflicts(value).length > 0).length
+    + (this.selected()?.content.subrecipePositions ?? []).filter(value => (this.subrecipeReference(value)?.conflicts.length ?? 0) > 0).length; }
+  subrecipeCount(groupId: string | null) { return this.selected()?.content.subrecipePositions.filter(value => value.groupId === groupId).length ?? 0; }
+  dietState(position: RecipeEditorIngredientPosition) {
+    const values = this.positionConflicts(position).map(value => this.conflictVariantNames(position, value.id));
+    return values.some(value => value?.length === 0) ? 'unavoidable' : values.length && values.every(value => !!value?.length) ? 'preventable' : 'unknown';
+  }
+  dietLabel(position: RecipeEditorIngredientPosition) {
+    const values = this.positionConflicts(position);
+    const label = values.length === 1 ? values[0].name : values.length ? `${values.length} Ernährungshinweise` : 'Ersatzzutaten';
+    return label + (this.dietState(position) === 'preventable' ? ' (Variante)' : position.replacements.length ? ' · Ersatz hinterlegt' : '');
+  }
 
   load() {
     this.loading.set(true); this.error.set('');
@@ -498,13 +441,15 @@ export class RecipeEditorComponent {
       tags: [], groups: [], ingredientPositions: [], subrecipePositions: [] };
     this.saving.set(true); this.error.set('');
     this.api.create(this.campId(), content).subscribe({ next: draft => {
-      this.saving.set(false); this.setDraft(draft); this.loadCatalogOnly();
+      this.saving.set(false); this.setDraft(draft); this.activeTab.set('basic'); this.beginEdit(); this.loadCatalogOnly();
     }, error: (response: HttpErrorResponse) => { this.saving.set(false);
       this.error.set(response.status === 403 ? 'Du darfst keine Lagerrezepte bearbeiten.' :
         'Das Rezept konnte nicht angelegt werden.'); } });
   }
 
   open(recipe: RecipeCatalogEntry) {
+    if (this.hasPendingChanges() && !window.confirm('Ungespeicherte Änderungen verwerfen?')) return;
+    this.activeTab.set('basic');
     this.loading.set(true); this.error.set(''); this.notice.set('');
     this.api.get(this.campId(), recipe.recipeId).subscribe({ next: draft => {
       this.loading.set(false); this.setDraft(draft);
@@ -512,6 +457,9 @@ export class RecipeEditorComponent {
   }
 
   closeEditor() {
+    if (this.saving() || this.publishing()) return;
+    if (this.hasPendingChanges() && !window.confirm('Ungespeicherte Änderungen verwerfen und zur Rezeptliste zurückkehren?')) return;
+    this.editing.set(false);
     this.selected.set(null); this.ingredientSearch.set(''); this.targetGroupId.set(null);
     this.activeReplacementPicker.set(null); this.replacementSearches.set({}); this.notice.set(''); this.load();
   }
@@ -522,7 +470,12 @@ export class RecipeEditorComponent {
   }
 
   ingredientReference(position: RecipeEditorIngredientPosition) {
-    return this.selected()?.ingredientReferences.find(value => value.revisionId === position.ingredientRevisionId);
+    const references = this.selected()?.ingredientReferences ?? [];
+    const reference = references.find(value => value.revisionId === position.ingredientRevisionId);
+    if (reference) return reference;
+    const previous = references.find(value => value.availableUpdate?.revisionId === position.ingredientRevisionId);
+    const update = previous?.availableUpdate;
+    return previous && update ? { ...previous, ...update, availableUpdate: null } : undefined;
   }
 
   replacementIngredient(replacement: RecipeEditorIngredientReplacement):
@@ -530,6 +483,9 @@ export class RecipeEditorComponent {
     return this.selected()?.ingredientReferences.find(value => value.revisionId === replacement.ingredientRevisionId) ??
       this.ingredients().find(value => value.revisionId === replacement.ingredientRevisionId);
   }
+
+  replacementUnitSymbol(replacement: RecipeEditorIngredientReplacement) { return this.replacementIngredient(replacement)?.units.find(value => value.unitId === replacement.unitId)?.symbol ?? '—'; }
+  replacementAssignedNames(position: RecipeEditorIngredientPosition, replacement: RecipeEditorIngredientReplacement) { return this.positionConflicts(position).filter(value => this.replacementHasConflict(replacement, value)).map(value => value.name).join(', '); }
 
   replacementConflictVariantNames(replacement: RecipeEditorIngredientReplacement, conflictId: string): string[] | null {
     const reference = this.selected()?.ingredientReferences
@@ -659,8 +615,8 @@ export class RecipeEditorComponent {
     const draft = this.selected();
     if (!draft) return [];
     return [
-      { id: null, group: null, positions: this.positionsForGroup(null) },
-      ...this.orderedGroups().map(group => ({ id: group.id, group, positions: this.positionsForGroup(group.id) })),
+      { id: null, group: null, positions: this.positionsForGroup(null), entries: this.entriesForGroup(null) },
+      ...this.orderedGroups().map(group => ({ id: group.id, group, positions: this.positionsForGroup(group.id), entries: this.entriesForGroup(group.id) })),
     ];
   }
 
@@ -709,7 +665,7 @@ export class RecipeEditorComponent {
     const draft = this.selected();
     if (!draft || !ingredient.revisionId || !ingredient.units.length) return;
     const groupId = this.targetGroupId();
-    const sortOrder = this.positionsForGroup(groupId).length;
+    const sortOrder = this.allPositionsForGroup(groupId).length;
     draft.content.ingredientPositions.push({ id: crypto.randomUUID(), groupId,
       ingredientRevisionId: ingredient.revisionId, quantity: 1, unitId: ingredient.units[0].unitId,
       sortOrder, scalingMode: 0, ageGroupScaling: 0,
@@ -727,8 +683,9 @@ export class RecipeEditorComponent {
     this.markContentChanged();
   }
 
-  movePosition(position: RecipeEditorIngredientPosition, direction: -1 | 1) {
-    const positions = this.positionsForGroup(position.groupId);
+  movePosition(position: RecipeEditorIngredientPosition | RecipeEditorSubrecipePosition, direction: -1 | 1) {
+    if (this.readOnly()) return;
+    const positions = this.allPositionsForGroup(position.groupId);
     const index = positions.findIndex(value => value.id === position.id);
     const targetIndex = index + direction;
     if (index < 0 || targetIndex < 0 || targetIndex >= positions.length) return;
@@ -748,7 +705,7 @@ export class RecipeEditorComponent {
     }
     const previousGroupId = position.groupId;
     position.groupId = groupId;
-    position.sortOrder = this.positionsForGroup(groupId).filter(value => value.id !== position.id).length;
+    position.sortOrder = this.allPositionsForGroup(groupId).filter(value => value.id !== position.id).length;
     this.normalizePositions(previousGroupId);
     this.normalizePositions(groupId);
     this.error.set('');
@@ -758,7 +715,7 @@ export class RecipeEditorComponent {
   changed() { return !!this.selected() && JSON.stringify(this.selected()!.content) !== this.snapshot; }
 
   save() {
-    const draft = this.selected(); if (!draft || !this.changed() || this.saving()) return;
+    const draft = this.selected(); if (!draft || this.readOnly() || this.ingredientDialogMode() || !this.changed()) return;
     this.saving.set(true); this.error.set(''); this.notice.set('');
     this.api.save(this.campId(), draft).subscribe({ next: saved => {
       this.saving.set(false); this.setDraft(saved); this.notice.set('Das Rezept wurde gespeichert.');
@@ -771,7 +728,8 @@ export class RecipeEditorComponent {
 
   publish(acknowledgeWarnings: boolean) {
     const draft = this.selected();
-    if (!draft || this.changed() || this.publishing()) return;
+    if (!draft || !this.canPublishRecipe() || acknowledgeWarnings && (!this.publicationWarningsAcknowledged() || !this.publicationWarnings().length || this.publicationErrors().length > 0)) return;
+    this.publicationWarningsAcknowledged.set(false);
     this.publishing.set(true); this.error.set(''); this.notice.set('');
     this.api.publish(this.campId(), draft, acknowledgeWarnings).subscribe({
       next: result => {
@@ -807,12 +765,15 @@ export class RecipeEditorComponent {
   loadNutrition() {
     const draft = this.selected();
     if (!draft || this.changed() || this.nutritionLoading()) return;
+    const request = ++this.nutritionRequest;
     this.nutritionLoading.set(true); this.nutritionMessage.set('');
     this.api.nutrition(this.campId(), draft.id).subscribe({
       next: value => {
+        if (request !== this.nutritionRequest || this.selected()?.id !== draft.id) return;
         this.nutrition.set(value); this.nutritionLoading.set(false);
       },
       error: (response: HttpErrorResponse) => {
+        if (request !== this.nutritionRequest || this.selected()?.id !== draft.id) return;
         this.nutrition.set(null); this.nutritionLoading.set(false);
         this.nutritionMessage.set(response.status === 422
           ? 'Ergänze zuerst Standardportionen und mindestens eine vollständig konfigurierte Zutat.'
@@ -821,8 +782,39 @@ export class RecipeEditorComponent {
     });
   }
 
-  optionalGrams(value: number | null) {
-    return value === null ? 'Unbekannt' : `${this.formatNumber(value, 2)} g`;
+  private displayedNutrition(scope: 'portion' | 'total') {
+    if (this.changed() || this.nutritionLoading()) return null;
+    return scope === 'portion' ? this.nutrition()?.perStandardPortion : this.nutrition()?.total;
+  }
+  nutritionEnergy(scope: 'portion' | 'total') {
+    const value = this.displayedNutrition(scope)?.energyKilocalories;
+    return value == null ? '—' : `${this.formatNumber(value, 0)} kcal`;
+  }
+  nutritionEnergyKilojoules(scope: 'portion' | 'total') {
+    const value = this.displayedNutrition(scope)?.energyKilojoules;
+    return value == null ? 'Noch nicht berechenbar' : `${this.formatNumber(value, 0)} kJ`;
+  }
+  nutritionCell(key: keyof RecipeNutritionValues, scope: 'portion' | 'total') {
+    const values = this.displayedNutrition(scope);
+    if (!values || values[key] == null) return '—';
+    if (key === 'energyKilocalories') return `${this.formatNumber(values.energyKilocalories, 0)} kcal / ${this.formatNumber(values.energyKilojoules, 0)} kJ`;
+    return `${this.formatNumber(values[key]!, key === 'saltGrams' ? 3 : 2)} g`;
+  }
+  nutritionReferenceServings() {
+    const content = this.savedDraft?.content;
+    return content?.recipeType === 0 && content.referenceServings != null
+      ? content.referenceServings * (content.authoringStage?.factor ?? 1) : null;
+  }
+  nutritionReferences() { return this.savedDraft?.ingredientReferences ?? []; }
+  nutritionMissingIngredients() {
+    const grouped = new Map<string, RecipeNutritionCalculation['missingContributions'][number] & { occurrences: number; revisionNumber: number | null }>();
+    for (const missing of this.nutrition()?.missingContributions ?? []) {
+      const key = `${missing.ingredientRevisionId}-${missing.reason}`;
+      const existing = grouped.get(key);
+      if (existing) existing.occurrences++;
+      else grouped.set(key, { ...missing, occurrences: 1, revisionNumber: this.nutritionReferences().find(value => value.revisionId === missing.ingredientRevisionId)?.revisionNumber ?? null });
+    }
+    return [...grouped.values()];
   }
 
   nutritionReason(reason: number) {
@@ -837,6 +829,70 @@ export class RecipeEditorComponent {
   }
   statusLabel(status: number) { return status === 0 ? 'Entwurf' : status === 1 ? 'Aktiv' : 'Archiviert'; }
 
+  canPublishRecipe() { return !!this.selected() && this.selected()!.status !== 2 && !this.disabled() && !this.editing() && !this.saving() && !this.changed() && !this.publishing(); }
+  publicationErrors() { return this.changed() ? [] : this.publicationIssues().filter(issue => issue.severity === 0); }
+  publicationWarnings() { return this.changed() ? [] : this.publicationIssues().filter(issue => issue.severity === 1); }
+  publicationStatusTitle() {
+    if (this.selected()?.status === 2) return 'Rezept archiviert';
+    if (this.editing()) return this.changed() ? 'Änderungen zuerst speichern' : 'Entwurf in Bearbeitung';
+    if (this.publicationErrors().length) return 'Die Veröffentlichung ist derzeit nicht möglich.';
+    if (this.publicationWarnings().length) return 'Warnungen vor der Veröffentlichung prüfen';
+    return 'Noch keine separate Vorabprüfung';
+  }
+  publicationStatusText() {
+    if (this.selected()?.status === 2) return 'Dieses Rezept kann nicht veröffentlicht werden.';
+    if (this.editing()) return 'Die Veröffentlichung verwendet ausschließlich den gespeicherten Rezeptstand.';
+    if (this.publicationErrors().length) return 'Behebe zuerst die aufgeführten Fehler und speichere den Entwurf.';
+    if (this.publicationWarnings().length) return 'Diese Warnungen müssen vor der Veröffentlichung ausdrücklich bestätigt werden.';
+    return 'Beim Veröffentlichen wird das Rezept geprüft. Ohne blockierende Fehler wird direkt eine neue Revision erstellt.';
+  }
+  publicationAdvisories() {
+    const result: { id: string; title: string; text: string; tab: string; action: string }[] = [];
+    if (this.changed()) return result;
+    const missing = this.nutritionMissingIngredients().length;
+    if (!this.nutritionLoading() && this.nutrition()?.isComplete === false && missing > 0)
+      result.push({ id: 'nutrition', title: 'Unvollständige Nährwertdaten', text: `Für ${missing} Zutatenrevision${missing === 1 ? '' : 'en'} fehlen verwendbare Nährwertangaben.`, tab: 'nutrition', action: 'Nährwerte ansehen' });
+    const updates = this.availableIngredientUpdates().length;
+    if (updates) result.push({ id: 'updates', title: 'Zutatenaktualisierungen verfügbar', text: `Für ${updates} Zutatenposition${updates === 1 ? '' : 'en'} sind neuere Revisionen vorhanden.`, tab: 'ingredients', action: 'Zutaten ansehen' });
+    return result;
+  }
+  publicationIssueTitle(issue: RecipeValidationIssue) {
+    if (issue.code.startsWith('recipe.reference.') || issue.code.startsWith('recipe.authoring-stage.')) return 'Rezeptbezug prüfen';
+    if (issue.code.startsWith('recipe.group.')) return 'Zutatengruppe prüfen';
+    if (issue.code.startsWith('recipe.ingredient-replacement.') || issue.code.startsWith('recipe.replacement.')) return 'Ersatzzutat prüfen';
+    if (issue.code.startsWith('recipe.ingredient.')) return 'Zutatenangaben prüfen';
+    if (issue.code.startsWith('recipe.subrecipe.') || issue.code.startsWith('recipe.recipe-replacement.')) return 'Unterrezept prüfen';
+    if (issue.code === 'recipe.conflict.unresolved') return 'Offener Ernährungskonflikt';
+    if (issue.code === 'recipe.name.missing') return 'Rezeptname fehlt';
+    if (issue.code === 'recipe.description.missing') return 'Beschreibung fehlt';
+    if (issue.code === 'recipe.source.missing') return 'Quelle fehlt';
+    return issue.severity === 0 ? 'Rezeptangaben prüfen' : 'Hinweis zum Rezept';
+  }
+  private validationDestination(issue: RecipeValidationIssue) {
+    const content = this.selected()?.content;
+    const replacementId = issue.context?.['replacementId'];
+    const position = content?.ingredientPositions.find(value => value.id === issue.context?.['positionId'] || !!replacementId && value.replacements.some(rule => rule.id === replacementId));
+    const subrecipe = content?.subrecipePositions.find(value => value.id === issue.context?.['positionId'] || !!replacementId && value.replacements.some(rule => rule.id === replacementId));
+    const basic = ['recipe.name.missing', 'recipe.description.missing', 'recipe.source.missing'].includes(issue.code) || issue.code.startsWith('recipe.reference.') || issue.code.startsWith('recipe.authoring-stage.');
+    return { tab: basic ? 'basic' : 'ingredients', positionId: position?.id ?? subrecipe?.id, groupId: content?.groups.find(group => group.id === issue.context?.['groupId'])?.id };
+  }
+  validationIssueAction(issue: RecipeValidationIssue) {
+    const target = this.validationDestination(issue);
+    return target.positionId || target.groupId ? 'Zum Eintrag' : target.tab === 'basic' ? 'Zu den Grunddaten' : 'Zu den Zutaten';
+  }
+  goToValidationIssue(issue: RecipeValidationIssue) {
+    if (this.saving() || this.publishing()) return;
+    const target = this.validationDestination(issue); this.validationTargetId.set(target.positionId ?? target.groupId ?? null); this.activeTab.set(target.tab);
+    requestAnimationFrame(() => {
+      const host = this.hostElement.nativeElement;
+      const row = target.positionId ? [...host.querySelectorAll<HTMLElement>('[data-validation-position]')].find(el => el.dataset['validationPosition'] === target.positionId) : null;
+      const groupTarget = target.groupId ? [...host.querySelectorAll<HTMLDetailsElement>('[data-validation-group]')].find(el => el.dataset['validationGroup'] === target.groupId) : null;
+      const element = row ?? groupTarget ?? host.querySelector<HTMLElement>(`#recipe-panel-${target.tab}`);
+      const group = groupTarget ?? row?.closest('details'); if (group) group.open = true;
+      element?.focus({ preventScroll: true }); element?.scrollIntoView({ block: 'nearest' });
+    });
+  }
+
   validationIssueText(issue: RecipeValidationIssue) {
     const conflictName = issue.context?.['conflictName'];
     if (conflictName) {
@@ -849,6 +905,23 @@ export class RecipeEditorComponent {
     }
     const messages: Record<string, string> = {
       'recipe.name.missing': 'Ein Rezeptname ist erforderlich.',
+      'recipe.reference.quantity.invalid': 'Die Bezugsmenge muss größer als null sein.',
+      'recipe.reference.unit.invalid': 'Für den Rezeptbezug wird eine gültige Einheit benötigt.',
+      'recipe.authoring-stage.central.forbidden': 'Zentrale Rezepte dürfen keine lagerbezogene Erfassungsstufe verwenden.',
+      'recipe.ingredient.scaling-mode.invalid': 'Die Mengenregel dieser Zutat ist ungültig.',
+      'recipe.ingredient.age-scaling.invalid': 'Die Einstellung der Altersstufenfaktoren ist ungültig.',
+      'recipe.ingredient.stepwise.invalid': 'Die Mengenregel in festen Schritten benötigt positive Schrittwerte.',
+      'recipe.subrecipe.revision.invalid': 'Die gespeicherte Unterrezeptrevision ist nicht verfügbar.',
+      'recipe.subrecipe.demand.invalid': 'Der Mengen- oder Portionsbezug des Unterrezepts ist ungültig.',
+      'recipe.subrecipe.duplicate': 'Ein Unterrezept ist innerhalb derselben Gruppe mehrfach eingetragen.',
+      'recipe.subrecipe.cycle': 'Die Unterrezepte verweisen zyklisch aufeinander.',
+      'recipe.recipe-replacement.revision.invalid': 'Die Ersatzrezeptrevision ist nicht verfügbar.',
+      'recipe.recipe-replacement.type.mismatch': 'Das Ersatzrezept hat einen ungeeigneten Rezepttyp.',
+      'recipe.recipe-replacement.demand.invalid': 'Der Mengen- oder Portionsbezug des Ersatzrezepts ist ungültig.',
+      'recipe.subrecipe.archived': 'Eine verwendete Unterrezeptrevision ist archiviert.',
+      'recipe.replacement.conflict.remains': 'Ein bekannter Ernährungskonflikt bleibt trotz Ersatz bestehen.',
+      'recipe.replacement.conflict.created': 'Eine Ersatzlösung erzeugt einen zusätzlichen Ernährungskonflikt.',
+
       'recipe.reference.servings.invalid': 'Die Anzahl der Standardportionen muss größer als null sein.',
       'recipe.positions.empty': 'Das Rezept benötigt mindestens eine Zutat.',
       'recipe.group.name.missing': 'Jede Gruppe benötigt einen Namen.',
@@ -868,12 +941,16 @@ export class RecipeEditorComponent {
       'recipe.source.missing': 'Es fehlt eine Quellenangabe.',
       'recipe.conflict.unresolved': 'Für einen bekannten Konflikt ist noch kein Ersatz definiert.',
     };
-    return messages[issue.code] ?? `Prüfhinweis: ${issue.code}`;
+    return messages[issue.code] ?? (issue.message && issue.message !== issue.code ? issue.message : 'Bitte prüfe die Angaben im Rezept.');
   }
 
   private setDraft(draft: RecipeEditorDraft) {
-    this.selected.set(draft); this.targetGroupId.set(null); this.snapshot = JSON.stringify(draft.content);
+    this.closeIngredientDialog();
+    this.publicationWarningsAcknowledged.set(false); this.validationTargetId.set(null);
+    this.savedDraft = structuredClone(draft); this.editing.set(false);
+    this.selected.set(draft); if (draft.content.recipeType === 1) this.loadRecipeReferenceData(); this.targetGroupId.set(null); this.snapshot = JSON.stringify(draft.content);
     this.activeReplacementPicker.set(null); this.replacementSearches.set({});
+    this.nutritionRequest++; this.nutritionLoading.set(false);
     this.nutrition.set(null); this.nutritionMessage.set(''); this.publicationIssues.set([]); this.loadNutrition();
   }
   private positionsForGroup(groupId: string | null) {
@@ -882,7 +959,7 @@ export class RecipeEditorComponent {
       .sort((first, second) => first.sortOrder - second.sortOrder);
   }
   private normalizePositions(groupId: string | null) {
-    this.positionsForGroup(groupId).forEach((value, sortOrder) => value.sortOrder = sortOrder);
+    this.allPositionsForGroup(groupId).forEach((value, sortOrder) => value.sortOrder = sortOrder);
   }
   private normalizeGroups() {
     this.orderedGroups().forEach((value, sortOrder) => value.sortOrder = sortOrder);
@@ -890,7 +967,7 @@ export class RecipeEditorComponent {
   private markContentChanged() {
     const draft = this.selected(); if (!draft) return;
     this.selected.set({ ...draft, content: { ...draft.content,
-      groups: [...draft.content.groups], ingredientPositions: [...draft.content.ingredientPositions] } });
+      groups: [...draft.content.groups], ingredientPositions: [...draft.content.ingredientPositions], subrecipePositions: [...draft.content.subrecipePositions] } });
   }
   private nextDraftName() {
     const baseName = 'Neues Rezept';

@@ -1,0 +1,352 @@
+@if (error()) { <p class="recipe-message error" role="alert">{{ error() }}</p> }
+@if (notice()) { <p class="recipe-message notice" role="status">{{ notice() }}</p> }
+@if (loading()) { <div class="recipe-loading"><mat-spinner diameter="28"/><span>Rezepte werden geladen …</span></div> }
+@else if (selected(); as draft) {
+<div class="editor-shell">
+<nav class="recipe-breadcrumb" aria-label="Rezeptnavigation"><button matButton type="button" (click)="closeEditor()" [disabled]="saving() || publishing()"><scp-action-icon name="back"/>Rezepte</button><span aria-hidden="true">›</span><span>{{ draft.content.name || 'Neues Rezept' }}</span></nav>
+<header class="editor-heading">
+<span class="recipe-image" aria-label="Rezeptbild: geplant"><scp-action-icon name="image"/><small class="planned-badge">Geplant</small></span>
+<div class="recipe-title">
+<div class="title-line"><h2>{{ draft.content.name || 'Neues Rezept' }}</h2><span class="state-badge" [class.published]="draft.status === 1">{{ draft.status === 2 ? 'Archiviert' : draft.status === 1 ? 'Veröffentlicht' : 'Entwurf' }}</span>@if (revisionNumber() !== null) { <span class="revision-badge">Revision {{ revisionNumber() }}</span> }</div>
+<p class="recipe-description" [title]="draft.content.description || ''">{{ draft.content.description || 'Noch keine Beschreibung und Zubereitung hinterlegt.' }}</p>
+</div>
+<div class="heading-fact"><span><scp-action-icon name="recipe"/>Rezeptart</span><strong>{{ draft.content.recipeType === 0 ? 'Portionsrezept' : 'Mengenrezept' }}</strong></div>
+<div class="heading-fact"><span>Arbeitsstand</span><strong class="working-state">{{ editing() ? 'Entwurf in Bearbeitung' : 'Ansicht' }}</strong></div>
+@if (!editing() && !disabled() && draft.status !== 2) { <button matButton="filled" type="button" (click)="beginEdit()" [disabled]="saving() || publishing()"><scp-action-icon name="edit"/>{{ draft.status === 1 ? 'Entwurf bearbeiten' : 'Bearbeiten' }}</button> }
+</header>
+<nav class="recipe-tabs" role="tablist" aria-label="Rezeptbereiche">@for (tab of tabs; track tab.id; let index = $index) {
+<button type="button" role="tab" [id]="'recipe-tab-' + tab.id" [attr.aria-controls]="'recipe-panel-' + tab.id" [attr.aria-selected]="activeTab() === tab.id" [attr.tabindex]="activeTab() === tab.id ? 0 : -1" (click)="activeTab.set(tab.id)" (keydown)="tabKey($event, index)"><scp-action-icon [name]="tab.icon"/>{{ tab.label }}</button>
+}</nav>
+<form (ngSubmit)="save()" class="recipe-form">
+<section class="basic-panel" role="tabpanel" id="recipe-panel-basic" tabindex="-1" aria-labelledby="recipe-tab-basic" [hidden]="activeTab() !== 'basic'">
+<section class="editor-card general-data"><h3>Allgemeine Angaben</h3>
+@if (readOnly()) {
+<dl class="basic-facts"><div><dt>Name</dt><dd>{{ draft.content.name || '—' }}</dd></div><div><dt>Kurzbeschreibung <small class="planned-badge">Geplant</small></dt><dd class="planned-value">Noch nicht verfügbar</dd></div><div><dt>Beschreibung und Zubereitung</dt><dd class="preformatted">{{ draft.content.description || 'Noch keine Beschreibung und Zubereitung hinterlegt.' }}</dd></div><div><dt>Quelle</dt><dd>{{ draft.content.source || '—' }}</dd></div></dl>
+} @else {
+<label class="basic-field"><span>Name <b aria-hidden="true">*</b></span><input name="recipeName" aria-label="Name" [(ngModel)]="draft.content.name" maxlength="200"></label>
+<div class="planned-inline"><span>Kurzbeschreibung <small class="planned-badge">Geplant</small></span><span class="planned-value">Separates Feld noch nicht verfügbar</span></div>
+<label class="basic-field preparation-field"><span>Beschreibung und Zubereitung</span><textarea name="description" aria-label="Beschreibung und Zubereitung" rows="8" [(ngModel)]="draft.content.description"></textarea></label>
+<label class="basic-field"><span>Quelle <small>(optional)</small></span><input name="source" aria-label="Quelle" [(ngModel)]="draft.content.source"></label>
+}
+</section>
+<aside class="editor-card portion-data"><h3>Portionen & Mengenberechnung</h3>
+@if (readOnly()) { <dl class="portion-facts"><div><dt>Berechnungsbezug</dt><dd>{{ recipeReferenceLabel() }}</dd></div>@if (draft.content.recipeType === 0) { <div><dt>Stufenfaktoren</dt><dd>{{ draft.content.defaultAgeGroupScalingApplies ? 'Werden verwendet' : 'Werden nicht verwendet' }}</dd></div> }</dl> }
+@else {
+<label class="dialog-label">Berechnungsbezug<select name="recipeType" aria-label="Berechnungsbezug" [ngModel]="draft.content.recipeType" (ngModelChange)="changeRecipeType($event)"><option [ngValue]="0">Portionen</option><option [ngValue]="1">Menge</option></select></label>
+@if (draft.content.recipeType === 0) { <label class="portion-input"><span>Standardportionen *</span><input name="referenceServings" aria-label="Standardportionen" type="number" min="0.000001" step="1" [(ngModel)]="draft.content.referenceServings"><span>Portionen</span></label><div class="scaling-option"><strong>Stufenfaktoren</strong><mat-slide-toggle name="ageScaling" [(ngModel)]="draft.content.defaultAgeGroupScalingApplies">Stufenfaktoren verwenden</mat-slide-toggle></div> }
+@else { <div class="dialog-fields"><label class="dialog-label">Bezugsmenge<input name="referenceQuantity" aria-label="Bezugsmenge" type="number" min="0.000001" step="any" [(ngModel)]="draft.content.referenceQuantity"></label><label class="dialog-label">Einheit<select name="referenceUnit" aria-label="Bezugseinheit" [(ngModel)]="draft.content.referenceUnitId"><option [ngValue]="null">Einheit auswählen</option>@for (unit of recipeUnits(); track unit.id) { <option [ngValue]="unit.id">{{ unit.symbol }} ({{ unit.name }})</option> }</select></label></div><p class="muted">Gib an, welche Gesamtmenge die eingetragenen Zutaten ergeben. Beim Wechsel wird keine Umrechnung angenommen.</p>@if (!referenceData() && !referenceDataLoading()) { <button matButton type="button" (click)="loadRecipeReferenceData()">Einheiten erneut laden</button> } }
+}
+@if (draft.content.recipeType === 0) { <p class="factor-explanation">Die Faktoren der Lagerstufen gelten für die Zutaten dieses Rezepts.</p>@if (draft.content.authoringStage; as stage) { <dl class="portion-facts"><div><dt>Bezugsstufe</dt><dd>{{ stage.stageName }} · Faktor {{ stage.factor }}</dd></div></dl> } }
+<section class="planned-staffel planned-feature" aria-label="Geplante Personenstaffelung"><div class="planned-heading"><strong>Personenstaffelung</strong><span class="planned-badge">Geplant</span></div><div class="planned-table-head"><span>Ab Personen</span><span>Faktor</span><span>Beschreibung</span></div><p>Ergänzung zur Mengenberechnung, noch nicht verfügbar.</p></section>
+</aside>
+<details class="editor-card advanced-planned" open><summary>Erweiterte Angaben <span class="planned-badge">Geplant</span></summary>
+<div class="planned-fields">
+<div class="planned-field"><strong>Kategorie</strong><select aria-label="Kategorie (geplant)" disabled><option>Noch nicht verfügbar</option></select></div>
+<div class="planned-field"><strong>Tags</strong><p class="planned-value">{{ draft.content.tags.length ? draft.content.tags.join(', ') : 'Noch keine Tags' }}</p><small>Bearbeitung geplant</small></div>
+<div class="planned-field"><strong>Rezeptbild</strong><div class="planned-image-actions"><span class="planned-image"><scp-action-icon name="image"/></span><button matButton="outlined" type="button" disabled aria-label="Rezeptbild hochladen (geplant)"><scp-action-icon name="add"/></button><button matButton="outlined" type="button" disabled aria-label="Rezeptbild entfernen (geplant)"><scp-action-icon name="remove"/></button></div></div>
+<div class="planned-field"><strong>Interne Notizen</strong><p class="planned-value" [title]="draft.content.internalNotes || ''">{{ draft.content.internalNotes || 'Noch keine internen Notizen' }}</p><small>Bearbeitung geplant</small></div>
+</div><p class="planned-footnote">Geplante Funktionen sind noch nicht bearbeitbar. Vorhandene Angaben bleiben erhalten.</p>
+</details>
+</section>
+
+<section class="recipe-section ingredients-panel" role="tabpanel" id="recipe-panel-ingredients" tabindex="-1" aria-labelledby="recipe-tab-ingredients" [hidden]="activeTab() !== 'ingredients'">
+<header class="ingredients-toolbar"><div><h3>Zutaten & Mengen</h3><p>Gruppieren, Mengen festlegen und Ernährungshinweise prüfen.</p></div><div class="ingredients-toolbar-actions">
+@if (availableIngredientUpdates().length) { <button matButton="outlined" type="button" (click)="openIngredientDialog('updates')"><scp-action-icon name="refresh"/>Zutatenaktualisierungen <span class="count-badge">{{ availableIngredientUpdates().length }}</span></button> }
+@if (!readOnly()) { <button matButton="filled" type="button" (click)="openIngredientDialog('picker')"><scp-action-icon name="add"/>Zutat hinzufügen</button><button matButton="outlined" type="button" (click)="openSubrecipeEditor()"><scp-action-icon name="add"/>Unterrezept hinzufügen</button> }
+</div></header>
+<div class="ingredient-tables">
+@for (section of ingredientSections(); track section.id ?? 'ungrouped') {
+@if (section.group || section.positions.length || subrecipeCount(section.id) || !draft.content.groups.length) {
+<details class="ingredient-table-group" open [attr.data-validation-group]="section.group?.id" tabindex="-1" [class.validation-target]="validationTargetId() === section.group?.id">
+<summary><span class="group-disclosure"><scp-action-icon name="down"/></span><strong>{{ section.group?.name || 'Ohne Gruppe' }}</strong><span class="group-count">{{ section.positions.length }} {{ section.positions.length === 1 ? 'Zutat' : 'Zutaten' }}@if (subrecipeCount(section.id)) { · {{ subrecipeCount(section.id) }} {{ subrecipeCount(section.id) === 1 ? 'Unterrezept' : 'Unterrezepte' }} }</span>
+@if (!readOnly() && section.group; as group) { <button matIconButton type="button" [matMenuTriggerFor]="groupMenu" (click)="$event.stopPropagation(); $event.preventDefault()" [attr.aria-label]="'Aktionen für Gruppe ' + group.name"><span aria-hidden="true">⋮</span></button>
+<mat-menu #groupMenu="matMenu"><button mat-menu-item type="button" (click)="openGroupEditor(group)">Umbenennen</button><button mat-menu-item type="button" (click)="moveGroup(group, -1)" [disabled]="!canMoveGroup(group, -1)">Nach oben</button><button mat-menu-item type="button" (click)="moveGroup(group, 1)" [disabled]="!canMoveGroup(group, 1)">Nach unten</button><button mat-menu-item type="button" (click)="removeGroup(group)" [disabled]="!groupIsEmpty(group.id)">Leere Gruppe entfernen</button></mat-menu> }
+</summary>
+<div class="ingredients-table-scroll"><table class="ingredients-table"><thead><tr><th>Zutat</th><th>Menge <small>(für {{ recipeReferenceLabel() }})</small></th><th>Mengenregel</th><th>Herkunft</th><th>Rev.</th><th>Ernährung & Ersatz</th><th aria-label="Aktionen"></th></tr></thead><tbody>
+@for (entry of section.entries; track entry.position.id; let first = $first; let last = $last) {
+@if (entry.kind === 'ingredient') { @let position = entry.position;
+<tr [attr.data-validation-position]="position.id" tabindex="-1" [class.validation-target]="validationTargetId() === position.id"><td><div class="ingredient-identity">@if (!readOnly()) { <span class="drag-reserved" title="Ziehen zum Umordnen: geplant" aria-label="Ziehen zum Umordnen geplant">⠿</span> }<span class="ingredient-thumbnail" title="Zutatenbilder: geplant"><scp-action-icon name="image"/></span><div><strong>{{ ingredient(position)?.name || 'Unbekannte Zutat' }}</strong><small>{{ scopeLabel(ingredient(position)?.scope) }}</small></div></div></td>
+<td>@if (position.scalingMode === 2 && readOnly()) { <span class="amount-by-rule">Nach Mengenregel</span> } @else if (readOnly()) { <span class="quantity-text">{{ position.quantity ?? '—' }} {{ ingredientUnitSymbol(position) }}</span> } @else { <div class="compact-quantity">@if (position.scalingMode === 2) { <span class="amount-by-rule" title="Die Menge wird über die Regel rechts festgelegt.">Nach Mengenregel</span> } @else { <input type="number" min="0.000001" step="any" [name]="'quantity-' + position.id" [attr.aria-label]="'Menge für ' + ingredient(position)?.name" [(ngModel)]="position.quantity"> }<select [name]="'unit-' + position.id" [attr.aria-label]="'Einheit für ' + ingredient(position)?.name" [(ngModel)]="position.unitId">@for (unit of ingredient(position)?.units ?? []; track unit.unitId) { <option [ngValue]="unit.unitId">{{ unit.symbol }}</option> }</select></div> }</td>
+<td>@if (readOnly()) { <span [title]="scalingDescription(position)">{{ scalingDescription(position) }}</span> } @else { <button class="compact-rule" type="button" (click)="openPositionDialog('scaling', position)" [attr.aria-label]="'Mengenregel für ' + ingredient(position)?.name">{{ scalingDescription(position) }}<scp-action-icon name="down"/></button> }</td>
+<td><span class="ingredient-origin" [title]="ingredientOrigin(position)">{{ ingredientOrigin(position) }}</span></td>
+<td><span class="revision-badge">{{ ingredientReference(position)?.revisionNumber ?? '—' }}</span>@if (ingredientReference(position)?.availableUpdate) { <small class="update-available">Update verfügbar</small> }</td>
+<td>@if (positionConflicts(position).length || position.replacements.length) { <button class="diet-status" type="button" [class.preventable]="dietState(position) === 'preventable'" [class.unavoidable]="dietState(position) === 'unavoidable'" (click)="openPositionDialog('replacements', position)" [attr.aria-label]="'Ernährung und Ersatz für ' + ingredient(position)?.name"><scp-action-icon name="warning"/><span>{{ dietLabel(position) }}</span><scp-action-icon name="down"/></button> } @else { <span class="diet-status clear"><scp-action-icon name="check"/>Keine bekannten Konflikte</span> }</td>
+<td>@if (!readOnly()) { <button matIconButton type="button" [matMenuTriggerFor]="positionMenu" [attr.aria-label]="'Aktionen für Zutat ' + ingredient(position)?.name"><span aria-hidden="true">⋮</span></button><mat-menu #positionMenu="matMenu"><button mat-menu-item type="button" (click)="openPositionDialog('scaling', position)">Mengenregel bearbeiten</button><button mat-menu-item type="button" (click)="openPositionDialog('replacements', position)">Ernährung & Ersatz</button><button mat-menu-item type="button" (click)="openPositionDialog('move', position)">In andere Gruppe verschieben</button><button mat-menu-item type="button" (click)="movePosition(position, -1)" [disabled]="first">Nach oben</button><button mat-menu-item type="button" (click)="movePosition(position, 1)" [disabled]="last">Nach unten</button><button mat-menu-item type="button" (click)="removePosition(position.id)">Zutat entfernen</button></mat-menu> }</td></tr>
+} @else { @let subrecipe = entry.position; @let reference = subrecipeReference(subrecipe);
+<tr class="subrecipe-row" [attr.data-validation-position]="subrecipe.id" tabindex="-1" [class.validation-target]="validationTargetId() === subrecipe.id">
+<td><div class="ingredient-identity"><span class="ingredient-thumbnail subrecipe-thumbnail"><scp-action-icon name="recipe"/></span><div><strong>{{ subrecipeName(subrecipe) }}</strong><small>Unterrezept</small></div></div></td>
+<td>@if (readOnly()) { <span class="quantity-text">{{ subrecipeAmount(subrecipe) }}</span> } @else { <button class="subrecipe-amount" matButton type="button" (click)="openSubrecipeEditor(subrecipe)" [attr.aria-label]="'Unterrezept bearbeiten: ' + subrecipeName(subrecipe)">{{ subrecipeAmount(subrecipe) }}<scp-action-icon name="edit"/></button> }</td>
+<td><span class="quantity-text">Mit dem Rezept skaliert</span></td><td>—</td><td><span class="revision-pill">{{ reference?.revisionNumber ?? '—' }}</span></td>
+<td>@if (reference?.conflicts?.length || subrecipe.replacements.length) { <button class="diet-status" type="button" (click)="openSubrecipeReplacements(subrecipe)" aria-haspopup="dialog" [class.preventable]="subrecipeDietState(subrecipe) === 'preventable'" [class.unavoidable]="subrecipeDietState(subrecipe) === 'unavoidable'" [attr.aria-label]="'Ernährung und Ersatz für ' + subrecipeName(subrecipe)"><scp-action-icon [name]="reference?.conflicts?.length ? 'warning' : 'recipe'"/><span>{{ reference?.conflicts?.length ? reference!.conflicts[0].name : 'Ersatzrezepte' }}@if (subrecipeDietState(subrecipe) === 'preventable') { (Variante) }@if ((reference?.conflicts?.length ?? 0) > 1) { +{{ reference!.conflicts.length - 1 }} }@if (subrecipe.replacements.length) { · {{ subrecipe.replacements.length }} Ersatz }</span><scp-action-icon name="down"/></button> } @else { <span class="diet-status clear"><scp-action-icon name="check"/>{{ reference ? 'Keine bekannten Konflikte' : 'Revision nicht auflösbar' }}</span> }</td>
+<td>@if (!readOnly()) { <button matIconButton type="button" [matMenuTriggerFor]="subrecipeMenu" [attr.aria-label]="'Aktionen für Unterrezept ' + subrecipeName(subrecipe)"><span aria-hidden="true">⋮</span></button><mat-menu #subrecipeMenu="matMenu"><button mat-menu-item type="button" (click)="openSubrecipeEditor(subrecipe)">Einbindung bearbeiten</button><button mat-menu-item type="button" (click)="movePosition(subrecipe, -1)" [disabled]="first">Nach oben</button><button mat-menu-item type="button" (click)="movePosition(subrecipe, 1)" [disabled]="last">Nach unten</button><button mat-menu-item type="button" (click)="removeSubrecipe(subrecipe)">Unterrezept entfernen</button></mat-menu> }</td>
+</tr>
+
+}
+} @empty { <tr><td colspan="7" class="ingredient-empty">Noch keine Zutaten oder Unterrezepte in dieser Gruppe.</td></tr> }
+</tbody></table></div>
+
+</details>
+}
+}
+</div>
+@if (!readOnly()) { <button matButton="outlined" type="button" class="add-ingredient-group" (click)="openGroupEditor(null)"><scp-action-icon name="add"/>Gruppe hinzufügen</button> }
+<div class="ingredient-summary"><div class="ingredient-summary-card" [class.has-hints]="ingredientHintCount() > 0"><scp-action-icon [name]="ingredientHintCount() ? 'warning' : 'check'"/><div><strong>Ernährungshinweise</strong><p>{{ ingredientHintCount() ? ingredientHintCount() + (ingredientHintCount() === 1 ? ' Eintrag mit bekannten Hinweisen. Varianten und Ersatz am Eintrag ansehen.' : ' Einträge mit bekannten Hinweisen. Varianten und Ersatz am Eintrag ansehen.') : 'Keine bekannten Konflikte an den verfügbaren Rezeptangaben.' }}</p></div></div><div class="ingredient-summary-card updates"><scp-action-icon name="refresh"/><div><strong>Zutatenaktualisierungen</strong><p>{{ availableIngredientUpdates().length ? availableIngredientUpdates().length + ' neuere Revisionen verfügbar. Übernahme nur auf ausdrückliche Auswahl.' : 'Keine neueren Revisionen gemeldet.' }}</p></div>@if (availableIngredientUpdates().length) { <button matButton="outlined" type="button" (click)="openIngredientDialog('updates')">Anzeigen</button> }</div></div>
+<p class="ingredient-planned-note"><span class="planned-badge">Geplant</span> Zutatenbilder und Umordnen durch Ziehen.</p>
+</section>
+@if (ingredientDialogMode(); as mode) {
+<dialog #ingredientDialog class="ingredient-context-dialog" aria-labelledby="ingredient-context-title" (cancel)="closeIngredientDialog()">
+<header><div><h3 id="ingredient-context-title">{{ ingredientDialogTitle() }}</h3>@if (dialogPosition(); as position) { <p>{{ ingredient(position)?.name || 'Zutat' }}</p> }</div><button matIconButton type="button" (click)="closeIngredientDialog()" aria-label="Dialog schließen">×</button></header>
+@if (dialogError()) { <p role="alert" class="dialog-error">{{ dialogError() }}</p> }
+<div class="ingredient-dialog-body">
+@if (mode === 'picker') {
+<div class="dialog-fields"><label>Zutat suchen<input name="recipeIngredientSearch" [ngModel]="ingredientSearch()" (ngModelChange)="ingredientSearch.set($event)" autocomplete="off"></label><label>In Gruppe einfügen<select name="newIngredientGroup" [ngModel]="targetGroupId()" (ngModelChange)="targetGroupId.set($event)"><option [ngValue]="null">Ohne Gruppe</option>@for (group of orderedGroups(); track group.id) { <option [ngValue]="group.id">{{ group.name }}</option> }</select></label></div>
+@if (ingredientSearch().trim()) { <div class="dialog-candidates">@for (candidate of ingredientCandidates(); track candidate.revisionId) { <button type="button" (click)="addIngredient(candidate)"><span><strong>{{ candidate.name }}</strong><small>{{ scopeLabel(candidate.scope) }}</small></span><scp-action-icon name="add"/></button> } @empty { <p>Keine passende veröffentlichte Zutat gefunden.</p> }</div> } @else { <p class="muted">Nach einer veröffentlichten Zutat suchen.</p> }
+<p class="muted">Hinzugefügte Zutaten werden erst mit dem Entwurf gespeichert.</p>
+}
+@if (mode === 'group') { <label class="dialog-label">Gruppenname<input name="dialogGroupName" maxlength="200" [ngModel]="groupDialogName()" (ngModelChange)="groupDialogName.set($event)"></label> }
+@if (mode === 'move') { <label class="dialog-label">Zielgruppe<select name="dialogTargetGroup" [ngModel]="dialogTargetGroupId()" (ngModelChange)="dialogTargetGroupId.set($event)"><option [ngValue]="null">Ohne Gruppe</option>@for (group of orderedGroups(); track group.id) { <option [ngValue]="group.id">{{ group.name }}</option> }</select></label> }
+@if (mode === 'scaling') { @if (scalingDraft(); as rule) {
+<label class="dialog-label">Mengenregel<select name="dialogScalingMode" [ngModel]="rule.scalingMode" (ngModelChange)="changeDialogScalingMode($event)"><option [ngValue]="0">Linear</option><option [ngValue]="1">Fixe Menge</option><option [ngValue]="2">In festen Schritten</option></select></label>
+@if (rule.scalingMode === 0) {
+<div class="linear-quantity-limits">
+<label class="dialog-label">Mindestmenge (optional)<span><input type="number" min="0" step="any" name="dialogMinimumQuantity" aria-label="Mindestmenge" placeholder="Keine Grenze" [(ngModel)]="rule.minimumQuantity"> {{ dialogPosition() ? ingredientUnitSymbol(dialogPosition()!) : '' }}</span></label>
+<label class="dialog-label">Höchstmenge (optional)<span><input type="number" min="0" step="any" name="dialogMaximumQuantity" aria-label="Höchstmenge" placeholder="Keine Grenze" [(ngModel)]="rule.maximumQuantity"> {{ dialogPosition() ? ingredientUnitSymbol(dialogPosition()!) : '' }}</span></label>
+</div><p class="muted">Die Grenzen gelten für die berechnete Gesamtmenge dieser Zutat, nach Anwendung der Portions- und Altersstufenfaktoren. Leere Felder bedeuten keine Begrenzung.</p>
+@if (!validScalingDraft()) { <p class="step-rule-hint" role="alert">Grenzen müssen mindestens null sein. Die Mindestmenge darf die Höchstmenge nicht überschreiten.</p> }
+}
+@if (rule.scalingMode === 2) {
+<div class="step-rule-sentence"><span>Für je angefangene</span><input type="number" min="0.000001" step="any" name="dialogStepSize" aria-label="Standardportionen je Mengenschritt" [(ngModel)]="rule.stepSize"><span>Standardportionen werden</span><input type="number" min="0.000001" step="any" name="dialogQuantityPerStep" [attr.aria-label]="'Menge je Mengenschritt in ' + (dialogPosition() ? ingredientUnitSymbol(dialogPosition()!) : '')" [(ngModel)]="rule.quantityPerStep"><strong>{{ dialogPosition() ? ingredientUnitSymbol(dialogPosition()!) : '—' }}</strong><span>benötigt.</span></div>
+<p class="muted">Angefangene Mengenschritte werden vollständig gezählt.</p>
+@if (validScalingDraft()) {
+<section class="step-rule-preview" aria-label="Mengenvorschau" aria-live="polite"><h4>So verändert sich die Menge</h4><table><thead><tr><th>Standardportionen</th><th>Benötigte Menge</th></tr></thead><tbody>@for (row of scalingPreview(); track $index) { <tr><td>{{ row.range }}</td><td>{{ row.amount }} {{ dialogPosition() ? ingredientUnitSymbol(dialogPosition()!) : '—' }}</td></tr> }</tbody></table></section>
+} @else { <p class="step-rule-hint">Gib beide Werte größer als null ein, um die Vorschau zu sehen.</p> }
+@if (scalingUsesStageFactors()) { <p class="step-rule-hint"><scp-action-icon name="info"/>Die Lagerstufenfaktoren werden für diese Zutat berücksichtigt. Die Regel gilt für den daraus entstehenden gewichteten Bedarf an Standardportionen. Die Vorschau rechnet bereits mit Standardportionen.</p> }
+} @else { <p class="muted">{{ rule.scalingMode === 0 ? 'Die Menge wächst proportional mit den Portionen.' : 'Die angegebene Menge bleibt fest.' }}</p> }
+} }
+@if (mode === 'replacements') { @if (replacementDraft(); as position) {
+<div class="dialog-conflict-list">@for (conflict of positionConflicts(position); track conflict.type + '-' + conflict.id) { <div [class.preventable]="conflictVariantNames(position, conflict.id)?.length" [class.unavoidable]="conflictVariantNames(position, conflict.id)?.length === 0"><strong>{{ conflict.name }}</strong><p>{{ conflictTitle(position, conflict.id, conflict.name) }}</p></div> } @empty { <p>Keine bekannten Ernährungskonflikte.</p> }</div>
+                      <div class="replacement-section">
+                        <div class="replacement-heading">
+                          <div><strong>Ersatzzutaten</strong><small>Gelten nur für die ausgewählten Konflikte dieser Position.</small></div>
+                          @if (!readOnly() && unassignedConflicts(position).length) {
+                            <button matButton type="button" (click)="toggleReplacementPicker(position.id)">
+                              <scp-action-icon name="add"/>Ersatzzutat
+                            </button>
+                          }
+                        </div>
+                        @for (replacement of position.replacements; track replacement.id) {
+                          <div class="replacement-card">
+                            <div class="position-name">
+                              <strong>{{ replacementIngredient(replacement)?.name ?? 'Unbekannte Ersatzzutat' }}</strong>
+                              <small>{{ scopeLabel(replacementIngredient(replacement)?.scope) }}</small>
+                              @if ((replacementIngredient(replacement)?.conflicts ?? []).length) {
+                                <div class="conflict-list" aria-label="Konflikte der Ersatzzutat">
+                                  @for (conflict of replacementIngredient(replacement)!.conflicts;
+                                    track conflict.type + '-' + conflict.id) {
+                                    <span
+                                      [class.preventable]="replacementConflictVariantNames(replacement, conflict.id)?.length"
+                                      [class.unavoidable]="replacementConflictVariantNames(replacement, conflict.id)?.length === 0"
+                                      [class.unclassified]="replacementConflictVariantNames(replacement, conflict.id) === null"
+                                      [title]="replacementConflictTitle(replacement, conflict.id, conflict.name)">
+                                      {{ conflict.name }}
+                                    </span>
+                                  }
+                                </div>
+                              }
+                            </div>
+                            @if (readOnly()) { <dl class="replacement-readonly"><div><dt>Menge</dt><dd>{{ replacement.quantity ?? '—' }} {{ replacementUnitSymbol(replacement) }}</dd></div><div><dt>Ersetzt bei</dt><dd>{{ replacementAssignedNames(position, replacement) || 'Noch keine Zuordnung' }}</dd></div></dl> } @else {
+                            <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Ersatzmenge</mat-label>
+                              <input matInput type="number" min="0.000001" step="any"
+                                [name]="'replacement-quantity-' + replacement.id"
+                                [(ngModel)]="replacement.quantity" [disabled]="readOnly()">
+                            </mat-form-field>
+                            <mat-form-field appearance="outline" subscriptSizing="dynamic"><mat-label>Einheit</mat-label>
+                              <select matNativeControl [name]="'replacement-unit-' + replacement.id"
+                                [(ngModel)]="replacement.unitId" [disabled]="readOnly()">
+                                @for (unit of replacementIngredient(replacement)?.units ?? []; track unit.unitId) {
+                                  <option [value]="unit.unitId">{{ unit.name }} ({{ unit.symbol }})</option>
+                                }
+                              </select>
+                            </mat-form-field>
+                            <button matIconButton type="button" aria-label="Ersatzzutat entfernen"
+                              title="Ersatzzutat entfernen" (click)="removeReplacement(position, replacement.id)"
+                              [disabled]="readOnly()"><scp-action-icon name="remove"/></button>
+                            <div class="replacement-conflicts">
+                              <span>Ersetzt bei:</span>
+                              @for (conflict of positionConflicts(position); track conflict.type + '-' + conflict.id) {
+                                <mat-checkbox
+                                  [name]="'replacement-conflict-' + replacement.id + '-' + conflict.type + '-' + conflict.id"
+                                  [ngModel]="replacementHasConflict(replacement, conflict)"
+                                  (ngModelChange)="setReplacementConflict(position, replacement, conflict, $event)"
+                                  [disabled]="readOnly() || conflictAssignedToOtherReplacement(position, replacement.id, conflict)">
+                                  {{ conflict.name }}
+                                </mat-checkbox>
+                              } @empty {
+                                <small>Die Ausgangszutat weist keine Konflikte auf.</small>
+                              }
+                            </div>
+                            }
+                          </div>
+                        } @empty {
+                          <p class="empty">Noch keine Ersatzzutat definiert.</p>
+                        }
+                        @if (activeReplacementPicker() === position.id) {
+                          <div class="replacement-picker">
+                            <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                              <mat-label>Ersatzzutat suchen</mat-label>
+                              <input matInput [name]="'replacement-search-' + position.id"
+                                [ngModel]="replacementSearch(position.id)"
+                                (ngModelChange)="setReplacementSearch(position.id, $event)" autocomplete="off">
+                            </mat-form-field>
+                            @if (replacementSearch(position.id).trim()) {
+                              <div class="candidate-list">
+                                @for (candidate of replacementCandidates(position); track candidate.revisionId) {
+                                  <button matButton type="button" (click)="addReplacement(position, candidate)">
+                                    <scp-action-icon name="add"/><span>{{ candidate.name }}<small>{{ scopeLabel(candidate.scope) }}</small></span>
+                                  </button>
+                                } @empty { <p class="empty">Keine passende Ersatzzutat gefunden.</p> }
+                              </div>
+                            }
+                          </div>
+                        }
+                      </div>
+} }
+@if (mode === 'subrecipe' || mode === 'subrecipe-replacements') { @if (subrecipeDraft(); as subrecipe) {
+<p class="muted">Die Einbindung verwendet eine veröffentlichte Revision. Das Unterrezept selbst wird hier nicht verändert.</p>
+@if (mode === 'subrecipe' && !subrecipeReplacementDraft()) {
+<label class="dialog-label">Rezept suchen<input name="subrecipeSearch" aria-label="Unterrezept suchen" [placeholder]="subrecipe.recipeRevisionId ? 'Anderes Rezept suchen …' : 'Name des Unterrezepts …'" [ngModel]="subrecipeSearch()" (ngModelChange)="subrecipeSearch.set($event)" autocomplete="off"></label>
+@if (subrecipeSearch().trim() || !subrecipe.recipeRevisionId) { <div class="subrecipe-candidates" aria-label="Verfügbare Unterrezepte">@for (reference of subrecipeCandidates(); track reference.revisionId) { <button type="button" [class.selected]="reference.revisionId === subrecipe.recipeRevisionId" (click)="selectSubrecipe(reference)"><span><strong>{{ reference.name }}</strong><small>Revision {{ reference.revisionNumber }} · {{ reference.recipeType === 0 ? 'Portionsrezept' : 'Mengenrezept' }}</small></span><scp-action-icon [name]="reference.revisionId === subrecipe.recipeRevisionId ? 'check' : 'add'"/></button> } @empty { <p class="muted">Keine passenden veröffentlichten Rezepte verfügbar. Selbstbezug und zyklische Verweise sind ausgeschlossen.</p> }</div> }
+@if (subrecipeReference(subrecipe); as reference) {
+<div class="subrecipe-selected"><strong>{{ reference.name }}</strong><span>Revision {{ reference.revisionNumber }}</span></div>
+<div class="dialog-fields"><label class="dialog-label">Zutatengruppe<select name="subrecipeGroup" aria-label="Zutatengruppe des Unterrezepts" [(ngModel)]="subrecipe.groupId"><option [ngValue]="null">Ohne Gruppe</option>@for (group of orderedGroups(); track group.id) { <option [ngValue]="group.id">{{ group.name }}</option> }</select></label>
+@if (reference.recipeType === 0) { <label class="dialog-label">Standardportionen des Unterrezepts<input name="subrecipeServings" aria-label="Standardportionen des Unterrezepts" type="number" min="0.000001" step="any" [(ngModel)]="subrecipe.servings"></label> }
+@else { <label class="dialog-label">Benötigte Menge<input name="subrecipeQuantity" aria-label="Menge des Unterrezepts" type="number" min="0.000001" step="any" [(ngModel)]="subrecipe.quantity"></label><label class="dialog-label">Einheit<select name="subrecipeUnit" aria-label="Einheit des Unterrezepts" [(ngModel)]="subrecipe.unitId">@for (unit of reference.units; track unit.unitId) { <option [ngValue]="unit.unitId">{{ unit.symbol }} ({{ unit.name }})</option> }</select></label> }
+</div><p class="muted">Gilt für die Bezugsmenge dieses Rezepts: {{ recipeReferenceLabel() }}. Bei größerem Bedarf wird die Einbindung entsprechend mitgerechnet.</p>
+@if (reference.conflicts.length) { <div class="subrecipe-conflicts">@for (conflict of reference.conflicts; track conflict.type + '-' + conflict.id) { <span [class.preventable]="conflict.preventableByVariants.length > 0" [class.unavoidable]="conflict.preventableByVariants.length === 0" [title]="subrecipeConflictTitle(conflict)">{{ conflict.name }}@if (conflict.preventableByVariants.length) { (Variante) }</span> }</div> }
+}
+}
+@if (readOnly()) {
+<div class="subrecipe-selected"><strong>{{ subrecipeName(subrecipe) }}</strong><span>Revision {{ subrecipeReference(subrecipe)?.revisionNumber ?? '—' }}</span></div>
+@if (subrecipeReference(subrecipe)?.conflicts?.length) { <div class="dialog-conflict-list">@for (conflict of subrecipeReference(subrecipe)!.conflicts; track conflict.type + '-' + conflict.id) { <div [class.preventable]="conflict.preventableByVariants.length > 0" [class.unavoidable]="conflict.preventableByVariants.length === 0"><strong>{{ conflict.name }}</strong><p>{{ subrecipeConflictTitle(conflict) }}</p></div> }</div> }
+<h4>Ersatzrezepte</h4>
+@for (replacement of subrecipe.replacements; track replacement.id) { <article class="subrecipe-replacement-summary"><div><strong>{{ subrecipeName(replacement) }}</strong><small>Revision {{ subrecipeReference(replacement)?.revisionNumber ?? '—' }}</small></div><dl class="replacement-readonly"><div><dt>Menge</dt><dd>{{ subrecipeAmount(replacement) }}</dd></div><div><dt>Ersetzt bei</dt><dd>{{ subrecipeReplacementConflictNames(subrecipe, replacement) || 'Noch keine Zuordnung' }}</dd></div></dl></article> } @empty { <p class="muted">Noch keine Ersatzrezepte hinterlegt.</p> }
+} @else {
+@if (mode === 'subrecipe-replacements') { <div class="subrecipe-selected"><strong>{{ subrecipeName(subrecipe) }}</strong><span>Revision {{ subrecipeReference(subrecipe)?.revisionNumber ?? '—' }}</span></div>@if (subrecipeReference(subrecipe)?.conflicts?.length) { <div class="dialog-conflict-list">@for (conflict of subrecipeReference(subrecipe)!.conflicts; track conflict.type + '-' + conflict.id) { <div [class.preventable]="conflict.preventableByVariants.length > 0" [class.unavoidable]="conflict.preventableByVariants.length === 0"><strong>{{ conflict.name }}</strong><p>{{ subrecipeConflictTitle(conflict) }}</p></div> }</div> } }
+<section class="subrecipe-replacement-editor"><div class="replacement-heading"><h3>Ersatzrezepte</h3><button matButton="outlined" type="button" (click)="openSubrecipeReplacement()" [disabled]="!subrecipe.recipeRevisionId || !!subrecipeReplacementDraft()">Ersatz hinzufügen</button></div>
+@if (!subrecipeReplacementDraft()) { @for (replacement of subrecipe.replacements; track replacement.id) { <article class="subrecipe-replacement-row"><div><strong>{{ subrecipeName(replacement) }}</strong><small>{{ subrecipeAmount(replacement) }} · {{ replacement.conflicts.length }} Anforderung(en)</small></div><button matButton type="button" (click)="openSubrecipeReplacement(replacement)">Bearbeiten</button><button matButton type="button" (click)="removeSubrecipeReplacement(replacement.id)">Entfernen</button></article> } @empty { <p class="muted">Noch kein Ersatz hinterlegt.</p> } }
+@else { @if (subrecipeReplacementDraft(); as replacement) {
+<label class="dialog-label">Ersatzrezept<select name="replacementRecipe" aria-label="Ersatzrezept" [ngModel]="replacement.recipeRevisionId" (ngModelChange)="selectSubrecipeReplacement($event)"><option [ngValue]="null">Rezept auswählen</option>@for (candidate of subrecipeReplacementCandidates(); track candidate.revisionId) { <option [ngValue]="candidate.revisionId">{{ candidate.name }} · Revision {{ candidate.revisionNumber }}</option> }</select></label>
+@if (subrecipeReference(replacement); as reference) { <div class="dialog-fields">@if (reference.recipeType === 0) { <label class="dialog-label">Standardportionen<input name="replacementServings" aria-label="Standardportionen des Ersatzrezepts" type="number" min="0.000001" step="any" [(ngModel)]="replacement.servings"></label> } @else { <label class="dialog-label">Menge<input name="replacementQuantity" aria-label="Menge des Ersatzrezepts" type="number" min="0.000001" step="any" [(ngModel)]="replacement.quantity"></label><label class="dialog-label">Einheit<select name="replacementUnit" aria-label="Einheit des Ersatzrezepts" [(ngModel)]="replacement.unitId">@for (unit of reference.units; track unit.unitId) { <option [ngValue]="unit.unitId">{{ unit.symbol }}</option> }</select></label> }</div> }
+<fieldset><legend>Ersatz verwenden bei</legend>@for (conflict of subrecipeConflictOptions(); track conflict.type + '-' + conflict.id) { <label class="replacement-conflict"><input type="checkbox" [ngModelOptions]="{standalone:true}" [ngModel]="subrecipeReplacementHasConflict(conflict)" (ngModelChange)="toggleSubrecipeReplacementConflict(conflict,$event)" [disabled]="subrecipeConflictUsed(conflict)">{{ conflict.name }}@if (subrecipeConflictUsed(conflict)) { <small>bereits zugeordnet</small> }</label> } @empty { <p class="muted">Keine zuordenbaren Ernährungsanforderungen vorhanden.</p> }</fieldset>
+@if (subrecipeReplacementWarnings().length) { <p class="dialog-error" role="status">Dieser Ersatz enthält weiterhin oder zusätzlich: @for (conflict of subrecipeReplacementWarnings(); track conflict.type + '-' + conflict.id) { {{ conflict.name }} }. Bitte bei der Veröffentlichung prüfen.</p> }
+<div class="replacement-actions"><button matButton="outlined" type="button" (click)="subrecipeReplacementDraft.set(null)">Ersatz verwerfen</button><button matButton="filled" type="button" (click)="applySubrecipeReplacement()" [disabled]="!validSubrecipeReplacement()">Ersatz übernehmen</button></div>
+} }</section>
+}
+@if (!readOnly() && subrecipe.recipeRevisionId && !subrecipeReplacementDraft() && !validSubrecipeDraft()) { <p class="dialog-error" role="status">Prüfe die positive Menge und die Zielgruppe. Dieselbe Unterrezeptrevision darf in einer Gruppe nur einmal vorkommen.</p> }
+} }
+@if (mode === 'updates') { <p>Verwendete Zutatenrevisionen bleiben unverändert, bis du ein Update übernimmst.</p><div class="update-list">@for (position of availableIngredientUpdates(); track position.id) { @if (ingredientReference(position)?.availableUpdate; as update) { <article><div><strong>{{ ingredient(position)?.name }}</strong><p>Revision {{ ingredientReference(position)?.revisionNumber }} → {{ update.revisionNumber }}</p></div><button matButton="outlined" type="button" (click)="adoptIngredientUpdate(position, update)" [disabled]="readOnly()">Revision übernehmen</button></article> } } @empty { <p>Keine weiteren Zutatenaktualisierungen gemeldet.</p> }</div>@if (readOnly()) { <p class="muted">Zum Übernehmen zuerst den Bearbeitungsmodus öffnen.</p> } }
+</div>
+<footer><button matButton="outlined" type="button" (click)="closeIngredientDialog()">{{ mode === 'picker' || mode === 'updates' || readOnly() ? 'Schließen' : 'Abbrechen' }}</button>@if (!readOnly() && ['group','move','scaling','replacements','subrecipe','subrecipe-replacements'].includes(mode)) { <button matButton="filled" type="button" (click)="applyIngredientDialog()" [disabled]="mode === 'scaling' && !validScalingDraft() || (mode === 'subrecipe' || mode === 'subrecipe-replacements') && !validSubrecipeDraft()">Übernehmen</button> }</footer>
+</dialog>
+}
+
+        <section class="recipe-nutrition-panel" role="tabpanel" id="recipe-panel-nutrition" aria-labelledby="recipe-tab-nutrition" [hidden]="activeTab() !== 'nutrition'">
+<div class="nutrition-layout">
+<section class="editor-card nutrition-overview" aria-labelledby="nutrition-heading">
+  <div class="nutrition-section-heading"><div><h3 id="nutrition-heading">Nährwertübersicht</h3><p>Aus gespeicherten Zutaten, Mengen und Mengenregeln.</p></div><button matButton="outlined" type="button" (click)="loadNutrition()" [disabled]="changed() || nutritionLoading()"><scp-action-icon name="refresh"/>Neu berechnen</button></div>
+  <div class="nutrition-energy-cards">
+    @if (draft.content.recipeType === 0) { <div class="nutrition-energy"><span><scp-action-icon name="people"/>Pro Standardportion</span><strong>{{ nutritionEnergy('portion') }}</strong><small>{{ nutritionEnergyKilojoules('portion') }}</small></div> }
+    <div class="nutrition-energy"><span><scp-action-icon name="cooking"/>Gesamtes Rezept</span><strong>{{ nutritionEnergy('total') }}</strong><small>Bei {{ recipeReferenceLabel() }}</small></div>
+  </div>
+  <h4 class="nutrition-table-heading">Nährwerte im Detail</h4>
+  <div class="nutrition-table-scroll"><table class="nutrition-detail-table" aria-label="Nährwerte pro Standardportion und gesamtes Rezept">
+    <thead><tr><th scope="col">Nährwert</th>@if (draft.content.recipeType === 0) { <th scope="col">Pro Standardportion</th> }<th scope="col">Gesamtes Rezept</th></tr></thead>
+    <tbody>@for (row of nutritionRows; track row.key) { <tr [class.nutrition-subrow]="row.subrow"><th scope="row">{{ row.label }}</th>@if (draft.content.recipeType === 0) { <td>{{ nutritionCell(row.key, 'portion') }}</td> }<td>{{ nutritionCell(row.key, 'total') }}</td></tr> }</tbody>
+  </table></div>
+</section>
+<aside class="nutrition-sidebar" aria-label="Datenqualität und Berechnungsdetails">
+<section class="editor-card nutrition-quality" aria-labelledby="nutrition-quality-heading">
+  <h3 id="nutrition-quality-heading">Datenqualität</h3>
+  @if (changed()) {
+    <div class="nutrition-status info" role="status"><scp-action-icon name="info"/><div><strong>Ungespeicherte Änderungen</strong><p>Speichere das Rezept, um die Nährwerte für den neuen Stand zu berechnen.</p></div></div>
+  } @else if (nutritionLoading()) {
+    <div class="recipe-loading" role="status"><mat-spinner diameter="24"/><span>Nährwerte werden berechnet …</span></div>
+  } @else if (nutrition(); as calculation) {
+    @if (calculation.isComplete && calculation.total) {
+      <div class="nutrition-status complete" role="status"><scp-action-icon name="check"/><div><strong>Geprüfte Zutatenprofile</strong><p>Alle benötigten Profile liegen vor. Die Werte sind eine Schätzung.</p></div></div>
+      @if (calculation.total.fiberGrams === null) { <p class="nutrition-secondary-note">Ballaststoffe sind nicht vollständig hinterlegt und werden als „—“ angezeigt.</p> }
+    } @else {
+      <div class="nutrition-status incomplete" role="status"><scp-action-icon name="warning"/><div><strong>Unvollständige Nährwertdaten</strong><p>{{ calculation.total ? 'Die angezeigten Teilsummen enthalten nur Zutaten mit auswertbarem Profil. Fehlende Beiträge sind noch nicht eingerechnet.' : 'Bisher ist kein Zutatenprofil auswertbar. Ein Zwischenstand kann noch nicht berechnet werden.' }}</p></div></div>
+    }
+    @if (nutritionMissingIngredients().length) {
+    <details class="nutrition-missing-details" open><summary>Fehlende Nährwertdaten ({{ nutritionMissingIngredients().length }})<scp-action-icon name="down"/></summary><ul>
+      @for (missing of nutritionMissingIngredients(); track missing.ingredientRevisionId + '-' + missing.reason) {
+      <li><scp-action-icon name="info"/><div><strong>{{ missing.ingredientName }}</strong>@if (missing.revisionNumber !== null) { <span class="nutrition-revision">Revision {{ missing.revisionNumber }}</span> }<p>{{ nutritionReason(missing.reason) }}</p>@if (missing.occurrences > 1) { <small>{{ missing.occurrences }} Verwendungen im Rezept</small> }</div></li>
+      }
+    </ul></details>
+    }
+  } @else {
+    <div class="nutrition-status info" role="status"><scp-action-icon name="info"/><div><strong>Keine Auswertung verfügbar</strong><p>{{ nutritionMessage() || 'Für dieses Rezept sind noch keine Nährwerte berechenbar.' }}</p></div></div>
+  }
+</section>
+<section class="editor-card nutrition-calculation-details" aria-labelledby="nutrition-calculation-heading">
+  <h3 id="nutrition-calculation-heading">Berechnungsdetails</h3>
+  <dl><div><dt>Berechnungsbezug</dt><dd>{{ recipeReferenceLabel() }}</dd></div><div><dt>Grundlage</dt><dd>Gespeicherter Rezeptstand</dd></div><div><dt>Zutatenrevisionen</dt><dd>{{ nutritionReferences().length }} direkt referenziert</dd></div></dl>
+  @if (nutritionReferences().length) { <details class="nutrition-reference-details"><summary>Verwendete Zutatenrevisionen</summary><ul>@for (reference of nutritionReferences(); track reference.revisionId) { <li><span>{{ reference.name }}</span><span class="nutrition-revision">Revision {{ reference.revisionNumber }}</span></li> }</ul></details> }
+  <div class="nutrition-planned-metadata"><span class="planned-badge">Geplant</span><p>Berechnungszeitpunkt und vollständiger Nachweis einschließlich Unterrezepten.</p></div>
+</section>
+</aside>
+</div>
+<div class="nutrition-estimate-note"><scp-action-icon name="info"/><div><strong>Hinweis</strong><p>Die Nährwerte sind Schätzwerte auf Basis der gespeicherten Zutatenrevisionen und Mengenregeln. Sie ersetzen keine verbindlichen Nährwertangaben. „—“ bedeutet: nicht berechenbar oder nicht hinterlegt.</p></div></div>
+        </section>
+
+        <section class="recipe-publication-panel" role="tabpanel" id="recipe-panel-publication" aria-labelledby="recipe-tab-publication" [hidden]="activeTab() !== 'publication'">
+<div class="publication-layout">
+<section class="editor-card publication-checks" aria-labelledby="publication-check-heading">
+  <div class="publication-section-heading"><div><h3 id="publication-check-heading">Prüfung des Rezepts</h3><p>Vollständigkeit, Konsistenz und Veröffentlichung.</p></div><button matButton="outlined" type="button" disabled title="Eine separate Prüfung ohne Veröffentlichung ist noch nicht verfügbar."><scp-action-icon name="refresh"/>Prüfung ausführen<span class="planned-badge">Geplant</span></button></div>
+  <div class="publication-status" [class.error]="!editing() && publicationErrors().length > 0" [class.warning]="!editing() && !publicationErrors().length && publicationWarnings().length > 0" role="status"><scp-action-icon [name]="publicationErrors().length ? 'warning' : 'info'"/><div><strong>{{ publicationStatusTitle() }}</strong><p>{{ publicationStatusText() }}</p></div></div>
+  <details class="publication-issue-group errors" open><summary><span><scp-action-icon name="warning"/>Fehler ({{ publicationErrors().length }})</span><scp-action-icon name="down"/></summary><div class="publication-issue-list">
+  @for (issue of publicationErrors(); track $index) { <article class="publication-issue error"><scp-action-icon name="warning"/><div><strong>{{ publicationIssueTitle(issue) }}</strong><p>{{ validationIssueText(issue) }}</p></div><button matButton="outlined" type="button" (click)="goToValidationIssue(issue)" [disabled]="saving() || publishing()">{{ validationIssueAction(issue) }}<scp-action-icon name="expand"/></button></article> }
+  @empty { <p class="publication-empty">{{ changed() ? 'Ergebnisse werden nach dem Speichern erneuert.' : 'Keine Fehler zur Anzeige. Eine separate Vorabprüfung ist noch nicht verfügbar.' }}</p> }
+  </div></details>
+  <details class="publication-issue-group warnings" open><summary><span><scp-action-icon name="warning"/>Warnungen ({{ publicationWarnings().length + publicationAdvisories().length }})</span><scp-action-icon name="down"/></summary><div class="publication-issue-list">
+  @for (issue of publicationWarnings(); track $index) { <article class="publication-issue warning"><scp-action-icon name="warning"/><div><strong>{{ publicationIssueTitle(issue) }}</strong><p>{{ validationIssueText(issue) }}</p><small>Vor der Veröffentlichung zu bestätigen</small></div><button matButton="outlined" type="button" (click)="goToValidationIssue(issue)" [disabled]="saving() || publishing()">{{ validationIssueAction(issue) }}<scp-action-icon name="expand"/></button></article> }
+  @for (hint of publicationAdvisories(); track hint.id) { <article class="publication-issue warning"><scp-action-icon name="warning"/><div><strong>{{ hint.title }}</strong><p>{{ hint.text }}</p><small>Zusätzlicher Hinweis, keine Freigabeprüfung</small></div><button matButton="outlined" type="button" (click)="activeTab.set(hint.tab)">{{ hint.action }}<scp-action-icon name="expand"/></button></article> }
+  @if (!publicationWarnings().length && !publicationAdvisories().length) { <p class="publication-empty">Zurzeit keine Warnungen zur Anzeige.</p> }
+  </div></details>
+  <details class="publication-issue-group notes" open><summary><span><scp-action-icon name="info"/>Hinweise</span><scp-action-icon name="down"/></summary><div class="publication-issue-list">
+  <article class="publication-issue note"><scp-action-icon name="info"/><div><strong>Gespeicherte Zutatenrevisionen</strong><p>Neuere Zutatenrevisionen werden nur nach ausdrücklicher Übernahme verwendet.</p></div></article>
+  <div class="publication-planned-success"><span class="planned-badge">Geplant</span><p>Erfolgreiche Einzelprüfungen werden hier ergänzt, sobald eine separate Vorabprüfung verfügbar ist.</p></div>
+  </div></details>
+</section>
+<aside class="publication-sidebar" aria-label="Veröffentlichung und Revisionshistorie">
+<section class="editor-card publication-release" aria-labelledby="publication-release-heading"><h3 id="publication-release-heading">Veröffentlichung</h3><p>Die bestehende Aktion prüft den gespeicherten Entwurf und veröffentlicht ihn bei erfolgreicher Prüfung als neue Revision.</p>
+  @if (publishing()) { <div class="recipe-loading" role="status"><mat-spinner diameter="24"/><span>Veröffentlichung wird verarbeitet …</span></div> }
+  @if (publicationWarnings().length && !publicationErrors().length && !editing()) {
+  <div class="publication-confirmation"><label><input type="checkbox" name="publicationWarningsAcknowledged" [ngModel]="publicationWarningsAcknowledged()" (ngModelChange)="publicationWarningsAcknowledged.set($event)" [disabled]="disabled() || publishing()"><span>Ich habe die Warnungen geprüft und möchte trotzdem veröffentlichen.</span></label></div>
+  <button class="publication-primary-action" matButton="filled" type="button" (click)="publish(true)" [disabled]="!publicationWarningsAcknowledged() || !canPublishRecipe()"><scp-action-icon name="check"/>Bestätigen & veröffentlichen</button>
+  } @else {
+  <button class="publication-primary-action" matButton="filled" type="button" (click)="publish(false)" [disabled]="!canPublishRecipe() || publicationErrors().length > 0"><scp-action-icon name="check"/>Prüfen & veröffentlichen</button>
+  }
+  @if (editing()) { <p class="publication-action-hint">{{ changed() ? 'Speichere zuerst deine Änderungen.' : 'Beende zuerst den Bearbeitungsmodus.' }}</p> }
+  @if (draft.status === 2) { <p class="publication-action-hint">Archivierte Rezepte können nicht veröffentlicht werden.</p> }
+  <div class="publication-consequences"><strong>Bei der Veröffentlichung</strong><ul><li><scp-action-icon name="check"/>Eine neue, unveränderliche Revision wird erstellt.</li><li><scp-action-icon name="check"/>Das Rezept steht in der Lagerbibliothek zur Verfügung.</li><li><scp-action-icon name="check"/>Bisherige Revisionen bleiben erhalten.</li></ul></div>
+</section>
+<section class="editor-card publication-history" aria-labelledby="publication-history-heading"><div class="publication-history-heading"><h3 id="publication-history-heading">Revisionshistorie</h3><span class="planned-badge">Geplant</span></div>
+  @if (revisionNumber() !== null) { <div class="publication-current-revision"><span class="publication-revision-dot"></span><div><strong>Revision {{ revisionNumber() }}</strong><p>Aktuelle veröffentlichte Revision</p></div></div> }
+  <p>Ein vollständiger Verlauf mit Autor und Zeitpunkt ist noch nicht verfügbar.</p><button matButton="outlined" type="button" disabled>Verlauf anzeigen<span class="planned-badge">Geplant</span></button>
+</section>
+<div class="publication-info-note"><scp-action-icon name="info"/><div><strong>Hinweis</strong><p>Speichern aktualisiert den Arbeitsentwurf. Erst Veröffentlichen erzeugt eine neue Revision; bisherige Verwendungen bleiben bei ihrer gespeicherten Revision.</p></div></div>
+</aside>
+</div>
+        </section>
+
+<footer class="editor-footer"><div class="footer-state"><span class="state-badge">{{ editing() ? (changed() ? 'Ungespeicherte Änderungen' : 'Entwurf in Bearbeitung') : 'Ansichtsmodus' }}</span>@if (draft.status === 1) { <small>Veröffentlichte Revisionen bleiben unverändert.</small> }</div><div class="footer-actions">
+@if (editing()) { <button matButton="outlined" type="button" (click)="cancelEdit()" [disabled]="saving() || publishing()">Abbrechen</button><button matButton="filled" type="submit" [disabled]="readOnly() || !changed()"><scp-action-icon name="save"/>Entwurf speichern</button> }
+@else if (activeTab() !== 'publication') { <button matButton="outlined" type="button" (click)="activeTab.set('publication')"><scp-action-icon name="check"/>Prüfung & Veröffentlichung</button> }
+</div></footer>
+</form>
+</div>
+    } @else {
+      <scp-recipe-catalog [entries]="visibleRecipes()" [disabled]="disabled() || saving()" (create)="createDraft()" (opened)="open($event)" (removed)="removeLibraryEntry($event)"/>
+    }

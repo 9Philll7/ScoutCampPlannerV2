@@ -12,7 +12,7 @@
           @if (adjustments(solution).length || quantities(solution).length) {
             <details class="solution-details" (toggle)="$any($event.target).open && adjustments(solution).length && loadPositions(solution.recipeRevisionId)"><summary>Zutaten & Mengen ansehen</summary>
               @for (adjustment of adjustments(solution); track $index) { <p>{{ adjustment }}</p> }
-              @for (quantity of quantities(solution); track $index) { <p>{{ quantity.ingredientName }}: {{ quantity.quantity }} {{ quantity.unit }} · {{ ['Linear', 'Fixe Menge', 'Stufenweise'][quantity.scalingMode] }}@if (quantity.stepwiseScaling; as step) { · {{ step.quantityPerStep }} {{ quantity.unit }} je {{ step.stepSize }} Personen }</p> }
+              @for (quantity of quantities(solution); track $index) { <p>{{ quantity.ingredientName }}: {{ quantity.quantity }} {{ quantity.unit }} · {{ ['Linear', 'Fixe Menge', 'In festen Schritten'][quantity.scalingMode] }}@if (quantity.stepwiseScaling; as step) { · {{ step.quantityPerStep }} {{ quantity.unit }} je angefangene {{ step.stepSize }} Standardportionen }</p> }
               <small>Letzter Berechnungsstand</small>
             </details>
           }

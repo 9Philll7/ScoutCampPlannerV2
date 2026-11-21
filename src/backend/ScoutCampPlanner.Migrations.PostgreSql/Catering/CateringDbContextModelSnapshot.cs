@@ -2558,6 +2558,14 @@ namespace ScoutCampPlanner.Migrations.PostgreSql.Catering
                     b.Property<Guid?>("IngredientRevisionId")
                         .HasColumnType("uuid");
 
+                    b.Property<decimal?>("MaximumQuantity")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<decimal?>("MinimumQuantity")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
                     b.Property<decimal?>("Quantity")
                         .HasPrecision(18, 6)
                         .HasColumnType("numeric(18,6)");
